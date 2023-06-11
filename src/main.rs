@@ -1,4 +1,4 @@
-use std::{io::{BufReader, Read, Write}, fs::File};
+use std::{io::{Read}, fs::File};
 
 mod lexer;
 
@@ -11,4 +11,5 @@ fn main() {
     };
     println!("{file_contents}");
     let tokens = lexer::lex(&file_contents).unwrap();
+    println!("{:#?}", tokens);
 }
