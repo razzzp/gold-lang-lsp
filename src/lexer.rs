@@ -2,16 +2,46 @@ use std::{str::Chars, iter::{Peekable, Enumerate}};
 
 #[derive(Debug, PartialEq, Eq)]
 enum TokenType {
-    // declarations
-    Class,
-    Func,
-    EndFunc,
-    Proc,
-    EndProc,
+    // types
+    Absolute,
+    Abstract,
+    Array,
+    Char,
+    Const,
+    CString,
+    Decimal,
+    External,
+    Final,
+    Forward,
 
     // control
     If,
     EndIf,
+    Begin,
+    Break,
+    Catch,
+    Continue,
+    DownTo,
+    Else,
+    ElseIf,
+    End,
+    For,
+    ForEach,
+    EndFor,
+    Class,
+    EndClass,
+    Func,
+    EndFunc,
+    Proc,
+    EndProc,
+    EndLoop,
+    EndRecord,
+    EndSwitch,
+    EndTry,
+    EndWhen,
+    EndWhile,
+    Exit,
+    Finally,
 
     // operators
     OBracket,
@@ -42,8 +72,33 @@ enum TokenType {
     TypeAssign,
     Dot,
     AddressOf,
+    And,
+    BAnd,
+    BNot,
+    BOr,
+    BXor,
+    In,
+
+    // intrinsics
+    MethodName,
+    ModuleName,
+    Move,
+    Chr,
+    Concat,
+    Dispose,
+    First,
+
+    // oql
+    AllVersionsOf,
+    Descending,
+    Distinct,
+    From,
+    Group,
 
     // others
+    SingleQuote,
+    DoubleQuotes,
+    SemiColon,
     Identifier
 }
 
@@ -63,8 +118,8 @@ pub fn lex(buf: &String) -> Result<Vec<Token>, &'static str> {
 
         let cur_token: Option<Token>; 
         cur_token = match cur_char.unwrap() {
-            'a'..='z' | 'A'..='Z' | '_' => read_keyword_or_identifier(&mut chars),
-            _ => read_operator(&mut chars),
+            'a'..='z' | 'A'..='Z' | '_' => read_word(&mut chars),
+            _ => read_symbol(&mut chars),
         };
         if cur_token.is_some(){
             result.push(cur_token.unwrap());
@@ -85,26 +140,34 @@ fn skip_whitespace(buf: &mut Peekable<Enumerate<Chars>>) -> Option<char> {
     return next_char;
 }
 
-fn read_keyword_or_identifier(buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
-    let mut identifier_name = String::new();
-    let identifier_pos = buf.peek().unwrap().0;
+fn read_word(buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
+    let mut word = String::new();
+    let pos = buf.peek().unwrap().0;
     
     loop {
         let next = buf.peek();
         if next.is_none() {break;};
 
         match next.unwrap().1{
-            'a'..='z' | 'A'..='Z' | '_' => {identifier_name.push(buf.next().unwrap().1)},
+            'a'..='z' | 'A'..='Z' | '_' => {word.push(buf.next().unwrap().1)},
             _ => break
         }
     }
-    return Some(Token {
-        pos: identifier_pos,
-        token_type:TokenType::Identifier,
-        value: Some(identifier_name)});
+    return Some(create_word_token(pos, word));
 }
 
-fn read_operator(buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
+fn create_word_token(pos: usize, word : String) -> Token {
+    match word.to_uppercase().as_str() {
+        "CLASS" => create_token(pos, TokenType::Class, Some(word)),
+        "FUNC" | "FUNCTION" => create_token(pos, TokenType::Func, Some(word)),
+        "ENDFUNC" => create_token(pos, TokenType::EndFunc, Some(word)),
+        "PROC" | "PROCEDURE" => create_token(pos, TokenType::Proc, Some(word)),
+        "ENDPROC" => create_token(pos, TokenType::EndProc, Some(word)),
+        _ => create_token(pos, TokenType::Identifier, Some(word))
+    }
+}
+
+fn read_symbol(buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
     let next = buf.next().unwrap();
     let pos = next.0;
     let token: Option<Token> = match next.1 {
@@ -191,7 +254,7 @@ fn create_token(pos: usize, token_type: TokenType, value: Option<String>) -> Tok
 mod test {
     use std::{iter::{Enumerate, Peekable}, str::Chars};
 
-    use crate::lexer::{TokenType, lex, read_operator};
+    use crate::lexer::{TokenType, lex, read_symbol};
 
     fn create_buffer(val : &String) -> Peekable<Enumerate<Chars>> {
         return val.chars().enumerate().peekable();
@@ -201,7 +264,7 @@ mod test {
     fn test_read_operator_single(){
         let input = String::from("+");
         let mut buf = create_buffer(&input);
-        let result = read_operator(&mut buf);
+        let result = read_symbol(&mut buf);
         let token = result.unwrap();
 
         assert_eq!(token.pos, 0);
