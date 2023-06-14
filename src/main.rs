@@ -1,6 +1,7 @@
 use std::{io::{Read}, fs::File};
 
 mod lexer;
+mod paser;
 
 fn main() {
     let  mut f = File::open("./test_inputs/aTestClass.god").expect("file not found");
