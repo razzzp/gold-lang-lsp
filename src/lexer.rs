@@ -167,7 +167,7 @@ enum TokenType {
     // others
     SingleQuote,
     DoubleQuotes,
-    SemiColon,
+    Comment,
     Identifier
 }
 
@@ -379,9 +379,21 @@ fn read_symbol(buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
         '-' => read_double_char_op(next.1, pos, buf),
         ':' => read_double_char_op(next.1, pos, buf),
         '&' => read_double_char_op(next.1, pos, buf),
+        ';' => Some(read_until_newline(pos, buf)),
         _=> None
     };
     return token;
+}
+
+fn read_until_newline(pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token{
+    let mut comment = String::new();
+    loop {
+        match buf.next() {
+            Some((_,'\n' | '\r')) | None => break,
+            Some((_,c)) => comment.push(c)
+        }
+    }
+    return create_token(pos, TokenType::Comment, Some(comment));
 }
 
 fn read_double_char_op(first_op: char, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
@@ -510,6 +522,20 @@ mod test {
         assert_eq!(tokens[0].token_type, TokenType::MethodName);
         assert_eq!(tokens[60].token_type, TokenType::Like);
         assert_eq!(tokens[124].token_type, TokenType::Module);
+    }
+
+    #[test]
+    fn test_comment(){
+        let input = String::from(
+            "not a comment ; a comment\n
+            ; entire line is a comment wow \n");
+        let result = lex(&input);
+        let token = result.unwrap();
+        println!("{:#?}", token);
+        assert_eq!(token.len(), 5);
+        assert_eq!(token[0].token_type, TokenType::Not);
+        assert_eq!(token[3].token_type, TokenType::Comment);
+        assert_eq!(token[4].token_type, TokenType::Comment);
     }
 }
 
