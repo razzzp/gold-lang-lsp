@@ -1,5 +1,7 @@
+use std::slice::Iter;
 
-#[derive(Debug, PartialEq, Eq)]
+
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenType {
     // types
     Absolute,
@@ -170,7 +172,7 @@ pub enum TokenType {
     Identifier
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct Token {
     pub pos: usize,
     pub token_type: TokenType,
@@ -178,17 +180,21 @@ pub struct Token {
 }
 
 pub struct Tokens<'a> {
-    tokens: &'a Vec<Token>,
+    tokens: &'a [Token],
     start: usize,
     end: usize
 }
 
 impl<'a> Tokens<'a>{
-    fn new(tokens: &'a Vec<Token>) -> Tokens<'a> {
+    pub fn new(tokens: &'a [Token]) -> Tokens<'a> {
         Self {
             tokens,
             start: 0,
             end: tokens.len()
         }
+    }
+
+    pub fn iter(&'a self) -> Iter<'a, Token> {
+        self.tokens.iter()
     }
 }
