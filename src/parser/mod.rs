@@ -7,37 +7,37 @@ use nom::{error::{ Error, ErrorKind}, Err, bytes::complete::take, Parser};
 use crate::lexer::tokens::{Token, TokenType, Tokens};
 
 #[derive(Debug)]
-struct AstTerminal{
+pub struct AstTerminal{
    pub token: Token,
 }
 
 #[derive(Debug)]
-struct AstClass{
+pub struct AstClass{
    pub pos: usize,
    pub name: String,
    pub parent_class: String
 }
 
 #[derive(Debug)]
-struct AstUses {
+pub struct AstUses {
    pub list_of_uses: Vec<AstNode>
 }
 
 
 #[derive(Debug, Clone)]
-struct MyError<'a>{
+pub struct MyError<'a>{
    input: &'a [Token],
    msg: String
 }
 
 #[derive(Debug, Clone)]
-struct ParserError {
+pub struct ParserError {
    token: Token,
    msg:String
 }
 
 #[derive(Debug)]
-enum AstNode {
+pub enum AstNode {
    None,
    Class(AstClass),
    Terminal(AstTerminal),
@@ -214,7 +214,7 @@ fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  AstNode), MyErro
    return Ok((next, AstNode::Uses(AstUses { list_of_uses: idents })));
 }
 
-fn parse_tokens<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<AstNode>), Vec<ParserError>) {
+pub fn parse_tokens<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<AstNode>), Vec<ParserError>) {
    let parsers = [
       parse_class,
       parse_uses
@@ -223,7 +223,7 @@ fn parse_tokens<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<AstNode>), Vec<P
    let mut errors = Vec::<ParserError>::new();
    let mut next = input;
    while next.len() > 0 {
-      next = match alternatives(&parsers)(input){
+      next = match alternatives(&parsers)(next){
          Ok((r,n))=> {result.push(n); r},
          Err(e)=> {
             let mut iter = next.iter();
@@ -235,7 +235,7 @@ fn parse_tokens<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<AstNode>), Vec<P
          }
       };
    }
-   ((input, result), errors)
+   ((next, result), errors)
 }
 
 mod test {
@@ -304,7 +304,7 @@ mod test {
       };
       assert_eq!(token.pos, 15);
       assert_eq!(token.token_type, TokenType::Identifier);
-      assert_eq!(token.value, Some("aTestClass".to_owned()));
+      assert_eq!(token.value.as_ref().unwrap().as_str(), "aTestClass");
 
       // second uses
       let token = match &list_of_uses[1] {
@@ -313,7 +313,7 @@ mod test {
       };
       assert_eq!(token.pos, 21);
       assert_eq!(token.token_type, TokenType::Identifier);
-      assert_eq!(token.value, Some("aParentClass".to_owned()));
+      assert_eq!(token.value.as_ref().unwrap().as_str(), "aParentClass");
    }
 
    #[test]
