@@ -1,28 +1,6 @@
 
-
-use std::{any::Any, fmt::format};
-
-use nom::{error::{ Error, ErrorKind}, Err, bytes::complete::take, Parser};
-
-use crate::lexer::tokens::{Token, TokenType, Tokens};
-
-#[derive(Debug)]
-pub struct AstTerminal{
-   pub token: Token,
-}
-
-#[derive(Debug)]
-pub struct AstClass{
-   pub pos: usize,
-   pub name: String,
-   pub parent_class: String
-}
-
-#[derive(Debug)]
-pub struct AstUses {
-   pub list_of_uses: Vec<AstNode>
-}
-
+use crate::lexer::tokens::{Token, TokenType};
+use crate::ast::{AstNode, AstClass, AstUses, AstTerminal};
 
 #[derive(Debug, Clone)]
 pub struct MyError<'a>{
@@ -34,25 +12,6 @@ pub struct MyError<'a>{
 pub struct ParserError {
    token: Token,
    msg:String
-}
-
-#[derive(Debug)]
-pub enum AstNode {
-   None,
-   Class(AstClass),
-   Terminal(AstTerminal),
-   Uses(AstUses)
-}
-
-impl AstNode {
-   fn type_as_str(&self) -> &'static str{
-      match self {
-         AstNode::None => "None",
-         AstNode::Class(_) => "Class",
-         AstNode::Terminal(_) => "Terminal",
-         AstNode::Uses(_) => "Uses"
-      }
-   }
 }
 
 // why is the syntax so hard? maybe considered a hack? dunno lah, no used for now
@@ -203,15 +162,16 @@ fn parse_uses_list<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Vec<AstNode
 }
 
 fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  AstNode), MyError> {
-   let next = match expect(TokenType::Uses)(input){
-      Ok((r,n)) => r,
+   let (next, uses) = match expect(TokenType::Uses)(input){
+      Ok((r,AstNode::Terminal(n))) => (r, n),
+      Ok(_) => return  Err(MyError { input: input, msg: String::from("Expected terminal node")}),
       Err(e) => return Err(e),
    };
    let (next, idents) = match parse_uses_list(next) {
       Ok((r, l)) => (r, l),
       Err(e) => return Err(e),
    };
-   return Ok((next, AstNode::Uses(AstUses { list_of_uses: idents })));
+   return Ok((next, AstNode::Uses(AstUses { pos: uses.token.pos,list_of_uses: idents })));
 }
 
 pub fn parse_tokens<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<AstNode>), Vec<ParserError>) {
@@ -238,6 +198,7 @@ pub fn parse_tokens<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<AstNode>), V
    ((next, result), errors)
 }
 
+#[cfg(test)]
 mod test {
     use crate::{lexer::tokens::{Token, TokenType}, parser::{MyError, AstNode, parse_uses}};
 
