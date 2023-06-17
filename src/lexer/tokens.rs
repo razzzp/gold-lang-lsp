@@ -169,7 +169,8 @@ pub enum TokenType {
     SingleQuote,
     DoubleQuotes,
     Comment,
-    Identifier
+    Identifier,
+    Comma
 }
 
 #[derive(Debug,Clone)]

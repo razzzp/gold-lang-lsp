@@ -199,6 +199,7 @@ fn read_symbol(buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
         '=' => Some(create_token(pos, TokenType::Equals, None)),
         '\'' => Some(create_token(pos, TokenType::SingleQuote, None)),
         '\"' => Some(create_token(pos, TokenType::DoubleQuotes, None)),
+        ',' => Some(create_token(pos, TokenType::Comma, None)),
         '<' => read_double_char_op(next.1, pos, buf),
         '>' => read_double_char_op(next.1, pos, buf),
         '+' => read_double_char_op(next.1, pos, buf),
