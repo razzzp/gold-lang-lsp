@@ -41,6 +41,7 @@ pub enum TokenType {
     Versioned,
     Class,
     Module,
+    Text,
 
     // control
     If,

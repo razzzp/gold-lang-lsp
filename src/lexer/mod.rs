@@ -64,6 +64,7 @@ fn create_word_token(pos: usize, word : String) -> Token {
         "CHAR" => create_token(pos, TokenType::Char, Some(word)),
         "CONST" => create_token(pos, TokenType::Const, Some(word)),
         "CSTRING" => create_token(pos, TokenType::CString, Some(word)),
+        "TEXT" => create_token(pos, TokenType::Text, Some(word)),
         "DECIMAL" => create_token(pos, TokenType::Decimal, Some(word)),
         "EXTERNAL" => create_token(pos, TokenType::External, Some(word)),
         "FINAL" => create_token(pos, TokenType::Final, Some(word)),

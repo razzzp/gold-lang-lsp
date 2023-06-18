@@ -1,6 +1,6 @@
 
 use crate::lexer::tokens::{Token, TokenType};
-use crate::ast::{AstNode, AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypePrimitiveUnsized};
+use crate::ast::{AstNode, AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypePrimitiveFixedSize, AstTypePrimitiveDynamicSize};
 
 #[derive(Debug, Clone)]
 pub struct MyError<'a>{
@@ -91,45 +91,53 @@ fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
       Ok((r, t)) => (r, t),
       Err(e) => return Err(e),
    };
-   let (next, idents) = match parse_uses_list(next) {
+   let (next, idents) = match parse_separated_list(next, TokenType::Identifier, TokenType::Comma) {
       Ok((r, l)) => (r, l),
       Err(e) => return Err(e),
    };
    return Ok((next, Box::new(AstUses { pos: uses.pos, list_of_uses: idents })));
 }
 
-
-fn parse_uses_list_recursive<'a, 'b>(input : &'a [Token], result: &'b mut Vec<Token>) -> Result<&'a [Token], MyError<'a>> {
-   // match first identifier
-   let mut next = match exp_token(TokenType::Identifier)(input){
-      Ok((r, t)) => {result.push(t); r},
-      Err(e) => return Err(MyError { input: e.input, msg:  String::from("Failed to parse uses list")})
-   };
-   next = match exp_token(TokenType::Comma)(next){
-      Ok((r, _)) => r,
-      Err(e) => return Ok(e.input)
-   };
-   return parse_uses_list_recursive(next, result)
-}
-
-fn parse_uses_list<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Vec<Token>), MyError<'a>> {
+fn parse_separated_list<'a>(input : &'a [Token], item : TokenType, seperator: TokenType) 
+-> Result<(&'a [Token],  Vec<Token>), MyError<'a>> {
    let mut identifiers = Vec::<Token>::new();
    // match first identifier
-   let r = parse_uses_list_recursive(input, &mut identifiers);
+   let r = _parse_seperated_list_recursive(input, &item, &seperator, &mut identifiers);
    match r{
       Ok(r) => return Ok((r, identifiers)),
       Err(e) => return Err(e)
    };
 }
 
+fn _parse_seperated_list_recursive<'a, 'b>(
+   input : &'a [Token],
+   item: &'b TokenType,
+   sep: &'b TokenType,
+   result: &'b mut Vec<Token>) 
+-> Result<&'a [Token], MyError<'a>> {
+   // match first identifier
+   let mut next = match exp_token(item.clone())(input){
+      Ok((r, t)) => {result.push(t); r},
+      Err(e) => return Err(MyError { input: e.input, msg:  String::from("Failed to parse uses list")})
+   };
+   next = match exp_token(sep.clone())(next){
+      Ok((r, _)) => r,
+      Err(e) => return Ok(e.input)
+   };
+   return _parse_seperated_list_recursive(next, item, sep, result)
+}
+
 fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
-   let parse_result = alt_parse(&[
-      parse_type_primitive_unsized
-   ])(input);
+   let parsers = [
+      parse_type_primitive_fixed_size,
+      parse_type_primitive_dynamic_size,
+   ];
+   let parse_result = alt_parse(&parsers)(input);
    return parse_result;
 }
 
-fn parse_type_primitive_unsized<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>> {
+fn parse_type_primitive_fixed_size<'a>(input : &'a [Token]) 
+-> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>> {
    let parse_result = alt_token(&[
       exp_token(TokenType::Int1),
       exp_token(TokenType::Int2),
@@ -145,7 +153,18 @@ fn parse_type_primitive_unsized<'a>(input : &'a [Token]) -> Result<(&'a [Token],
       exp_token(TokenType::String),
    ])(input);
    return match parse_result {
-      Ok((r, t)) => Ok((r, Box::new(AstTypePrimitiveUnsized{pos:t.pos, type_token: t}))),
+      Ok((r, t)) => Ok((r, Box::new(AstTypePrimitiveFixedSize{pos:t.pos, type_token: t}))),
+      Err(e) => Err(e)
+   }
+}
+
+fn parse_type_primitive_dynamic_size<'a>(input : &'a [Token]) 
+-> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>> {
+   let parse_result = alt_token(&[
+      exp_token(TokenType::Text),
+   ])(input);
+   return match parse_result {
+      Ok((r, t)) => Ok((r, Box::new(AstTypePrimitiveDynamicSize{pos:t.pos, type_token: t}))),
       Err(e) => Err(e)
    }
 }
@@ -244,7 +263,7 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-    use crate::{lexer::tokens::{Token, TokenType}, parser::{MyError, AstNode, parse_uses}, ast::{AstTerminal, AstClass, AstUses, AstTypePrimitiveUnsized}};
+    use crate::{lexer::tokens::{Token, TokenType}, parser::{MyError, AstNode, parse_uses}, ast::{AstTerminal, AstClass, AstUses, AstTypePrimitiveFixedSize, AstTypePrimitiveDynamicSize}};
 
     use super::{parse_class, parse_type};
 
@@ -326,7 +345,7 @@ mod test {
    }
 
    #[test]
-   fn test_parse_type_primitive_unsized() {
+   fn test_parse_type_primitive_fixed_size() {
       let input = [
          Token { pos:0, token_type:TokenType::Int1, value: None},
          Token { pos:10, token_type:TokenType::Int2, value: None},
@@ -348,12 +367,39 @@ mod test {
             Ok((r, n)) => (r,n),
             Err(e) => panic!("{}",e.msg.to_owned())
          };
+         let downcasted = node.as_ref().as_any().downcast_ref::<AstTypePrimitiveFixedSize>().unwrap();
          assert_eq!(
-            node.as_ref().as_any().downcast_ref::<AstTypePrimitiveUnsized>().unwrap().pos,
+            downcasted.pos,
             input[count].pos
          );
          assert_eq!(
-            node.as_ref().as_any().downcast_ref::<AstTypePrimitiveUnsized>().unwrap().type_token.token_type,
+            downcasted.type_token.token_type,
+            input[count].token_type
+         );
+         count += 1;
+         next = remaining;
+      }
+   }
+
+   #[test]
+   fn test_parse_type_primitive_dynamic_size() {
+      let input = [
+         Token { pos:110, token_type:TokenType::Text, value: None},
+      ];
+      let mut next : &[Token] = &input;
+      let mut count = 0;
+      while !next.is_empty(){
+         let (remaining, node) = match parse_type(next) {
+            Ok((r, n)) => (r,n),
+            Err(e) => panic!("{}",e.msg.to_owned())
+         };
+         let downcasted = node.as_ref().as_any().downcast_ref::<AstTypePrimitiveDynamicSize>().unwrap();
+         assert_eq!(
+            downcasted.pos,
+            input[count].pos
+         );
+         assert_eq!(
+            downcasted.type_token.token_type,
             input[count].token_type
          );
          count += 1;

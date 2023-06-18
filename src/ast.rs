@@ -63,11 +63,27 @@ impl IAstNode for AstUses{
 }
 
 #[derive(Debug)]
-pub struct AstTypePrimitiveUnsized {
+pub struct AstTypePrimitiveFixedSize {
    pub pos: usize,
    pub type_token: Token
 }
-impl IAstNode for AstTypePrimitiveUnsized{
+impl IAstNode for AstTypePrimitiveFixedSize{
+   fn get_type(&self) -> &'static str {
+       return "Type Primitive Unsized";
+   }
+   fn get_pos(&self) -> usize {
+       return self.pos;
+   }
+   fn as_any(&self) -> &dyn Any {
+      self
+  }
+}
+#[derive(Debug)]
+pub struct AstTypePrimitiveDynamicSize{
+   pub pos: usize,
+   pub type_token: Token
+}
+impl IAstNode for AstTypePrimitiveDynamicSize{
    fn get_type(&self) -> &'static str {
        return "Type Primitive Unsized";
    }
