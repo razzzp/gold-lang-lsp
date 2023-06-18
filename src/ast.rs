@@ -3,6 +3,7 @@ use std::any::Any;
 use crate::lexer::tokens::Token;
 
 pub trait IAstNode : std::fmt::Debug {
+
    fn get_type(&self) -> &'static str;
    fn get_pos(&self) -> usize;
    fn as_any(&self) -> &dyn Any;
@@ -52,6 +53,23 @@ pub struct AstUses {
 impl IAstNode for AstUses{
    fn get_type(&self) -> &'static str {
        return "Uses";
+   }
+   fn get_pos(&self) -> usize {
+       return self.pos;
+   }
+   fn as_any(&self) -> &dyn Any {
+      self
+  }
+}
+
+#[derive(Debug)]
+pub struct AstTypePrimitiveUnsized {
+   pub pos: usize,
+   pub type_token: Token
+}
+impl IAstNode for AstTypePrimitiveUnsized{
+   fn get_type(&self) -> &'static str {
+       return "Type Primitive Unsized";
    }
    fn get_pos(&self) -> usize {
        return self.pos;

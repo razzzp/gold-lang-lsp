@@ -1,11 +1,11 @@
 
 use crate::lexer::tokens::{Token, TokenType};
-use crate::ast::{AstNode, AstClass, AstUses, AstTerminal, IAstNode, AstEmpty};
+use crate::ast::{AstNode, AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypePrimitiveUnsized};
 
 #[derive(Debug, Clone)]
 pub struct MyError<'a>{
-   input: &'a [Token],
-   msg: String
+   pub input: &'a [Token],
+   pub msg: String
 }
 
 #[derive(Debug, Clone)]
@@ -45,29 +45,29 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
 
 fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError> {
    // class keyword
-   let (mut next,mut token) = match expect_token(TokenType::Class)(input) {
+   let (mut next,mut token) = match exp_token(TokenType::Class)(input) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
    // class name
-   (next, token) =  match expect_token(TokenType::Identifier)(next) {
+   (next, token) =  match exp_token(TokenType::Identifier)(next) {
       Ok(r) => (r.0, r.1),
       Err(e) => return Err(e)
    };
    let class_name_token = token;
    // '('
-   (next, _) =  match expect_token(TokenType::OBracket)(next) {
+   (next, _) =  match exp_token(TokenType::OBracket)(next) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
    // parent class
-   (next, token) =  match expect_token(TokenType::Identifier)(next) {
+   (next, token) =  match exp_token(TokenType::Identifier)(next) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
    let parent_class_name = token;
    // ')'
-   (next, _) =  match expect_token(TokenType::CBracket)(next) {
+   (next, _) =  match exp_token(TokenType::CBracket)(next) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
@@ -87,7 +87,7 @@ fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNod
 }
 
 fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError> {
-   let (next, uses) = match expect_token(TokenType::Uses)(input){
+   let (next, uses) = match exp_token(TokenType::Uses)(input){
       Ok((r, t)) => (r, t),
       Err(e) => return Err(e),
    };
@@ -101,11 +101,11 @@ fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
 
 fn parse_uses_list_recursive<'a, 'b>(input : &'a [Token], result: &'b mut Vec<Token>) -> Result<&'a [Token], MyError<'a>> {
    // match first identifier
-   let mut next = match expect_token(TokenType::Identifier)(input){
+   let mut next = match exp_token(TokenType::Identifier)(input){
       Ok((r, t)) => {result.push(t); r},
       Err(e) => return Err(MyError { input: e.input, msg:  String::from("Failed to parse uses list")})
    };
-   next = match expect_token(TokenType::Comma)(next){
+   next = match exp_token(TokenType::Comma)(next){
       Ok((r, _)) => r,
       Err(e) => return Ok(e.input)
    };
@@ -122,27 +122,57 @@ fn parse_uses_list<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Vec<Token>)
    };
 }
 
+fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
+   let parse_result = alt_parse(&[
+      parse_type_primitive_unsized
+   ])(input);
+   return parse_result;
+}
+
+fn parse_type_primitive_unsized<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>> {
+   let parse_result = alt_token(&[
+      exp_token(TokenType::Int1),
+      exp_token(TokenType::Int2),
+      exp_token(TokenType::Int4),
+      exp_token(TokenType::Int8),
+      exp_token(TokenType::Boolean),
+      exp_token(TokenType::Char),
+      exp_token(TokenType::Num4),
+      exp_token(TokenType::Num8),
+      exp_token(TokenType::Num10),
+      exp_token(TokenType::Decimal),
+      exp_token(TokenType::CString),
+      exp_token(TokenType::String),
+   ])(input);
+   return match parse_result {
+      Ok((r, t)) => Ok((r, Box::new(AstTypePrimitiveUnsized{pos:t.pos, type_token: t}))),
+      Err(e) => Err(e)
+   }
+}
+
+fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
+   let (next, pos) = match exp_token(TokenType::OBracket)(input){
+      Ok((r,t)) => (r, t.pos),
+      Err(e) => return Err(e)
+   };
+   todo!()
+}
+
 
 fn create_unexpected_node_error_msg(n1 : &AstNode) -> String{
    return String::from(format!("Unexpected node: {:?}", n1.type_as_str()));
 }
 
-fn expect_token(token_type : TokenType)
+fn exp_token(token_type : TokenType)
    -> impl Fn(&[Token]) -> Result<(&[Token],  Token), MyError> 
 {
    move |input: &[Token]| -> Result<(&[Token],  Token), MyError> {
-      _expect_token(&token_type.clone(), input)
-   }
-}
-
-fn _expect_token<'a>(token_type : &TokenType, input : &'a [Token]) 
-   -> Result<(&'a [Token], Token), MyError<'a>>
-{
-   let mut it = input.iter();
-   match it.next() {
-      Some(t) if t.token_type == *token_type => Ok((it.as_slice(), t.clone())),
+      let mut it = input.iter();
+      match it.next() {
+      Some(t) if t.token_type == token_type => Ok((it.as_slice(), t.clone())),
       Some(t) => Err(MyError {input: input, msg: String::from(format!("Expected {:?}, found {:?}",token_type,t.token_type))}),
       None => Err(MyError {input: input, msg: String::from(format!("Expected {:?}, found None",token_type))})
+      }
    }
 }
 
@@ -159,6 +189,22 @@ fn opt_parse(parser : impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>)
       };
       // TODO better way to return Ok? AstEmpty will just be thrown away
       return Ok((input, Box::new(AstEmpty{})));
+   }
+}
+
+fn alt_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token), MyError>])
+   -> impl Fn(&[Token]) -> Result<(&[Token],  Token), MyError> + '_
+{
+   move |input: &[Token]| -> Result<(&[Token],  Token), MyError> {
+      let mut next = input;
+      for parser in list_of_parsers {
+         let r = parser(input);
+         match r {
+            Ok(r) => return Ok(r),
+            Err(e) => {next = e.input}
+         }
+      }
+      return Err(MyError{ input: next, msg: String::from("Failed to parse using alternatives") });
    }
 }
 
@@ -198,9 +244,9 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-    use crate::{lexer::tokens::{Token, TokenType}, parser::{MyError, AstNode, parse_uses}, ast::{AstTerminal, AstClass, AstUses}};
+    use crate::{lexer::tokens::{Token, TokenType}, parser::{MyError, AstNode, parse_uses}, ast::{AstTerminal, AstClass, AstUses, AstTypePrimitiveUnsized}};
 
-    use super::parse_class;
+    use super::{parse_class, parse_type};
 
 
    #[test]
@@ -279,73 +325,39 @@ mod test {
       assert!(parse_uses(&input).is_err());
    }
 
-   fn create_unexpected_node_error_msg(n1 : &AstNode) -> String{
-   return String::from(format!("Unexpected node: {:?}", n1.type_as_str()));
-}
-
-fn expect(token_type : TokenType)
-   -> impl Fn(&[Token]) -> Result<(&[Token],  AstNode), MyError> 
-{
-   move |input: &[Token]| -> Result<(&[Token],  AstNode), MyError> {
-      _expect_token(&token_type.clone(), input)
-   }
-}
-
-fn _expect_token<'a>(token_type : &TokenType, input : &'a [Token]) -> Result<(&'a [Token],  AstNode), MyError<'a>>{
-   let mut it = input.iter();
-   match it.next() {
-      Some(t) if t.token_type == *token_type => Ok((it.as_slice(), AstNode::Terminal(AstTerminal { token: t.clone() }))),
-      Some(t) => Err(MyError {input: input, msg: String::from(format!("Expected {:?}, found {:?}",token_type,t.token_type))}),
-      None => Err(MyError {input: input, msg: String::from(format!("Expected {:?}, found None",token_type))})
-   }
-}
-
-/*
-   wraps the parser so that it doesn't throw error
- */
-fn optional(parser : impl Fn(&[Token]) -> Result<(&[Token],  AstNode), MyError>) 
-   -> impl Fn(&[Token]) -> Result<(&[Token],  AstNode), MyError> 
-{
-   move |input: &[Token]| -> Result<(&[Token],  AstNode), MyError> {
-      match parser(input) {
-          Ok(r) => return Ok(r),
-          _ => ()
-      };
-      return Ok((input, AstNode::None));
-   }
-}
-
-fn alternatives(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  AstNode), MyError>])
-   -> impl Fn(&[Token]) -> Result<(&[Token],  AstNode), MyError> + '_
-{
-   move |input: &[Token]| -> Result<(&[Token],  AstNode), MyError> {
-      let mut next = input;
-      for parser in list_of_parsers {
-         let r = parser(input);
-         match r {
-            Ok(r) => return Ok(r),
-            Err(e) => {next = e.input}
-         }
-      }
-      return Err(MyError{ input: next, msg: String::from("Failed to parse using alternatives") });
-   }
-}
-
-fn sequence(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  AstNode), MyError>])
-   -> impl Fn(&[Token]) -> Result<(&[Token],  Vec<AstNode>), MyError> + '_
-{
-   move |input: &[Token]| -> Result<(&[Token],  Vec<AstNode>), MyError> {
-      let mut i = 0;
-      let mut next = input;
-      let mut nodes = Vec::<AstNode>::new();
-      while i < list_of_parsers.len(){
-         next = match list_of_parsers[i](next){
-            Ok(r) => {nodes.push(r.1); r.0},
-            Err(e) => return Err(MyError{ input: e.input, msg: String::from("Failed to parse using alternatives") })
+   #[test]
+   fn test_parse_type_primitive_unsized() {
+      let input = [
+         Token { pos:0, token_type:TokenType::Int1, value: None},
+         Token { pos:10, token_type:TokenType::Int2, value: None},
+         Token { pos:20, token_type:TokenType::Int4, value: None},
+         Token { pos:30, token_type:TokenType::Int8, value: None},
+         Token { pos:40, token_type:TokenType::Boolean, value: None},
+         Token { pos:50, token_type:TokenType::Char, value: None},
+         Token { pos:60, token_type:TokenType::Num4, value: None},
+         Token { pos:70, token_type:TokenType::Num8, value: None},
+         Token { pos:80, token_type:TokenType::Num10, value: None},
+         Token { pos:90, token_type:TokenType::Decimal, value: None},
+         Token { pos:100, token_type:TokenType::CString, value: None},
+         Token { pos:110, token_type:TokenType::String, value: None},
+      ];
+      let mut next : &[Token] = &input;
+      let mut count = 0;
+      while !next.is_empty(){
+         let (remaining, node) = match parse_type(next) {
+            Ok((r, n)) => (r,n),
+            Err(e) => panic!("{}",e.msg.to_owned())
          };
-         i+=1;
+         assert_eq!(
+            node.as_ref().as_any().downcast_ref::<AstTypePrimitiveUnsized>().unwrap().pos,
+            input[count].pos
+         );
+         assert_eq!(
+            node.as_ref().as_any().downcast_ref::<AstTypePrimitiveUnsized>().unwrap().type_token.token_type,
+            input[count].token_type
+         );
+         count += 1;
+         next = remaining;
       }
-      return Ok((next, nodes));
    }
-}
 }
