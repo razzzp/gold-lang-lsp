@@ -1,8 +1,29 @@
+use std::any::Any;
+
 use crate::lexer::tokens::Token;
+
+pub trait IAstNode : std::fmt::Debug {
+   fn get_type(&self) -> &'static str;
+   fn get_pos(&self) -> usize;
+   fn as_any(&self) -> &dyn Any;
+   // fn get_token(&self) -> Token;
+   // fn eval() -> ();
+}
 
 #[derive(Debug)]
 pub struct AstTerminal{
    pub token: Token,
+} 
+impl IAstNode for AstTerminal{
+    fn get_type(&self) -> &'static str {
+        return "Terminal";
+    }
+    fn get_pos(&self) -> usize {
+        return self.token.pos;
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -11,11 +32,48 @@ pub struct AstClass{
    pub name: String,
    pub parent_class: String
 }
+impl IAstNode for AstClass{
+   fn get_type(&self) -> &'static str {
+       return "Class";
+   }
+   fn get_pos(&self) -> usize {
+       return self.pos;
+   }
+   fn as_any(&self) -> &dyn Any {
+      self
+  }
+}
 
 #[derive(Debug)]
 pub struct AstUses {
    pub pos: usize,
-   pub list_of_uses: Vec<AstNode>
+   pub list_of_uses: Vec<Token>
+}
+impl IAstNode for AstUses{
+   fn get_type(&self) -> &'static str {
+       return "Uses";
+   }
+   fn get_pos(&self) -> usize {
+       return self.pos;
+   }
+   fn as_any(&self) -> &dyn Any {
+      self
+  }
+}
+
+#[derive(Debug)]
+pub struct AstEmpty {
+}
+impl IAstNode for AstEmpty{
+   fn get_type(&self) -> &'static str {
+       return "";
+   }
+   fn get_pos(&self) -> usize {
+       return 0;
+   }
+   fn as_any(&self) -> &dyn Any {
+      self
+  }
 }
 
 #[derive(Debug)]

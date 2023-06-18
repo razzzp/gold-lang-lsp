@@ -18,7 +18,9 @@ fn main() {
 
 #[cfg(test)]
 mod test {
+    use crate::ast::AstClass;
     use crate::ast::AstNode;
+    use crate::ast::AstUses;
     use crate::lexer;
     use crate::parser;
 
@@ -30,7 +32,7 @@ mod test {
         uses aFirstClass, aSecondClass\n
         ");
         let tokens = lexer::lex(&input).unwrap();
-        let ast = parser::parse_tokens(&tokens);
+        let ast = parser::parse_gold(&tokens);
 
         // assert input left is empty
         assert_eq!(ast.0.0.len(), 0);
@@ -38,30 +40,18 @@ mod test {
         assert_eq!(ast.1.len(), 0);
         let nodes = ast.0.1;
         // assert first node is class
-        let class = match &nodes[0] {
-            AstNode::Class(n) => n,
-            _ => panic!()
-        };
+        let class = &nodes[0].as_any().downcast_ref::<AstClass>().unwrap();
         assert_eq!(class.name.as_str(), "aTestClass");
         assert_eq!(class.parent_class.as_str(), "aParentClass");
         assert_eq!(class.pos, 15);
 
         // assert second node is uses
-        let uses = match &nodes[1] {
-            AstNode::Uses(n) => n,
-            _ => panic!()
-        };
+        let uses = &nodes[1].as_any().downcast_ref::<AstUses>().unwrap();
         assert_eq!(uses.pos, 53);
         // assert uses list
-        let uses_ident = match &uses.list_of_uses[0]{
-            AstNode::Terminal(n) => n,
-            _ => panic!()
-        };
-        assert_eq!(uses_ident.token.value.as_ref().unwrap().as_str(), "aFirstClass");
-        let uses_ident = match &uses.list_of_uses[1]{
-            AstNode::Terminal(n) => n,
-            _ => panic!()
-        };
-        assert_eq!(uses_ident.token.value.as_ref().unwrap().as_str(), "aSecondClass");
+        let uses_ident = &uses.list_of_uses[0];
+        assert_eq!(uses_ident.value.as_ref().unwrap().as_str(), "aFirstClass");
+        let uses_ident = &uses.list_of_uses[1];
+        assert_eq!(uses_ident.value.as_ref().unwrap().as_str(), "aSecondClass");
     }
 }
