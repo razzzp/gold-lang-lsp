@@ -79,7 +79,7 @@ impl Lexer{
         return Some(create_word_token(pos, word));
     }
 
-    fn read_symbol(&self, buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
+    fn read_symbol(&mut self, buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
         let next = buf.next().unwrap();
         let pos = next.0;
         let token: Option<Token> = match next.1 {
@@ -110,7 +110,7 @@ impl Lexer{
         return token;
     }
     
-    fn read_until_newline(&self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token{
+    fn read_until_newline(&mut self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token{
         let mut comment = String::new();
         loop {
             match buf.next() {
@@ -333,7 +333,7 @@ mod test {
 
     #[test]
     fn test_symbol_plus(){
-        let lexer = Lexer::new();
+        let mut lexer = Lexer::new();
         let input = String::from("+");
         let mut buf = create_buffer(&input);
         let result = lexer.read_symbol(&mut buf);
