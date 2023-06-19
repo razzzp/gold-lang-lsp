@@ -189,6 +189,15 @@ pub struct Token {
     pub value: Option<String>
 }
 
+pub struct Range {
+    pub start: Position,
+    pub end: Position
+}
+pub struct Position {
+    pub line: usize,
+    pub character: usize
+}
+
 pub struct Tokens<'a> {
     tokens: &'a [Token],
     start: usize,

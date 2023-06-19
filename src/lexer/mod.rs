@@ -5,15 +5,15 @@ use self::tokens::{Token, TokenType};
 pub mod tokens;
 
 pub struct Lexer {
-    line_counter:usize,
+    line_pos: Vec<usize>
 }
 
 impl Lexer{
     pub fn new() -> Lexer{
-        return Lexer{line_counter:0};
+        return Lexer{line_pos:Vec::<usize>::new()};
     }
 
-    pub fn lex(&self, buf: &String) -> Result<Vec<Token>, &'static str> {
+    pub fn lex(&mut self, buf: &String) -> Result<Vec<Token>, &'static str> {
         let mut chars =buf.chars().enumerate().peekable();
         let mut result = Vec::<Token>::new();
         loop {
@@ -32,11 +32,30 @@ impl Lexer{
         return Ok(result);
     }
     
-    fn skip_whitespace(&self, buf: &mut Peekable<Enumerate<Chars>>) -> Option<char> {
+    fn skip_whitespace(&mut self, buf: &mut Peekable<Enumerate<Chars>>) -> Option<char> {
         let mut next_char : Option<char> = None;
         while next_char.is_none() {
             next_char = match buf.peek() {
-                Some((_ , ' ' | '\n' | '\r')) => {buf.next(); None},
+                // if space discard and proceed
+                Some((_ , ' ' )) => {buf.next(); None},
+                Some((pos , '\n')) => {
+                    // push newline pos to list
+                    self.line_pos.push(*pos);
+                    buf.next(); 
+                    None
+                },
+                Some((pos , '\r')) => {
+                    // push newline pos to list
+                    self.line_pos.push(*pos);
+                    buf.next();
+                    // check next char \n, if it is discard that too
+                    match buf.peek() {
+                        Some((_, '\n')) => {buf.next();}
+                        _ => (),
+                    }
+                    None
+                },
+                // not whitepace, break and
                 Some((_, c))=> Some(*c),
                 _=> {break;}
             }
@@ -327,7 +346,7 @@ mod test {
 
     #[test]
     fn test_lex_symbols(){
-        let lexer = Lexer::new();
+        let mut lexer = Lexer::new();
         let input = String::from(
             "* / % + - && << >> < <= > >=
             = <> @ . ++ += -- -= := \' \"");
@@ -362,7 +381,7 @@ mod test {
 
     #[test]
     fn test_words(){
-        let lexer = Lexer::new();
+        let mut lexer = Lexer::new();
         let  mut f = File::open("./test_inputs/words.txt").expect("file not found");
         let mut file_contents = String::new();
         match f.read_to_string(&mut file_contents){
@@ -379,7 +398,7 @@ mod test {
 
     #[test]
     fn test_comment(){
-        let lexer = Lexer::new();
+        let mut lexer = Lexer::new();
         let input = String::from(
             "not a comment ; a comment\n
             ; entire line is a comment wow \n");

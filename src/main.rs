@@ -14,7 +14,7 @@ fn main() {
         Err(msg) => panic!("{msg}")
     };
     println!("{file_contents}");
-    let lexer = Lexer::new();
+    let mut lexer = Lexer::new();
     let tokens = lexer.lex(&file_contents).unwrap();
     println!("{:#?}", tokens);
 }
@@ -30,7 +30,7 @@ mod test {
 
     #[test]
     fn test_class_with_uses(){
-        let lexer = Lexer::new();
+        let mut lexer = Lexer::new();
         let input = String::from
         ("
         class aTestClass   (aParentClass)\n\n
