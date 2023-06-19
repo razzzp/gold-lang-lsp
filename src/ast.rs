@@ -20,7 +20,7 @@ impl IAstNode for AstTerminal{
         return "Terminal";
     }
     fn get_pos(&self) -> usize {
-        return self.token.pos;
+        return self.token.raw_pos;
     }
     fn as_any(&self) -> &dyn Any {
         self

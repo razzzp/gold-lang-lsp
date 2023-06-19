@@ -184,36 +184,20 @@ pub enum TokenType {
 
 #[derive(Debug,Clone)]
 pub struct Token {
-    pub pos: usize,
+    pub raw_pos: usize,
+    pub pos: Position,
     pub token_type: TokenType,
     pub value: Option<String>
 }
 
+#[derive(Debug,Clone)]
 pub struct Range {
     pub start: Position,
     pub end: Position
 }
+
+#[derive(Debug,Clone)]
 pub struct Position {
     pub line: usize,
     pub character: usize
-}
-
-pub struct Tokens<'a> {
-    tokens: &'a [Token],
-    start: usize,
-    end: usize
-}
-
-impl<'a> Tokens<'a>{
-    pub fn new(tokens: &'a [Token]) -> Tokens<'a> {
-        Self {
-            tokens,
-            start: 0,
-            end: tokens.len()
-        }
-    }
-
-    pub fn iter(&'a self) -> Iter<'a, Token> {
-        self.tokens.iter()
-    }
 }

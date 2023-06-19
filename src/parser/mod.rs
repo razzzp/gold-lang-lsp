@@ -73,7 +73,7 @@ fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNod
    };
    // TODO change behaviour when class name empty
    return Ok((next, Box::new(AstClass{
-      pos: class_name_token.pos,
+      pos: class_name_token.raw_pos,
       name: class_name_token.value.unwrap().to_owned(),
       parent_class: parent_class_name.value.unwrap().to_owned()
    })));
@@ -95,7 +95,7 @@ fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
       Ok((r, l)) => (r, l),
       Err(e) => return Err(e),
    };
-   return Ok((next, Box::new(AstUses { pos: uses.pos, list_of_uses: idents })));
+   return Ok((next, Box::new(AstUses { pos: uses.raw_pos, list_of_uses: idents })));
 }
 
 fn parse_separated_list<'a>(input : &'a [Token], item : TokenType, seperator: TokenType) 
@@ -153,7 +153,7 @@ fn parse_type_primitive_fixed_size<'a>(input : &'a [Token])
       exp_token(TokenType::String),
    ])(input);
    return match parse_result {
-      Ok((r, t)) => Ok((r, Box::new(AstTypePrimitiveFixedSize{pos:t.pos, type_token: t}))),
+      Ok((r, t)) => Ok((r, Box::new(AstTypePrimitiveFixedSize{pos:t.raw_pos, type_token: t}))),
       Err(e) => Err(e)
    }
 }
@@ -164,14 +164,14 @@ fn parse_type_primitive_dynamic_size<'a>(input : &'a [Token])
       exp_token(TokenType::Text),
    ])(input);
    return match parse_result {
-      Ok((r, t)) => Ok((r, Box::new(AstTypePrimitiveDynamicSize{pos:t.pos, type_token: t}))),
+      Ok((r, t)) => Ok((r, Box::new(AstTypePrimitiveDynamicSize{pos:t.raw_pos, type_token: t}))),
       Err(e) => Err(e)
    }
 }
 
 fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
    let (next, pos) = match exp_token(TokenType::OBracket)(input){
-      Ok((r,t)) => (r, t.pos),
+      Ok((r,t)) => (r, t.raw_pos),
       Err(e) => return Err(e)
    };
    todo!()
@@ -263,57 +263,72 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-    use crate::{lexer::tokens::{Token, TokenType}, parser::{MyError, AstNode, parse_uses}, ast::{AstTerminal, AstClass, AstUses, AstTypePrimitiveFixedSize, AstTypePrimitiveDynamicSize}};
+    use crate::{lexer::tokens::{Token, TokenType, Position}, parser::{MyError, AstNode, parse_uses}, ast::{AstTerminal, AstClass, AstUses, AstTypePrimitiveFixedSize, AstTypePrimitiveDynamicSize}};
 
     use super::{parse_class, parse_type};
 
+   fn gen_list_of_tokens(list : &[(TokenType, Option<String>)]) -> Vec<Token> {
+      let mut result = Vec::<Token>::new();
+      let mut raw_pos = 0;
+      for (tok_type, val) in list.to_vec() {
+         result.push(Token { 
+            raw_pos: raw_pos, 
+            pos: Position{line: raw_pos/20, character: raw_pos%20}, 
+            token_type: tok_type, 
+            value: val.clone() 
+         });
+         raw_pos+=5;
+      }  
+      return result;
+   }
 
    #[test]
    fn test_parse_class(){
-      let input = [
-         Token { pos:10, token_type:TokenType::Class, value: None},
-         Token { pos:15, token_type:TokenType::Identifier, value: Some(String::from("aTestClass"))},
-         Token { pos:20, token_type:TokenType::OBracket, value: None},
-         Token { pos:21, token_type:TokenType::Identifier, value: Some(String::from("aParentClass"))},
-         Token { pos:27, token_type:TokenType::CBracket, value: None},];
+      let input = gen_list_of_tokens(&[
+         (TokenType::Class, None),
+         (TokenType::Identifier, Some(String::from("aTestClass"))),
+         (TokenType::OBracket, None),
+         (TokenType::Identifier, Some(String::from("aParentClass"))),
+         (TokenType::CBracket, None),
+      ]);
       let r = parse_class(&input).unwrap();
       let class = r.1.as_any().downcast_ref::<AstClass>().unwrap();
       assert_eq!(r.0.len(), 0);
       assert_eq!(class.name, "aTestClass");
-      assert_eq!(class.pos, 15);
+      assert_eq!(class.pos, 5);
       assert_eq!(class.parent_class, "aParentClass");
    }
 
    #[test]
    fn test_parse_class_too_short(){
-      let input = [
-         Token { pos:10, token_type:TokenType::Class, value: None},
-         Token { pos:15, token_type:TokenType::Identifier, value: Some(String::from("aTestClass"))},
-         Token { pos:20, token_type:TokenType::OBracket, value: None},
-         Token { pos:21, token_type:TokenType::Identifier, value: Some(String::from("aParentClass"))},
-         ];
+      let input = gen_list_of_tokens(&[
+         (TokenType::Class, None),
+         (TokenType::Identifier, Some(String::from("aTestClass"))),
+         (TokenType::OBracket, None),
+         (TokenType::Identifier, Some(String::from("aParentClass"))),
+      ]);
       assert!(parse_class(&input).is_err());
    }
 
    #[test]
    fn test_parse_class_wrong_token(){
-      let input = [
-         Token { pos:10, token_type:TokenType::Class, value: None},
-         Token { pos:15, token_type:TokenType::Plus, value: Some(String::from("aTestClass"))},
-         Token { pos:20, token_type:TokenType::OBracket, value: None},
-         Token { pos:21, token_type:TokenType::Identifier, value: Some(String::from("aParentClass"))},
-         ];
+      let input = gen_list_of_tokens(&[
+         (TokenType::Class, None),
+         (TokenType::Plus, Some(String::from("aTestClass"))),
+         (TokenType::OBracket, None),
+         (TokenType::Identifier, Some(String::from("aParentClass"))),
+         ]);
          assert!(parse_class(&input).is_err());
    }
 
    #[test]
    fn test_parse_uses(){
-      let input = [
-         Token { pos:10, token_type:TokenType::Uses, value: None},
-         Token { pos:15, token_type:TokenType::Identifier, value: Some(String::from("aTestClass"))},
-         Token { pos:20, token_type:TokenType::Comma, value: None},
-         Token { pos:21, token_type:TokenType::Identifier, value: Some(String::from("aParentClass"))},
-         ];
+      let input = gen_list_of_tokens(&[
+         (TokenType::Uses, None),
+         (TokenType::Identifier, Some(String::from("aTestClass"))),
+         (TokenType::Comma, None),
+         (TokenType::Identifier, Some(String::from("aParentClass"))),
+         ]);
       let r = parse_uses(&input).unwrap();
       // ensure returned input is empty
       assert_eq!(r.0.len(), 0);
@@ -321,45 +336,45 @@ mod test {
 
       // first uses
       let token = &uses_node.list_of_uses[0];
-      assert_eq!(token.pos, 15);
+      assert_eq!(token.raw_pos, 5);
       assert_eq!(token.token_type, TokenType::Identifier);
       assert_eq!(token.value.as_ref().unwrap().as_str(), "aTestClass");
 
       // second uses
       let token = &uses_node.list_of_uses[1];
-      assert_eq!(token.pos, 21);
+      assert_eq!(token.raw_pos, 15);
       assert_eq!(token.token_type, TokenType::Identifier);
       assert_eq!(token.value.as_ref().unwrap().as_str(), "aParentClass");
    }
 
    #[test]
    fn test_parse_uses_trailing_comma(){
-      let input = [
-         Token { pos:10, token_type:TokenType::Uses, value: None},
-         Token { pos:15, token_type:TokenType::Identifier, value: Some(String::from("aTestClass"))},
-         Token { pos:20, token_type:TokenType::Comma, value: None},
-         Token { pos:21, token_type:TokenType::Identifier, value: Some(String::from("aParentClass"))},
-         Token { pos:20, token_type:TokenType::Comma, value: None},
-         ];
+      let input = gen_list_of_tokens(&[
+         (TokenType::Uses, None),
+         (TokenType::Identifier, Some(String::from("aTestClass"))),
+         (TokenType::Comma, None),
+         (TokenType::Identifier, Some(String::from("aParentClass"))),
+         (TokenType::Comma, None),
+         ]);
       assert!(parse_uses(&input).is_err());
    }
 
    #[test]
    fn test_parse_type_primitive_fixed_size() {
-      let input = [
-         Token { pos:0, token_type:TokenType::Int1, value: None},
-         Token { pos:10, token_type:TokenType::Int2, value: None},
-         Token { pos:20, token_type:TokenType::Int4, value: None},
-         Token { pos:30, token_type:TokenType::Int8, value: None},
-         Token { pos:40, token_type:TokenType::Boolean, value: None},
-         Token { pos:50, token_type:TokenType::Char, value: None},
-         Token { pos:60, token_type:TokenType::Num4, value: None},
-         Token { pos:70, token_type:TokenType::Num8, value: None},
-         Token { pos:80, token_type:TokenType::Num10, value: None},
-         Token { pos:90, token_type:TokenType::Decimal, value: None},
-         Token { pos:100, token_type:TokenType::CString, value: None},
-         Token { pos:110, token_type:TokenType::String, value: None},
-      ];
+      let input = gen_list_of_tokens(&[
+         (TokenType::Int1, None),
+         (TokenType::Int2, None),
+         (TokenType::Int4, None),
+         (TokenType::Int8, None),
+         (TokenType::Boolean, None),
+         (TokenType::Char, None),
+         (TokenType::Num4, None),
+         (TokenType::Num8, None),
+         (TokenType::Num10, None),
+         (TokenType::Decimal, None),
+         (TokenType::CString, None),
+         (TokenType::String, None),
+      ]);
       let mut next : &[Token] = &input;
       let mut count = 0;
       while !next.is_empty(){
@@ -370,7 +385,7 @@ mod test {
          let downcasted = node.as_ref().as_any().downcast_ref::<AstTypePrimitiveFixedSize>().unwrap();
          assert_eq!(
             downcasted.pos,
-            input[count].pos
+            input[count].raw_pos
          );
          assert_eq!(
             downcasted.type_token.token_type,
@@ -383,9 +398,9 @@ mod test {
 
    #[test]
    fn test_parse_type_primitive_dynamic_size() {
-      let input = [
-         Token { pos:110, token_type:TokenType::Text, value: None},
-      ];
+      let input = gen_list_of_tokens(&[
+         (TokenType::Text, None),
+      ]);
       let mut next : &[Token] = &input;
       let mut count = 0;
       while !next.is_empty(){
@@ -396,7 +411,7 @@ mod test {
          let downcasted = node.as_ref().as_any().downcast_ref::<AstTypePrimitiveDynamicSize>().unwrap();
          assert_eq!(
             downcasted.pos,
-            input[count].pos
+            input[count].raw_pos
          );
          assert_eq!(
             downcasted.type_token.token_type,
