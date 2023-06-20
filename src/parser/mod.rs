@@ -17,7 +17,8 @@ pub struct ParserError {
 pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNode>>), Vec<ParserError>) {
    let parsers = [
       parse_class,
-      parse_uses
+      parse_uses,
+      parse_type,
    ];
    let mut result = Vec::<Box<dyn IAstNode>>::new();
    let mut errors = Vec::<ParserError>::new();
@@ -40,7 +41,7 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
 
 fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError> {
    // class keyword
-   let (mut next,mut token) = match exp_token(TokenType::Class)(input) {
+   let (mut next, mut token) = match exp_token(TokenType::Class)(input) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
@@ -443,10 +444,9 @@ mod test {
          (TokenType::Identifier, Some("Variant3".to_string())),
          (TokenType::CBracket, None),
       ]);
-      let mut next : &[Token] = &input;
-      let mut count = 0;
+      let next : &[Token] = &input;
 
-      let (remaining, node) = match parse_type(next) {
+      let (_, node) = match parse_type(next) {
          Ok((r, n)) => (r,n),
          Err(e) => panic!("{}",e.msg.to_owned())
       };
