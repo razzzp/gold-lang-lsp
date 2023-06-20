@@ -22,7 +22,6 @@ fn main() {
 #[cfg(test)]
 mod test {
     use crate::ast::AstClass;
-    use crate::ast::AstNode;
     use crate::ast::AstUses;
     use crate::lexer;
     use crate::lexer::Lexer;
@@ -48,11 +47,11 @@ mod test {
         let class = &nodes[0].as_any().downcast_ref::<AstClass>().unwrap();
         assert_eq!(class.name.as_str(), "aTestClass");
         assert_eq!(class.parent_class.as_str(), "aParentClass");
-        assert_eq!(class.pos, 15);
+        assert_eq!(class.raw_pos, 15);
 
         // assert second node is uses
         let uses = &nodes[1].as_any().downcast_ref::<AstUses>().unwrap();
-        assert_eq!(uses.pos, 53);
+        assert_eq!(uses.raw_pos, 53);
         // assert uses list
         let uses_ident = &uses.list_of_uses[0];
         assert_eq!(uses_ident.value.as_ref().unwrap().as_str(), "aFirstClass");

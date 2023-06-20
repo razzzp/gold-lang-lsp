@@ -1,6 +1,6 @@
 
-use crate::lexer::tokens::{Token, TokenType};
-use crate::ast::{AstNode, AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypePrimitiveFixedSize, AstTypePrimitiveDynamicSize};
+use crate::lexer::tokens::{Token, TokenType, Range, Position};
+use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum};
 
 #[derive(Debug, Clone)]
 pub struct MyError<'a>{
@@ -13,11 +13,6 @@ pub struct ParserError {
    token: Token,
    msg:String
 }
-
-// why is the syntax so hard? maybe considered a hack? dunno lah, no used for now
-trait MyParser : Fn(&[Token]) -> Result<(&[Token],  AstNode), MyError> + {}
-// extension trait
-impl<T: Fn(&[Token]) -> Result<(&[Token],  AstNode), MyError>> MyParser for T {}
 
 pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNode>>), Vec<ParserError>) {
    let parsers = [
@@ -73,7 +68,7 @@ fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNod
    };
    // TODO change behaviour when class name empty
    return Ok((next, Box::new(AstClass{
-      pos: class_name_token.raw_pos,
+      raw_pos: class_name_token.raw_pos,
       name: class_name_token.value.unwrap().to_owned(),
       parent_class: parent_class_name.value.unwrap().to_owned()
    })));
@@ -95,7 +90,72 @@ fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
       Ok((r, l)) => (r, l),
       Err(e) => return Err(e),
    };
-   return Ok((next, Box::new(AstUses { pos: uses.raw_pos, list_of_uses: idents })));
+   return Ok((next, Box::new(AstUses { raw_pos: uses.raw_pos, list_of_uses: idents })));
+}
+
+fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
+   let parsers = [
+      parse_type_basic_fixed_size,
+      parse_type_basic_dynamic_size,
+      parse_type_enum,
+   ];
+   let parse_result = alt_parse(&parsers)(input);
+   return parse_result;
+}
+
+fn parse_type_basic_fixed_size<'a>(input : &'a [Token]) 
+-> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>> {
+   let parse_result = alt_token(&[
+      exp_token(TokenType::Int1),
+      exp_token(TokenType::Int2),
+      exp_token(TokenType::Int4),
+      exp_token(TokenType::Int8),
+      exp_token(TokenType::Boolean),
+      exp_token(TokenType::Char),
+      exp_token(TokenType::Num4),
+      exp_token(TokenType::Num8),
+      exp_token(TokenType::Num10),
+      exp_token(TokenType::Decimal),
+      exp_token(TokenType::CString),
+      exp_token(TokenType::String),
+      exp_token(TokenType::Identifier),
+   ])(input);
+   return match parse_result {
+      Ok((r, t)) => Ok((r, Box::new(AstTypeBasicFixedSize{raw_pos:t.raw_pos, type_token: t}))),
+      Err(e) => Err(e)
+   }
+}
+
+fn parse_type_basic_dynamic_size<'a>(input : &'a [Token]) 
+-> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>> {
+   let parse_result = alt_token(&[
+      exp_token(TokenType::Text),
+   ])(input);
+   return match parse_result {
+      Ok((r, t)) => Ok((r, Box::new(AstTypeBasicDynamicSize{raw_pos:t.raw_pos, type_token: t}))),
+      Err(e) => Err(e)
+   }
+}
+
+fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
+   let (next, s_raw_pos, s_pos) = match exp_token(TokenType::OBracket)(input){
+      Ok((r,t)) => (r, t.raw_pos, t.pos),
+      Err(e) => return Err(e)
+   };
+   let (next, tokens) = match parse_separated_list(next, TokenType::Identifier, TokenType::Comma){
+       Ok((r, ts)) => (r, ts),
+       Err(e) => return Err(e)
+   };
+   let (next, e_pos) = match exp_token(TokenType::CBracket)(next){
+      Ok((r,t)) => (r, t.pos),
+      Err(e) => return Err(e)
+   };
+   return Ok((next, Box::new(AstTypeEnum{
+      raw_pos: s_raw_pos,
+      pos: s_pos.clone(),
+      range: Range{start: s_pos, end: e_pos},
+      variants: tokens
+   })));
 }
 
 fn parse_separated_list<'a>(input : &'a [Token], item : TokenType, seperator: TokenType) 
@@ -125,61 +185,6 @@ fn _parse_seperated_list_recursive<'a, 'b>(
       Err(e) => return Ok(e.input)
    };
    return _parse_seperated_list_recursive(next, item, sep, result)
-}
-
-fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
-   let parsers = [
-      parse_type_primitive_fixed_size,
-      parse_type_primitive_dynamic_size,
-   ];
-   let parse_result = alt_parse(&parsers)(input);
-   return parse_result;
-}
-
-fn parse_type_primitive_fixed_size<'a>(input : &'a [Token]) 
--> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>> {
-   let parse_result = alt_token(&[
-      exp_token(TokenType::Int1),
-      exp_token(TokenType::Int2),
-      exp_token(TokenType::Int4),
-      exp_token(TokenType::Int8),
-      exp_token(TokenType::Boolean),
-      exp_token(TokenType::Char),
-      exp_token(TokenType::Num4),
-      exp_token(TokenType::Num8),
-      exp_token(TokenType::Num10),
-      exp_token(TokenType::Decimal),
-      exp_token(TokenType::CString),
-      exp_token(TokenType::String),
-   ])(input);
-   return match parse_result {
-      Ok((r, t)) => Ok((r, Box::new(AstTypePrimitiveFixedSize{pos:t.raw_pos, type_token: t}))),
-      Err(e) => Err(e)
-   }
-}
-
-fn parse_type_primitive_dynamic_size<'a>(input : &'a [Token]) 
--> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>> {
-   let parse_result = alt_token(&[
-      exp_token(TokenType::Text),
-   ])(input);
-   return match parse_result {
-      Ok((r, t)) => Ok((r, Box::new(AstTypePrimitiveDynamicSize{pos:t.raw_pos, type_token: t}))),
-      Err(e) => Err(e)
-   }
-}
-
-fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
-   let (next, pos) = match exp_token(TokenType::OBracket)(input){
-      Ok((r,t)) => (r, t.raw_pos),
-      Err(e) => return Err(e)
-   };
-   todo!()
-}
-
-
-fn create_unexpected_node_error_msg(n1 : &AstNode) -> String{
-   return String::from(format!("Unexpected node: {:?}", n1.type_as_str()));
 }
 
 fn exp_token(token_type : TokenType)
@@ -263,7 +268,7 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-    use crate::{lexer::tokens::{Token, TokenType, Position}, parser::{MyError, AstNode, parse_uses}, ast::{AstTerminal, AstClass, AstUses, AstTypePrimitiveFixedSize, AstTypePrimitiveDynamicSize}};
+    use crate::{lexer::tokens::{Token, TokenType, Position}, parser::{MyError, parse_uses}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum}};
 
     use super::{parse_class, parse_type};
 
@@ -295,7 +300,7 @@ mod test {
       let class = r.1.as_any().downcast_ref::<AstClass>().unwrap();
       assert_eq!(r.0.len(), 0);
       assert_eq!(class.name, "aTestClass");
-      assert_eq!(class.pos, 5);
+      assert_eq!(class.raw_pos, 5);
       assert_eq!(class.parent_class, "aParentClass");
    }
 
@@ -360,7 +365,7 @@ mod test {
    }
 
    #[test]
-   fn test_parse_type_primitive_fixed_size() {
+   fn test_parse_type_basic_fixed_size() {
       let input = gen_list_of_tokens(&[
          (TokenType::Int1, None),
          (TokenType::Int2, None),
@@ -374,6 +379,7 @@ mod test {
          (TokenType::Decimal, None),
          (TokenType::CString, None),
          (TokenType::String, None),
+         (TokenType::Identifier, Some("tCustomType".to_string())),
       ]);
       let mut next : &[Token] = &input;
       let mut count = 0;
@@ -382,9 +388,39 @@ mod test {
             Ok((r, n)) => (r,n),
             Err(e) => panic!("{}",e.msg.to_owned())
          };
-         let downcasted = node.as_ref().as_any().downcast_ref::<AstTypePrimitiveFixedSize>().unwrap();
+         let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeBasicFixedSize>().unwrap();
          assert_eq!(
-            downcasted.pos,
+            downcasted.raw_pos,
+            input[count].raw_pos
+         );
+         assert_eq!(
+            downcasted.type_token.token_type,
+            input[count].token_type
+         );
+         count += 1;
+         next = remaining;
+         // additional checking last token
+         if next.is_empty(){
+            assert_eq!(downcasted.type_token.value.as_ref().unwrap().as_str(), "tCustomType")
+         }
+      }
+   }
+
+   #[test]
+   fn test_parse_type_basic_dynamic_size() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::Text, None),
+      ]);
+      let mut next : &[Token] = &input;
+      let mut count = 0;
+      while !next.is_empty(){
+         let (remaining, node) = match parse_type(next) {
+            Ok((r, n)) => (r,n),
+            Err(e) => panic!("{}",e.msg.to_owned())
+         };
+         let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeBasicDynamicSize>().unwrap();
+         assert_eq!(
+            downcasted.raw_pos,
             input[count].raw_pos
          );
          assert_eq!(
@@ -397,28 +433,30 @@ mod test {
    }
 
    #[test]
-   fn test_parse_type_primitive_dynamic_size() {
+   fn test_parse_type_enum() {
       let input = gen_list_of_tokens(&[
-         (TokenType::Text, None),
+         (TokenType::OBracket, None),
+         (TokenType::Identifier, Some("Variant1".to_string())),
+         (TokenType::Comma, None),
+         (TokenType::Identifier, Some("Variant2".to_string())),
+         (TokenType::Comma, None),
+         (TokenType::Identifier, Some("Variant3".to_string())),
+         (TokenType::CBracket, None),
       ]);
       let mut next : &[Token] = &input;
       let mut count = 0;
-      while !next.is_empty(){
-         let (remaining, node) = match parse_type(next) {
-            Ok((r, n)) => (r,n),
-            Err(e) => panic!("{}",e.msg.to_owned())
-         };
-         let downcasted = node.as_ref().as_any().downcast_ref::<AstTypePrimitiveDynamicSize>().unwrap();
-         assert_eq!(
-            downcasted.pos,
-            input[count].raw_pos
-         );
-         assert_eq!(
-            downcasted.type_token.token_type,
-            input[count].token_type
-         );
-         count += 1;
-         next = remaining;
-      }
+
+      let (remaining, node) = match parse_type(next) {
+         Ok((r, n)) => (r,n),
+         Err(e) => panic!("{}",e.msg.to_owned())
+      };
+      let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeEnum>().unwrap();
+      assert_eq!(downcasted.raw_pos, 0);
+      assert_eq!(downcasted.pos.line, 0);
+      assert_eq!(downcasted.pos.character, 0);
+      assert_eq!(downcasted.range.start.line, 0);
+      assert_eq!(downcasted.range.start.character, 0);
+      assert_eq!(downcasted.range.end.line, 1);
+      assert_eq!(downcasted.range.end.character, 10);
    }
 }

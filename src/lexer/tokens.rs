@@ -196,7 +196,7 @@ pub struct Range {
     pub end: Position
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,PartialEq)]
 pub struct Position {
     pub line: usize,
     pub character: usize
