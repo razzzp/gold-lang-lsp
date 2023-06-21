@@ -1,6 +1,6 @@
 
 use crate::lexer::tokens::{Token, TokenType, Range, Position};
-use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum};
+use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference};
 
 #[derive(Debug, Clone)]
 pub struct MyError<'a>{
@@ -99,6 +99,7 @@ fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
       parse_type_basic_fixed_size,
       parse_type_basic_dynamic_size,
       parse_type_enum,
+      parse_type_reference,
    ];
    let parse_result = alt_parse(&parsers)(input);
    return parse_result;
@@ -157,6 +158,56 @@ fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAs
       range: Range{start: s_pos, end: e_pos},
       variants: tokens
    })));
+}
+
+fn parse_type_reference<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
+   let result = alt_token(&[
+      exp_token(TokenType::RefTo),
+      exp_token(TokenType::ListOf)
+   ])(input);
+   let (next, ref_token) = match result {
+      Ok((r,t)) => (r,t),
+      Err(e) => return Err(e)
+   };
+   let (next, mut option_tokens) = match parse_type_reference_options(next){
+      Ok((r,t)) => (r,t),
+      Err(e) => (e.input, Vec::<Token>::new())
+   };
+   let (next, ident_token) = match exp_token(TokenType::Identifier)(next) {
+      Ok((r,t)) => (r,t),
+      Err(e) => return Err(e)
+   };
+   let mut endPos = ident_token.pos;
+   // remove open and close sqr brackets
+   option_tokens.pop();
+   option_tokens.remove(0);
+   endPos.character += ident_token.value.unwrap().len();
+   return Ok((next, Box::new(AstTypeReference{
+      raw_pos: ref_token.raw_pos,
+      pos: ref_token.pos.clone(),
+      range: Range{start:ref_token.pos,end:endPos},
+      options: option_tokens
+   })));
+}
+
+fn parse_type_reference_options<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Vec<Token>), MyError<'a>>{
+   let mut result = Vec::<Token>::new();
+   let (next, open_token) = match exp_token(TokenType::OSqrBracket)(input) {
+      Ok((r,t)) => (r,t),
+      Err(e) => return Err(e)
+   };
+   let (next, mut option_tokens) = match parse_separated_list(next, TokenType::Identifier, TokenType::Comma){
+      Ok((r, ts)) => (r,ts),
+      Err(e) => return Err(e)
+   };
+   let (next, closing_token) = match exp_token(TokenType::CSqrBracket)(next) {
+      Ok((r,t)) => (r,t),
+      Err(e) => return Err(e)
+   };
+   result.push(open_token);
+   result.append(&mut option_tokens);
+   result.push(closing_token);
+   return Ok((next, result));
 }
 
 fn parse_separated_list<'a>(input : &'a [Token], item : TokenType, seperator: TokenType) 
@@ -269,7 +320,7 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-    use crate::{lexer::tokens::{Token, TokenType, Position}, parser::{MyError, parse_uses}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum}};
+    use crate::{lexer::tokens::{Token, TokenType, Position}, parser::{MyError, parse_uses, parse_type_enum, parse_type_reference}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference}};
 
     use super::{parse_class, parse_type};
 
@@ -446,7 +497,7 @@ mod test {
       ]);
       let next : &[Token] = &input;
 
-      let (_, node) = match parse_type(next) {
+      let (_, node) = match parse_type_enum(next) {
          Ok((r, n)) => (r,n),
          Err(e) => panic!("{}",e.msg.to_owned())
       };
@@ -458,5 +509,35 @@ mod test {
       assert_eq!(downcasted.range.start.character, 0);
       assert_eq!(downcasted.range.end.line, 1);
       assert_eq!(downcasted.range.end.character, 10);
+   }
+
+   #[test]
+   fn test_parse_type_reference_refto() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::RefTo, None),
+         (TokenType::OSqrBracket, None),
+         (TokenType::Identifier, Some("A".to_string())),
+         (TokenType::Comma, None),
+         (TokenType::Identifier, Some("P".to_string())),
+         (TokenType::Comma, None),
+         (TokenType::Identifier, Some("T".to_string())),
+         (TokenType::CSqrBracket, None),
+         (TokenType::Identifier, Some("aType".to_string())),
+      ]);
+      let next : &[Token] = &input;
+
+      let (_, node) = match parse_type_reference(next) {
+         Ok((r, n)) => (r,n),
+         Err(e) => panic!("{}",e.msg.to_owned())
+      };
+      let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeReference>().unwrap();
+      assert_eq!(downcasted.raw_pos, 0);
+      assert_eq!(downcasted.pos.line, 0);
+      assert_eq!(downcasted.pos.character, 0);
+      assert_eq!(downcasted.range.start.line, 0);
+      assert_eq!(downcasted.range.start.character, 0);
+      assert_eq!(downcasted.range.end.line, 2);
+      assert_eq!(downcasted.range.end.character, 5);
+      assert_eq!(downcasted.options.len(), 3);
    }
 }
