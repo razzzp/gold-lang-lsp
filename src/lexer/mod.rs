@@ -163,7 +163,7 @@ impl Lexer{
         } else if  first_op == ':'{
             result = match next {
                 Some((_,'=')) => Some(self.create_token(pos, TokenType::DeepAssign, Some(":=".to_string()))),
-                _ => {is_double_op = false; Some(self.create_token(pos, TokenType::TypeAssign, Some(":".to_string())))}
+                _ => {is_double_op = false; Some(self.create_token(pos, TokenType::Colon, Some(":".to_string())))}
             };
         } else {
             is_double_op = false;

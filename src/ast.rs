@@ -190,9 +190,40 @@ pub struct AstTypeReference {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
+    pub ref_type: Token,
     pub options: Vec<Token>   
 }
 impl IAstNode for AstTypeReference {
+    fn get_type(&self) -> &'static str {
+        return "Type Reference"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct AstTypeDeclaration {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub identifier: Token,
+    pub type_node: Box<dyn IAstNode>
+}
+impl IAstNode for AstTypeDeclaration {
     fn get_type(&self) -> &'static str {
         return "Type Reference"
     }

@@ -110,7 +110,7 @@ pub enum TokenType {
     Decrement,
     DecrementAssign,
     DeepAssign,
-    TypeAssign,
+    Colon,
     Dot,
     AddressOf,
     And,
