@@ -1,4 +1,4 @@
-use std::{str::Chars, iter::{Peekable, Enumerate}};
+use std::{str::Chars, iter::{Peekable, Enumerate}, ops::Add};
 
 use self::tokens::{Token, TokenType, Position};
 
@@ -33,6 +33,7 @@ impl Lexer{
     }
     
     fn skip_whitespace(&mut self, buf: &mut Peekable<Enumerate<Chars>>) -> Option<char> {
+        // skips all whitespace and peeks the next non-whitespace char
         let mut next_char : Option<char> = None;
         while next_char.is_none() {
             next_char = match buf.peek() {
@@ -55,7 +56,7 @@ impl Lexer{
                     }
                     None
                 },
-                // not whitepace, break and
+                // not whitepace, break and return char
                 Some((_, c))=> Some(*c),
                 _=> {break;}
             }
@@ -95,8 +96,8 @@ impl Lexer{
             '@' => Some(self.create_token(pos, TokenType::AddressOf, Some(next.1.to_string()))),
             '.' => Some(self.create_token(pos, TokenType::Dot, Some(next.1.to_string()))),
             '=' => Some(self.create_token(pos, TokenType::Equals, Some(next.1.to_string()))),
-            '\'' => Some(self.create_token(pos, TokenType::SingleQuote, Some(next.1.to_string()))),
-            '\"' => Some(self.create_token(pos, TokenType::DoubleQuotes, Some(next.1.to_string()))),
+            '\'' => Some(self.read_string_constant(pos, buf)),
+            '\"' => Some(self.read_string_constant_doublequotes(pos, buf)),
             ',' => Some(self.create_token(pos, TokenType::Comma, Some(next.1.to_string()))),
             '<' => self.read_double_char_op(next.1, pos, buf),
             '>' => self.read_double_char_op(next.1, pos, buf),
@@ -108,6 +109,36 @@ impl Lexer{
             _=> None
         };
         return token;
+    }
+
+    fn read_string_constant(&mut self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token {
+        let mut value = String::new();
+        loop{
+            match buf.next(){
+                Some((_ , '\'')) => {
+                    match buf.peek(){
+                        // double '' means escaped quotes, append and skip second quote
+                        Some((_, '\'')) => {buf.next();value.push('\'')},
+                        _ => break
+                    }
+                },
+                Some((_ , c)) => value.push(c),
+                None => break
+            }
+        }
+        return self.create_token(pos, TokenType::StringConstant, Some(value))
+    }
+
+    fn read_string_constant_doublequotes(&mut self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token {
+        let mut value = String::new();
+        loop{
+            match buf.next(){
+                Some((_ , '"')) => break,
+                Some((_ , c)) => value.push(c),
+                None => break
+            }
+        }
+        return self.create_token(pos, TokenType::StringConstant, Some(value))
     }
     
     fn read_until_newline(&mut self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token{
@@ -336,7 +367,7 @@ impl Lexer{
 mod test {
     use std::{iter::{Enumerate, Peekable}, str::Chars, fs::File, io::Read};
 
-    use crate::lexer::{TokenType, Lexer};
+    use crate::lexer::{TokenType, Lexer, tokens::Position};
 
     fn create_buffer(val : &String) -> Peekable<Enumerate<Chars>> {
         return val.chars().enumerate().peekable();
@@ -362,11 +393,11 @@ mod test {
         let mut lexer = Lexer::new();
         let input = String::from(
             "* / % + - && << >> < <= > >=
-= <> @ . ++ += -- -= := \' \"");
+= <> @ . ++ += -- -= :=");
         let result = lexer.lex(&input);
         let token = result.unwrap();
 
-        assert_eq!(token.len(), 23);
+        assert_eq!(token.len(), 21);
         assert_eq!(token[0].token_type, TokenType::Multiply);
         assert_eq!(token[1].token_type, TokenType::Divide);
         assert_eq!(token[2].token_type, TokenType::Modulus);
@@ -393,8 +424,6 @@ mod test {
         assert_eq!(token[18].token_type, TokenType::Decrement);
         assert_eq!(token[19].token_type, TokenType::DecrementAssign);
         assert_eq!(token[20].token_type, TokenType::DeepAssign);
-        assert_eq!(token[21].token_type, TokenType::SingleQuote);
-        assert_eq!(token[22].token_type, TokenType::DoubleQuotes);
     }
 
     #[test]
@@ -427,6 +456,30 @@ mod test {
         assert_eq!(token[0].token_type, TokenType::Not);
         assert_eq!(token[3].token_type, TokenType::Comment);
         assert_eq!(token[4].token_type, TokenType::Comment);
+    }
+
+    #[test]
+    fn test_string_constants(){
+        let mut lexer = Lexer::new();
+        let input = String::from(
+            "'first string constant'    'b'\n \"double quote of newline\"\n");
+        let result = lexer.lex(&input);
+        let token = result.unwrap();
+        println!("{:#?}", token);
+        assert_eq!(token.len(), 3);
+        assert_eq!(token[0].token_type, TokenType::StringConstant);
+        // first
+        assert_eq!(token[0].raw_pos, 0);
+        assert_eq!(token[0].pos, Position {line:0,character:0});
+        assert_eq!(token[0].value.as_ref().unwrap().as_str(), "first string constant");
+        // second
+        assert_eq!(token[1].raw_pos, 27);
+        assert_eq!(token[1].pos, Position {line:0,character:27});
+        assert_eq!(token[1].value.as_ref().unwrap().as_str(), "b");
+        // third
+        assert_eq!(token[2].raw_pos, 32);
+        assert_eq!(token[2].pos, Position {line:1,character:1});
+        assert_eq!(token[2].value.as_ref().unwrap().as_str(), "double quote of newline");
     }
 }
 

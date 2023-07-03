@@ -179,7 +179,11 @@ pub enum TokenType {
     DoubleQuotes,
     Comment,
     Identifier,
-    Comma
+    Comma,
+
+    // constants
+    StringConstant,
+    NumericConstant
 }
 
 #[derive(Debug,Clone)]
