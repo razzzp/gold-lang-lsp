@@ -1,3 +1,4 @@
+
 use std::{str::Chars, iter::{Peekable, Enumerate}, ops::Add};
 
 use self::tokens::{Token, TokenType, Position};
@@ -23,6 +24,7 @@ impl Lexer{
             let cur_token: Option<Token>; 
             cur_token = match cur_char.unwrap() {
                 'a'..='z' | 'A'..='Z' | '_' => self.read_word(&mut chars),
+                '0'..='9' => self.read_number(&mut chars),
                 _ => self.read_symbol(&mut chars),
             };
             if cur_token.is_some(){
@@ -73,11 +75,33 @@ impl Lexer{
             if next.is_none() {break;};
     
             match next.unwrap().1{
-                'a'..='z' | 'A'..='Z' | '_' => {word.push(buf.next().unwrap().1)},
+                'a'..='z' | 'A'..='Z' | '0'..='9' | '_' => {word.push(buf.next().unwrap().1)},
                 _ => break
             }
         }
         return Some(self.create_word_token(pos, word));
+    }
+
+    fn read_number(&self, buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
+        let mut number = String::new();
+        let pos = buf.peek().unwrap().0;
+        
+        loop {
+            let next = buf.peek();
+            if next.is_none() {break;};
+    
+            match next.unwrap().1{
+                // match until symbol or space, validate later
+                '0'..='9' | '.' | 'a'..='z' | 'A'..='Z' => {
+                    number.push(buf.next().unwrap().1)
+                },
+                _ => break
+            }
+        }
+        match number.parse::<f32>(){
+            Ok(_) => return Some(self.create_token(pos, TokenType::NumericConstant, Some({number}))),
+            Err(_) => return  None
+        }
     }
 
     fn read_symbol(&mut self, buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
@@ -451,7 +475,7 @@ mod test {
             ; entire line is a comment wow \n");
         let result = lexer.lex(&input);
         let token = result.unwrap();
-        println!("{:#?}", token);
+        // println!("{:#?}", token);
         assert_eq!(token.len(), 5);
         assert_eq!(token[0].token_type, TokenType::Not);
         assert_eq!(token[3].token_type, TokenType::Comment);
@@ -465,21 +489,54 @@ mod test {
             "'first string constant'    'b'\n \"double quote of newline\"\n");
         let result = lexer.lex(&input);
         let token = result.unwrap();
-        println!("{:#?}", token);
+        // println!("{:#?}", token);
         assert_eq!(token.len(), 3);
-        assert_eq!(token[0].token_type, TokenType::StringConstant);
         // first
+        assert_eq!(token[0].token_type, TokenType::StringConstant);
         assert_eq!(token[0].raw_pos, 0);
         assert_eq!(token[0].pos, Position {line:0,character:0});
         assert_eq!(token[0].value.as_ref().unwrap().as_str(), "first string constant");
         // second
+        assert_eq!(token[1].token_type, TokenType::StringConstant);
         assert_eq!(token[1].raw_pos, 27);
         assert_eq!(token[1].pos, Position {line:0,character:27});
         assert_eq!(token[1].value.as_ref().unwrap().as_str(), "b");
         // third
+        assert_eq!(token[2].token_type, TokenType::StringConstant);
         assert_eq!(token[2].raw_pos, 32);
         assert_eq!(token[2].pos, Position {line:1,character:1});
         assert_eq!(token[2].value.as_ref().unwrap().as_str(), "double quote of newline");
+    }
+
+    #[test]
+    fn test_numeric_constants(){
+        let mut lexer = Lexer::new();
+        let input = String::from(
+            "10 12.55 10000\n 77.1234134141412424\n");
+        let result = lexer.lex(&input);
+        let token = result.unwrap();
+        // println!("{:#?}", token);
+        assert_eq!(token.len(), 4);    
+        // first
+        assert_eq!(token[0].token_type, TokenType::NumericConstant);
+        assert_eq!(token[0].raw_pos, 0);
+        assert_eq!(token[0].pos, Position {line:0,character:0});
+        assert_eq!(token[0].value.as_ref().unwrap().as_str(), "10");
+        // second
+        assert_eq!(token[1].token_type, TokenType::NumericConstant);
+        assert_eq!(token[1].raw_pos, 3);
+        assert_eq!(token[1].pos, Position {line:0,character:3});
+        assert_eq!(token[1].value.as_ref().unwrap().as_str(), "12.55");
+        // third
+        assert_eq!(token[2].token_type, TokenType::NumericConstant);
+        assert_eq!(token[2].raw_pos, 9);
+        assert_eq!(token[2].pos, Position {line:0,character:9});
+        assert_eq!(token[2].value.as_ref().unwrap().as_str(), "10000");
+        // fourth
+        assert_eq!(token[3].token_type, TokenType::NumericConstant);
+        assert_eq!(token[3].raw_pos, 16);
+        assert_eq!(token[3].pos, Position {line:1,character:1});
+        assert_eq!(token[3].value.as_ref().unwrap().as_str(), "77.1234134141412424");
     }
 }
 

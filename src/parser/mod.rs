@@ -502,7 +502,7 @@ mod test {
             assert_eq!(downcasted.type_token.value.as_ref().unwrap().as_str(), "tCustomType")
          }
       }
-   }
+   } 
 
    #[test]
    fn test_parse_type_basic_dynamic_size() {
