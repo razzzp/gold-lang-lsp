@@ -1,5 +1,3 @@
-use std::slice::Iter;
-
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenType {
@@ -153,6 +151,7 @@ pub enum TokenType {
     WriteLn,
     TSelf,
     Result,
+    MultiLang,
 
     // oql
     AllVersionsOf,

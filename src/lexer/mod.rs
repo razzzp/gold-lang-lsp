@@ -1,5 +1,5 @@
 
-use std::{str::Chars, iter::{Peekable, Enumerate}, ops::Add};
+use std::{str::Chars, iter::{Peekable, Enumerate}};
 
 use self::tokens::{Token, TokenType, Position};
 
@@ -99,7 +99,7 @@ impl Lexer{
             }
         }
         match number.parse::<f32>(){
-            Ok(_) => return Some(self.create_token(pos, TokenType::NumericConstant, Some({number}))),
+            Ok(_) => return Some(self.create_token(pos, TokenType::NumericConstant, Some(number))),
             Err(_) => return  None
         }
     }
@@ -363,6 +363,7 @@ impl Lexer{
             "SELF" =>self.create_token(pos, TokenType::TSelf, Some(word)),
             "_RESULT" =>self.create_token(pos, TokenType::Result, Some(word)),
             "MODULE" =>self.create_token(pos, TokenType::Module, Some(word)),
+            "MULTILANG" => self.create_token(pos, TokenType::MultiLang, Some(word)),
             _ =>self.create_token(pos, TokenType::Identifier, Some(word))
         }
     }

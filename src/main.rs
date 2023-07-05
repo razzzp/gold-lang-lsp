@@ -23,7 +23,6 @@ fn main() {
 mod test {
     use crate::ast::AstClass;
     use crate::ast::AstUses;
-    use crate::lexer;
     use crate::lexer::Lexer;
     use crate::parser;
 

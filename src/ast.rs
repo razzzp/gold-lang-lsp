@@ -244,3 +244,34 @@ impl IAstNode for AstTypeDeclaration {
         self
     }
 }
+
+#[derive(Debug)]
+pub struct AstConstantDeclaration {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub identifier: Token,
+    pub value: Token,
+    pub is_multi_lang : bool
+}
+impl IAstNode for AstConstantDeclaration {
+    fn get_type(&self) -> &'static str {
+        return "Type Reference"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}

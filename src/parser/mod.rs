@@ -1,6 +1,10 @@
 
 use crate::lexer::tokens::{Token, TokenType, Range, Position};
-use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration};
+use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration};
+
+use self::utils::prepend_msg_to_error;
+
+pub mod utils;
 
 #[derive(Debug, Clone)]
 pub struct MyError<'a>{
@@ -18,8 +22,8 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
    let parsers = [
       parse_class,
       parse_uses,
-      parse_type,
-      parse_type_declaration
+      parse_type_declaration,
+      parse_constant_declaration,
    ];
    let mut result = Vec::<Box<dyn IAstNode>>::new();
    let mut errors = Vec::<ParserError>::new();
@@ -42,29 +46,29 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
 
 fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError> {
    // class keyword
-   let (mut next, mut token) = match exp_token(TokenType::Class)(input) {
+   let (next, _) = match exp_token(TokenType::Class)(input) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
    // class name
-   (next, token) =  match exp_token(TokenType::Identifier)(next) {
+   let (next, token) =  match exp_token(TokenType::Identifier)(next) {
       Ok(r) => (r.0, r.1),
       Err(e) => return Err(e)
    };
    let class_name_token = token;
    // '('
-   (next, _) =  match exp_token(TokenType::OBracket)(next) {
+   let (next, _) =  match exp_token(TokenType::OBracket)(next) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
    // parent class
-   (next, token) =  match exp_token(TokenType::Identifier)(next) {
+   let (next, token) =  match exp_token(TokenType::Identifier)(next) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
    let parent_class_name = token;
    // ')'
-   (next, _) =  match exp_token(TokenType::CBracket)(next) {
+   let (next, _) =  match exp_token(TokenType::CBracket)(next) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
@@ -81,6 +85,50 @@ fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNod
    // } else {
    //    return Err(Err::Error(Error::new(input, ErrorKind::Tag)))
    // }   
+}
+
+fn parse_constant_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError> {
+   // const keyword
+   let (next, const_token) = match exp_token(TokenType::Const)(input){
+      Ok(r) => r,
+      Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl:", e))
+   };
+   // identifier
+   let (next, ident_token) = match exp_token(TokenType::Identifier)(next){
+      Ok(r) => r,
+      Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl:", e))
+   };
+   // equals
+   let (next, _) = match exp_token(TokenType::Equals)(next){
+      Ok(r) => r,
+      Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl:", e))
+   };
+   // string or numeric value
+   let (next, value_token) = match alt_token(
+      &[
+         exp_token(TokenType::StringConstant),
+         exp_token(TokenType::NumericConstant)]
+   )(next){
+      Ok(r) => r,
+      Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl:", e))
+   };
+   // multi lang
+   let (next, multilang_token) = match exp_token(TokenType::MultiLang)(next){
+      Ok(r) => (r.0, Some(r.1)),
+      Err(e) => (e.input, None)
+   };
+
+   return Ok((
+      next,
+      Box::new(AstConstantDeclaration {
+         raw_pos: const_token.raw_pos,
+         pos: const_token.pos.clone(),
+         identifier: ident_token,
+         value: value_token.clone(),
+         range: Range { start: const_token.pos, end: value_token.pos },
+         is_multi_lang : if multilang_token.is_some() {true} else {false} 
+      })
+   ))
 }
 
 fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError> {
@@ -203,8 +251,8 @@ fn parse_type_reference<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
       Err(e) => return Err(e)
    };
    // calc end pos
-   let mut endPos = ident_token.pos;
-   endPos.character += ident_token.value.unwrap().len();
+   let mut end_pos = ident_token.pos;
+   end_pos.character += ident_token.value.unwrap().len();
    // remove open and close sqr brackets
    option_tokens.pop();
    option_tokens.remove(0);
@@ -213,7 +261,7 @@ fn parse_type_reference<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
       raw_pos: ref_token.raw_pos,
       pos: ref_token.pos.clone(),
       ref_type: ref_token.clone(),
-      range: Range{start:ref_token.pos,end:endPos},
+      range: Range{start:ref_token.pos,end:end_pos},
       options: option_tokens
    })));
 }
@@ -366,7 +414,7 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-    use crate::{lexer::tokens::{Token, TokenType, Position}, parser::{MyError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration}};
+    use crate::{lexer::tokens::{Token, TokenType, Position}, parser::{MyError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration}};
 
     use super::{parse_class, parse_type};
 
@@ -630,5 +678,31 @@ mod test {
       assert_eq!(downcasted.options[0].value.as_ref().unwrap().as_str(), "A");
       assert_eq!(downcasted.options[1].value.as_ref().unwrap().as_str(), "P");
       assert_eq!(downcasted.options[2].value.as_ref().unwrap().as_str(), "T");
+   }
+
+   #[test]
+   fn test_parse_constant_declaration_string() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::Const, None),
+         (TokenType::Identifier, Some("cAConstant".to_string())),
+         (TokenType::Equals, None),
+         (TokenType::StringConstant, Some("a constant string".to_string())),
+      ]);
+      let next : &[Token] = &input;
+
+      let (_, node) = match parse_constant_declaration(next) {
+         Ok((r, n)) => (r,n),
+         Err(e) => panic!("{}",e.msg.to_owned())
+      };
+      let downcasted = node.as_ref().as_any().downcast_ref::<AstConstantDeclaration>().unwrap();
+      assert_eq!(downcasted.raw_pos, 0);
+      assert_eq!(downcasted.pos.line, 0);
+      assert_eq!(downcasted.pos.character, 0);
+      assert_eq!(downcasted.range.start.line, 0);
+      assert_eq!(downcasted.range.start.character, 0);
+      assert_eq!(downcasted.range.end.line, 0);
+      assert_eq!(downcasted.range.end.character, 15);
+      assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "cAConstant");
+      assert_eq!(downcasted.value.value.as_ref().unwrap().as_str(), "a constant string");
    }
 }
