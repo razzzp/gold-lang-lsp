@@ -92,7 +92,7 @@ pub struct AstTypeBasicFixedSize {
 }
 impl IAstNode for AstTypeBasicFixedSize {
     fn get_type(&self) -> &'static str {
-        return "Type Primitive Unsized";
+        return "Type Basic Fixed";
     }
     fn get_raw_pos(&self) -> usize {
         return self.raw_pos;
@@ -116,7 +116,7 @@ pub struct AstTypeBasicDynamicSize {
 }
 impl IAstNode for AstTypeBasicDynamicSize {
     fn get_type(&self) -> &'static str {
-        return "Type Primitive Unsized";
+        return "Type Basic Dynamic";
     }
     fn get_raw_pos(&self) -> usize {
         return self.raw_pos;
@@ -165,7 +165,7 @@ pub struct AstTypeEnum{
 }
 impl IAstNode for AstTypeEnum {
     fn get_type(&self) -> &'static str {
-        return "Enum Type"
+        return "Type Enum"
     }
 
     fn get_raw_pos(&self) -> usize {
@@ -225,7 +225,7 @@ pub struct AstTypeDeclaration {
 }
 impl IAstNode for AstTypeDeclaration {
     fn get_type(&self) -> &'static str {
-        return "Type Reference"
+        return "Type Declaration"
     }
 
     fn get_raw_pos(&self) -> usize {
@@ -256,7 +256,38 @@ pub struct AstConstantDeclaration {
 }
 impl IAstNode for AstConstantDeclaration {
     fn get_type(&self) -> &'static str {
-        return "Type Reference"
+        return "Constant Declaration"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct AstGlobalVariableDeclaration {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub identifier: Token,
+    pub type_node: Box<dyn IAstNode>,
+    pub is_memory: bool
+}
+impl IAstNode for AstGlobalVariableDeclaration {
+    fn get_type(&self) -> &'static str {
+        return "Variable Declaration"
     }
 
     fn get_raw_pos(&self) -> usize {

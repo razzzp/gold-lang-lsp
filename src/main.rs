@@ -27,12 +27,13 @@ mod test {
     use crate::parser;
 
     #[test]
-    fn test_class_with_uses(){
+    fn test_class_everything(){
         let mut lexer = Lexer::new();
         let input = String::from
-        ("
-        class aTestClass   (aParentClass)\n\n
-        uses aFirstClass, aSecondClass\n
+        ("class aTestClass   (aParentClass)\r\n\n
+uses aFirstClass, aSecondClass\n
+const cStringConstant = 'test constant' multiLang\n
+const cNumericConstant = 18.5
         ");
         let tokens = lexer.lex(&input).unwrap();
         let ast = parser::parse_gold(&tokens);
@@ -46,11 +47,11 @@ mod test {
         let class = &nodes[0].as_any().downcast_ref::<AstClass>().unwrap();
         assert_eq!(class.name.as_str(), "aTestClass");
         assert_eq!(class.parent_class.as_str(), "aParentClass");
-        assert_eq!(class.raw_pos, 15);
+        assert_eq!(class.raw_pos, 6);
 
         // assert second node is uses
         let uses = &nodes[1].as_any().downcast_ref::<AstUses>().unwrap();
-        assert_eq!(uses.raw_pos, 53);
+        assert_eq!(uses.raw_pos, 37);
         // assert uses list
         let uses_ident = &uses.list_of_uses[0];
         assert_eq!(uses_ident.value.as_ref().unwrap().as_str(), "aFirstClass");

@@ -1,6 +1,6 @@
 
 use crate::lexer::tokens::{Token, TokenType, Range, Position};
-use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration};
+use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration};
 
 use self::utils::prepend_msg_to_error;
 
@@ -286,6 +286,41 @@ fn parse_type_reference_options<'a>(input : &'a [Token]) -> Result<(&'a [Token],
    return Ok((next, result));
 }
 
+fn parse_global_variable_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
+   // memory?
+   let (next, memory_token) = match exp_token(TokenType::Memory)(input){
+      Ok((n, t)) => (n,Some(t)),
+      Err(e) => (e.input, None)
+   };
+   
+   let (next, identifier_token) = match exp_token(TokenType::Identifier)(next){
+      Ok((n, t)) => (n,t),
+      Err(e) => return Err(e)
+   };
+   // colon token
+   let (next, _) = match exp_token(TokenType::Colon)(next){
+      Ok((n, t)) => (n,t),
+      Err(e) => return Err(e)
+   };
+   let (next, type_node) = match parse_type(next){
+      Ok((n, t)) => (n,t),
+      Err(e) => return Err(e)
+   };
+   let raw_pos = if memory_token.is_some() {memory_token.as_ref().unwrap().raw_pos.clone()} else {identifier_token.raw_pos.clone()};
+   let start = if memory_token.is_some() {memory_token.as_ref().unwrap().pos.clone()} else {identifier_token.pos.clone()};
+   return Ok((
+      next,
+      Box::new(AstGlobalVariableDeclaration {
+         is_memory: if memory_token.is_some() {true} else {false},
+         raw_pos: raw_pos,
+         pos: start.clone(),
+         range: Range {start:start, end: type_node.get_range().end.clone()},
+         identifier: identifier_token,
+         type_node: type_node,
+      })
+   ));
+}
+
 fn parse_separated_list<'a>(input : &'a [Token], item : TokenType, seperator: TokenType) 
 -> Result<(&'a [Token],  Vec<Token>), MyError<'a>> {
    let mut identifiers = Vec::<Token>::new();
@@ -414,7 +449,7 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-    use crate::{lexer::tokens::{Token, TokenType, Position}, parser::{MyError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration}};
+    use crate::{lexer::tokens::{Token, TokenType, Position}, parser::{MyError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration}};
 
     use super::{parse_class, parse_type};
 
@@ -704,5 +739,46 @@ mod test {
       assert_eq!(downcasted.range.end.character, 15);
       assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "cAConstant");
       assert_eq!(downcasted.value.value.as_ref().unwrap().as_str(), "a constant string");
+   }
+
+   #[test]
+   fn test_parse_global_variable_declaration() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::Memory, None),
+         (TokenType::Identifier, Some("aVariable".to_owned())),
+         (TokenType::Colon, None),
+         (TokenType::RefTo, None),
+         (TokenType::OSqrBracket, None),
+         (TokenType::Identifier, Some("A".to_string())),
+         (TokenType::Comma, None),
+         (TokenType::Identifier, Some("P".to_string())),
+         (TokenType::Comma, None),
+         (TokenType::Identifier, Some("T".to_string())),
+         (TokenType::CSqrBracket, None),
+         (TokenType::Identifier, Some("aType".to_string())),
+      ]);
+      let next : &[Token] = &input;
+
+      let (_, node) = match parse_global_variable_declaration(next) {
+         Ok((r, n)) => (r,n),
+         Err(e) => panic!("{}",e.msg.to_owned())
+      };
+      let downcasted = node.as_ref().as_any().downcast_ref::<AstGlobalVariableDeclaration>().unwrap();
+      assert_eq!(downcasted.raw_pos, 0);
+      assert_eq!(downcasted.pos.line, 0);
+      assert_eq!(downcasted.pos.character, 0);
+      assert_eq!(downcasted.range.start.line, 0);
+      assert_eq!(downcasted.range.start.character, 0);
+      assert_eq!(downcasted.range.end.line, 2);
+      assert_eq!(downcasted.range.end.character, 20);
+      assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "aVariable");
+
+      // test refto type
+      let downcasted = downcasted.type_node.as_any().downcast_ref::<AstTypeReference>().unwrap();
+      assert_eq!(downcasted.ref_type.token_type, TokenType::RefTo);
+      assert_eq!(downcasted.options.len(), 3);
+      assert_eq!(downcasted.options[0].value.as_ref().unwrap().as_str(), "A");
+      assert_eq!(downcasted.options[1].value.as_ref().unwrap().as_str(), "P");
+      assert_eq!(downcasted.options[2].value.as_ref().unwrap().as_str(), "T");
    }
 }
