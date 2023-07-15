@@ -34,6 +34,10 @@ mod test {
 uses aFirstClass, aSecondClass\n
 const cStringConstant = 'test constant' multiLang\n
 const cNumericConstant = 18.5
+memory GlobalVariable : refTo [P,A] SomeType
+SecondGlobalVariable : listOf [T] AnotherType
+IntGlobalVariable : int4
+CStringVar : cstring
         ");
         let tokens = lexer.lex(&input).unwrap();
         let ast = parser::parse_gold(&tokens);
@@ -57,5 +61,9 @@ const cNumericConstant = 18.5
         assert_eq!(uses_ident.value.as_ref().unwrap().as_str(), "aFirstClass");
         let uses_ident = &uses.list_of_uses[1];
         assert_eq!(uses_ident.value.as_ref().unwrap().as_str(), "aSecondClass");
+
+        for node in nodes{
+            println!("{:#?}", node);
+        }
     }
 }

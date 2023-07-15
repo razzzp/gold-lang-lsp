@@ -24,6 +24,7 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
       parse_uses,
       parse_type_declaration,
       parse_constant_declaration,
+      parse_global_variable_declaration,
    ];
    let mut result = Vec::<Box<dyn IAstNode>>::new();
    let mut errors = Vec::<ParserError>::new();
@@ -46,7 +47,7 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
 
 fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError> {
    // class keyword
-   let (next, _) = match exp_token(TokenType::Class)(input) {
+   let (next, class_token) = match exp_token(TokenType::Class)(input) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
@@ -68,13 +69,15 @@ fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNod
    };
    let parent_class_name = token;
    // ')'
-   let (next, _) =  match exp_token(TokenType::CBracket)(next) {
+   let (next, end_token) =  match exp_token(TokenType::CBracket)(next) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
    // TODO change behaviour when class name empty
    return Ok((next, Box::new(AstClass{
       raw_pos: class_name_token.raw_pos,
+      pos: class_token.pos.clone(),
+      range: Range { start: class_token.pos, end: end_token.pos},
       name: class_name_token.value.unwrap().to_owned(),
       parent_class: parent_class_name.value.unwrap().to_owned()
    })));
@@ -132,7 +135,7 @@ fn parse_constant_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
 }
 
 fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError> {
-   let (next, uses) = match exp_token(TokenType::Uses)(input){
+   let (next, uses_token) = match exp_token(TokenType::Uses)(input){
       Ok((r, t)) => (r, t),
       Err(e) => return Err(e),
    };
@@ -140,7 +143,16 @@ fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
       Ok((r, l)) => (r, l),
       Err(e) => return Err(e),
    };
-   return Ok((next, Box::new(AstUses { raw_pos: uses.raw_pos, list_of_uses: idents })));
+   return Ok((
+      next, 
+      Box::new(AstUses { 
+         raw_pos: uses_token.raw_pos,
+         pos: uses_token.pos.clone(),
+         range: Range { 
+            start: uses_token.pos, 
+            end: if idents.last().is_some() {idents.last().unwrap().range.end.clone()} else {uses_token.range.end.clone()}},
+         list_of_uses: idents })
+   ));
 }
 
 fn parse_type_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
@@ -196,7 +208,11 @@ fn parse_type_basic_fixed_size<'a>(input : &'a [Token])
       exp_token(TokenType::Identifier),
    ])(input);
    return match parse_result {
-      Ok((r, t)) => Ok((r, Box::new(AstTypeBasicFixedSize{raw_pos:t.raw_pos, type_token: t}))),
+      Ok((r, t)) => Ok((r, Box::new(AstTypeBasicFixedSize{
+         raw_pos:t.raw_pos,
+         pos: t.pos.clone(),
+         range: t.range.clone(),
+         type_token: t}))),
       Err(e) => Err(e)
    }
 }
@@ -207,7 +223,11 @@ fn parse_type_basic_dynamic_size<'a>(input : &'a [Token])
       exp_token(TokenType::Text),
    ])(input);
    return match parse_result {
-      Ok((r, t)) => Ok((r, Box::new(AstTypeBasicDynamicSize{raw_pos:t.raw_pos, type_token: t}))),
+      Ok((r, t)) => Ok((r, Box::new(AstTypeBasicDynamicSize{
+         raw_pos:t.raw_pos, 
+         pos: t.pos.clone(),
+         range: t.range.clone(),
+         type_token: t}))),
       Err(e) => Err(e)
    }
 }
@@ -449,7 +469,7 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-    use crate::{lexer::tokens::{Token, TokenType, Position}, parser::{MyError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration}};
+    use crate::{lexer::tokens::{Token, TokenType, Position, Range}, parser::{MyError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration}};
 
     use super::{parse_class, parse_type};
 
@@ -457,9 +477,12 @@ mod test {
       let mut result = Vec::<Token>::new();
       let mut raw_pos = 0;
       for (tok_type, val) in list.to_vec() {
+         let start_pos = Position{line: raw_pos/20, character: raw_pos%20};
+         let end_pos = Position{line:start_pos.line, character: start_pos.character+val.as_ref().unwrap_or(&"".to_string()).len()};
          result.push(Token { 
             raw_pos: raw_pos, 
-            pos: Position{line: raw_pos/20, character: raw_pos%20}, 
+            pos: start_pos.clone(), 
+            range: Range{start:start_pos, end:end_pos},
             token_type: tok_type, 
             value: val.clone() 
          });

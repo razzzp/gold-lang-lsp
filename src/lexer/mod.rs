@@ -1,7 +1,7 @@
 
 use std::{str::Chars, iter::{Peekable, Enumerate}};
 
-use self::tokens::{Token, TokenType, Position};
+use self::tokens::{Token, TokenType, Position, Range};
 
 pub mod tokens;
 
@@ -372,12 +372,18 @@ impl Lexer{
     fn create_token(&self, pos: usize, token_type: TokenType, value: Option<String>) -> Token{
         // plus 1 for zero based offset
         let last_line_pos = if self.line_pos.last().is_none() {0} else {self.line_pos.last().unwrap().to_owned()+1};
+        let start_pos = Position {
+            line: self.line_pos.len(),
+            character: pos - last_line_pos
+        };
+        let end_pos = Position {
+            line: start_pos.line,
+            character: start_pos.character + value.as_ref().unwrap_or(&"".to_string()).len()
+        };
         return Token {
             raw_pos: pos,
-            pos: Position {
-                line: self.line_pos.len(),
-                character: pos - last_line_pos
-            },
+            pos: start_pos.clone(),
+            range: Range { start: start_pos, end: end_pos },
             token_type,
             value 
         };

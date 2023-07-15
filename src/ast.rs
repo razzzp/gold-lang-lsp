@@ -30,13 +30,15 @@ impl IAstNode for AstTerminal {
         self.token.pos.clone()
     }
     fn get_range(&self) -> Range {
-        todo!()
+        self.token.range.clone()
     }
 }
 
 #[derive(Debug)]
 pub struct AstClass {
     pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
     pub name: String,
     pub parent_class: String,
 }
@@ -52,17 +54,19 @@ impl IAstNode for AstClass {
     }
 
     fn get_pos(&self) -> Position {
-        todo!();
+        self.pos.clone()
     }
 
     fn get_range(&self) -> Range {
-        todo!();
+        self.range.clone()
     }
 }
 
 #[derive(Debug)]
 pub struct AstUses {
     pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
     pub list_of_uses: Vec<Token>,
 }
 impl IAstNode for AstUses {
@@ -77,17 +81,19 @@ impl IAstNode for AstUses {
     }
 
     fn get_pos(&self) -> Position {
-        todo!()
+        self.pos.clone()
     }
 
     fn get_range(&self) -> Range {
-        todo!()
+        self.range.clone()
     }
 }
 
 #[derive(Debug)]
 pub struct AstTypeBasicFixedSize {
     pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
     pub type_token: Token,
 }
 impl IAstNode for AstTypeBasicFixedSize {
@@ -100,18 +106,18 @@ impl IAstNode for AstTypeBasicFixedSize {
     fn as_any(&self) -> &dyn Any {
         self
     }
-
     fn get_pos(&self) -> Position {
-        todo!()
+        self.pos.clone()
     }
-
     fn get_range(&self) -> Range {
-        todo!()
+        self.range.clone()
     }
 }
 #[derive(Debug)]
 pub struct AstTypeBasicDynamicSize {
     pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
     pub type_token: Token,
 }
 impl IAstNode for AstTypeBasicDynamicSize {
@@ -126,11 +132,11 @@ impl IAstNode for AstTypeBasicDynamicSize {
     }
 
     fn get_pos(&self) -> Position {
-        todo!()
+        self.pos.clone()
     }
 
     fn get_range(&self) -> Range {
-        todo!()
+        self.range.clone()
     }
 }
 

@@ -189,6 +189,7 @@ pub enum TokenType {
 pub struct Token {
     pub raw_pos: usize,
     pub pos: Position,
+    pub range: Range,
     pub token_type: TokenType,
     pub value: Option<String>
 }
