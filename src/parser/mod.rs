@@ -403,12 +403,12 @@ fn alt_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token),
    -> impl Fn(&[Token]) -> Result<(&[Token],  Token), MyError> + '_
 {
    move |input: &[Token]| -> Result<(&[Token],  Token), MyError> {
-      let mut next = input;
+      let next = input;
       for parser in list_of_parsers {
          let r = parser(input);
          match r {
             Ok(r) => return Ok(r),
-            Err(e) => {next = e.input}
+            Err(_) => continue
          }
       }
       return Err(MyError{ input: next, msg: String::from("Failed to parse using alternatives") });
@@ -419,12 +419,12 @@ fn alt_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
    -> impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), MyError> + '_
 {
    move |input: &[Token]| -> Result<(&[Token],  Box<dyn IAstNode>), MyError> {
-      let mut next = input;
+      let next = input;
       for parser in list_of_parsers {
          let r = parser(input);
          match r {
             Ok(r) => return Ok(r),
-            Err(e) => {next = e.input}
+            Err(_) => continue
          }
       }
       return Err(MyError{ input: next, msg: String::from("Failed to parse using alternatives") });
