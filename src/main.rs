@@ -15,7 +15,7 @@ fn main() {
     };
     println!("{file_contents}");
     let mut lexer = Lexer::new();
-    let tokens = lexer.lex(&file_contents).unwrap();
+    let tokens = lexer.lex(&file_contents).0;
     println!("{:#?}", tokens);
 }
 
@@ -39,7 +39,7 @@ SecondGlobalVariable : listOf [T] AnotherType
 IntGlobalVariable : int4
 CStringVar : cstring
         ");
-        let tokens = lexer.lex(&input).unwrap();
+        let tokens = lexer.lex(&input).0;
         let ast = parser::parse_gold(&tokens);
 
         // assert input left is empty

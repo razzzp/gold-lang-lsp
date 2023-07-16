@@ -5,8 +5,15 @@ use self::tokens::{Token, TokenType, Position, Range};
 
 pub mod tokens;
 
+#[derive(Debug)]
 pub struct Lexer {
     line_pos: Vec<usize>
+}
+
+#[derive(Debug)]
+pub struct LexerError {
+    range: Range,
+    msg: String,
 }
 
 impl Lexer{
@@ -14,24 +21,25 @@ impl Lexer{
         return Lexer{line_pos:Vec::<usize>::new()};
     }
 
-    pub fn lex(&mut self, buf: &String) -> Result<Vec<Token>, &'static str> {
+    pub fn lex(&mut self, buf: &String) -> (Vec<Token>, Vec<LexerError>) {
         let mut chars =buf.chars().enumerate().peekable();
         let mut result = Vec::<Token>::new();
+        let mut errors = Vec::<LexerError>::new();
         loop {
             let cur_char =  self.skip_whitespace(&mut chars);
             if cur_char.is_none() { break };
     
-            let cur_token: Option<Token>; 
-            cur_token = match cur_char.unwrap() {
+            let cur_token = match cur_char.unwrap() {
                 'a'..='z' | 'A'..='Z' | '_' => self.read_word(&mut chars),
                 '0'..='9' => self.read_number(&mut chars),
                 _ => self.read_symbol(&mut chars),
             };
-            if cur_token.is_some(){
-                result.push(cur_token.unwrap());
+            match cur_token{
+                Ok(token) =>result.push(token),
+                Err(error) => errors.push(error)
             }
         }
-        return Ok(result);
+        return (result, errors);
     }
     
     fn skip_whitespace(&mut self, buf: &mut Peekable<Enumerate<Chars>>) -> Option<char> {
@@ -66,7 +74,7 @@ impl Lexer{
         return next_char;
     }
     
-    fn read_word(&self, buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
+    fn read_word(&self, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, LexerError> {
         let mut word = String::new();
         let pos = buf.peek().unwrap().0;
         
@@ -79,10 +87,10 @@ impl Lexer{
                 _ => break
             }
         }
-        return Some(self.create_word_token(pos, word));
+        return Ok(self.create_word_token(pos, word));
     }
 
-    fn read_number(&self, buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
+    fn read_number(&self, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, LexerError> {
         let mut number = String::new();
         let pos = buf.peek().unwrap().0;
         
@@ -98,39 +106,36 @@ impl Lexer{
                 _ => break
             }
         }
-        match number.parse::<f32>(){
-            Ok(_) => return Some(self.create_token(pos, TokenType::NumericConstant, Some(number))),
-            Err(_) => return  None
-        }
+        return Ok(self.create_token(pos, TokenType::NumericConstant, Some(number)));
     }
 
-    fn read_symbol(&mut self, buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
+    fn read_symbol(&mut self, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, LexerError> {
         let next = buf.next().unwrap();
         let pos = next.0;
-        let token: Option<Token> = match next.1 {
-            '(' => Some(self.create_token(pos, TokenType::OBracket, Some(next.1.to_string()))),
-            ')' => Some(self.create_token(pos, TokenType::CBracket, Some(next.1.to_string()))),
-            '[' => Some(self.create_token(pos, TokenType::OSqrBracket, Some(next.1.to_string()))),
-            ']' => Some(self.create_token(pos, TokenType::CSqrBracket, Some(next.1.to_string()))),
-            '{' => Some(self.create_token(pos, TokenType::OCurBracket, Some(next.1.to_string()))),
-            '}' => Some(self.create_token(pos, TokenType::CCurBracket, Some(next.1.to_string()))),
-            '*' => Some(self.create_token(pos, TokenType::Multiply, Some(next.1.to_string()))),
-            '/' => Some(self.create_token(pos, TokenType::Divide, Some(next.1.to_string()))),
-            '%' => Some(self.create_token(pos, TokenType::Modulus, Some(next.1.to_string()))),
-            '@' => Some(self.create_token(pos, TokenType::AddressOf, Some(next.1.to_string()))),
-            '.' => Some(self.create_token(pos, TokenType::Dot, Some(next.1.to_string()))),
-            '=' => Some(self.create_token(pos, TokenType::Equals, Some(next.1.to_string()))),
-            '\'' => Some(self.read_string_constant(pos, buf)),
-            '\"' => Some(self.read_string_constant_doublequotes(pos, buf)),
-            ',' => Some(self.create_token(pos, TokenType::Comma, Some(next.1.to_string()))),
+        let token: Result<Token, LexerError> = match next.1 {
+            '(' => Ok(self.create_token(pos, TokenType::OBracket, Some(next.1.to_string()))),
+            ')' => Ok(self.create_token(pos, TokenType::CBracket, Some(next.1.to_string()))),
+            '[' => Ok(self.create_token(pos, TokenType::OSqrBracket, Some(next.1.to_string()))),
+            ']' => Ok(self.create_token(pos, TokenType::CSqrBracket, Some(next.1.to_string()))),
+            '{' => Ok(self.create_token(pos, TokenType::OCurBracket, Some(next.1.to_string()))),
+            '}' => Ok(self.create_token(pos, TokenType::CCurBracket, Some(next.1.to_string()))),
+            '*' => Ok(self.create_token(pos, TokenType::Multiply, Some(next.1.to_string()))),
+            '/' => Ok(self.create_token(pos, TokenType::Divide, Some(next.1.to_string()))),
+            '%' => Ok(self.create_token(pos, TokenType::Modulus, Some(next.1.to_string()))),
+            '@' => Ok(self.create_token(pos, TokenType::AddressOf, Some(next.1.to_string()))),
+            '.' => Ok(self.create_token(pos, TokenType::Dot, Some(next.1.to_string()))),
+            '=' => Ok(self.create_token(pos, TokenType::Equals, Some(next.1.to_string()))),
+            '\'' => Ok(self.read_string_constant(pos, buf)),
+            '\"' => Ok(self.read_string_constant_doublequotes(pos, buf)),
+            ',' => Ok(self.create_token(pos, TokenType::Comma, Some(next.1.to_string()))),
             '<' => self.read_double_char_op(next.1, pos, buf),
             '>' => self.read_double_char_op(next.1, pos, buf),
             '+' => self.read_double_char_op(next.1, pos, buf),
             '-' => self.read_double_char_op(next.1, pos, buf),
             ':' => self.read_double_char_op(next.1, pos, buf),
             '&' => self.read_double_char_op(next.1, pos, buf),
-            ';' => Some(self.read_until_newline(pos, buf)),
-            _=> None
+            ';' => Ok(self.read_comment(pos, buf)),
+            _=> Err(LexerError { range: self.create_range(pos, 1), msg: format!("Unknown first symbol: {}", next.1) })
         };
         return token;
     }
@@ -165,7 +170,7 @@ impl Lexer{
         return self.create_token(pos, TokenType::StringConstant, Some(value))
     }
     
-    fn read_until_newline(&mut self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token{
+    fn read_comment(&mut self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token{
         let mut comment = String::new();
         loop {
             match buf.peek() {
@@ -180,48 +185,48 @@ impl Lexer{
         return self.create_token(pos, TokenType::Comment, Some(comment));
     }
     
-    fn read_double_char_op(&self, first_op: char, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Option<Token> {
+    fn read_double_char_op(&self, first_op: char, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, LexerError> {
         let next = buf.peek();
     
         let mut is_double_op = true;
-        let mut result: Option<Token> = None;
+        let mut result: Result<Token, LexerError>;
         if  first_op == '<'{
             result = match next {
-                Some((_,'<')) => Some(self.create_token(pos, TokenType::LeftShift, Some("<<".to_string()))),
-                Some((_,'=')) => Some(self.create_token(pos, TokenType::LessThanOrEqual, Some("<=".to_string()))),
-                Some((_,'>')) => Some(self.create_token(pos, TokenType::NotEquals, Some("<>".to_string()))),
-                _ => {is_double_op = false; Some(self.create_token(pos, TokenType::LessThan, Some("<".to_string())))}
+                Some((_,'<')) => Ok(self.create_token(pos, TokenType::LeftShift, Some("<<".to_string()))),
+                Some((_,'=')) => Ok(self.create_token(pos, TokenType::LessThanOrEqual, Some("<=".to_string()))),
+                Some((_,'>')) => Ok(self.create_token(pos, TokenType::NotEquals, Some("<>".to_string()))),
+                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::LessThan, Some("<".to_string())))}
             };
         } else if  first_op == '>'{
             result = match next {
-                Some((_,'>')) => Some(self.create_token(pos, TokenType::RightShift, Some(">>".to_string()))),
-                Some((_,'=')) => Some(self.create_token(pos, TokenType::GreaterThanOrEqual, Some(">=".to_string()))),
-                _ => {is_double_op = false; Some(self.create_token(pos, TokenType::GreaterThan, Some(">".to_string())))}
+                Some((_,'>')) => Ok(self.create_token(pos, TokenType::RightShift, Some(">>".to_string()))),
+                Some((_,'=')) => Ok(self.create_token(pos, TokenType::GreaterThanOrEqual, Some(">=".to_string()))),
+                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::GreaterThan, Some(">".to_string())))}
             };
         } else if  first_op == '&'{
             result = match next {
-                Some((_,'&')) => Some(self.create_token(pos, TokenType::StringConcat, Some("&&".to_string()))),
-                _ => {is_double_op = false; None}
+                Some((_,'&')) => Ok(self.create_token(pos, TokenType::StringConcat, Some("&&".to_string()))),
+                _ => {is_double_op = false; Err(LexerError { range: self.create_range(pos, 1), msg: "& is not a valid symbol".to_string() })}
             };
         } else if  first_op == '+'{
             result = match next{
-                Some((_,'+')) => Some(self.create_token(pos, TokenType::Increment, Some("++".to_string()))),
-                Some((_,'=')) => Some(self.create_token(pos, TokenType::IncrementAssign, Some("+=".to_string()))),
-                _ => {is_double_op = false; Some(self.create_token(pos, TokenType::Plus, Some("+".to_string())))}
+                Some((_,'+')) => Ok(self.create_token(pos, TokenType::Increment, Some("++".to_string()))),
+                Some((_,'=')) => Ok(self.create_token(pos, TokenType::IncrementAssign, Some("+=".to_string()))),
+                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::Plus, Some("+".to_string())))}
             };
         } else if  first_op == '-'{
             result = match next {
-                Some((_,'-')) => Some(self.create_token(pos, TokenType::Decrement, Some("--".to_string()))),
-                Some((_,'=')) => Some(self.create_token(pos, TokenType::DecrementAssign, Some("-=".to_string()))),
-                _ => {is_double_op = false; Some(self.create_token(pos, TokenType::Minus, Some("-".to_string())))}
+                Some((_,'-')) => Ok(self.create_token(pos, TokenType::Decrement, Some("--".to_string()))),
+                Some((_,'=')) => Ok(self.create_token(pos, TokenType::DecrementAssign, Some("-=".to_string()))),
+                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::Minus, Some("-".to_string())))}
             };
         } else if  first_op == ':'{
             result = match next {
-                Some((_,'=')) => Some(self.create_token(pos, TokenType::DeepAssign, Some(":=".to_string()))),
-                _ => {is_double_op = false; Some(self.create_token(pos, TokenType::Colon, Some(":".to_string())))}
+                Some((_,'=')) => Ok(self.create_token(pos, TokenType::DeepAssign, Some(":=".to_string()))),
+                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::Colon, Some(":".to_string())))}
             };
         } else {
-            is_double_op = false;
+            result = Err(LexerError { range: self.create_range(pos, 1), msg: format!("Unknown first symbol: {}", first_op) });
         }
         if is_double_op {buf.next();};
     
@@ -371,22 +376,29 @@ impl Lexer{
     
     fn create_token(&self, pos: usize, token_type: TokenType, value: Option<String>) -> Token{
         // plus 1 for zero based offset
-        let last_line_pos = if self.line_pos.last().is_none() {0} else {self.line_pos.last().unwrap().to_owned()+1};
-        let start_pos = Position {
-            line: self.line_pos.len(),
-            character: pos - last_line_pos
-        };
-        let end_pos = Position {
-            line: start_pos.line,
-            character: start_pos.character + value.as_ref().unwrap_or(&"".to_string()).len()
-        };
+        let range = self.create_range(pos, value.as_ref().unwrap_or(&"".to_string()).len());
         return Token {
             raw_pos: pos,
-            pos: start_pos.clone(),
-            range: Range { start: start_pos, end: end_pos },
+            pos: range.start.clone(),
+            range: range,
             token_type,
             value 
         };
+    }
+
+    /*creates a range from a raw position and length */
+    fn create_range(&self, raw_pos: usize, length: usize) -> Range{
+        // plus 1 for zero based offset
+        let last_line_pos = if self.line_pos.last().is_none() {0} else {self.line_pos.last().unwrap().to_owned()+1};
+        let start_pos = Position {
+            line: self.line_pos.len(),
+            character: raw_pos - last_line_pos
+        };
+        let end_pos = Position {
+            line: start_pos.line,
+            character: start_pos.character + length
+        };
+        return Range { start: start_pos, end: end_pos}
     }
     
 }
@@ -426,7 +438,7 @@ mod test {
             "* / % + - && << >> < <= > >=
 = <> @ . ++ += -- -= :=");
         let result = lexer.lex(&input);
-        let token = result.unwrap();
+        let token = result.0;
 
         assert_eq!(token.len(), 21);
         assert_eq!(token[0].token_type, TokenType::Multiply);
@@ -466,7 +478,7 @@ mod test {
             Ok(_)=>(),
             Err(msg) => panic!("{msg}")
         };
-        let tokens = lexer.lex(&file_contents).unwrap();
+        let tokens = lexer.lex(&file_contents).0;
         // println!("{:#?}", tokens[60].token_type);
         assert_eq!(tokens.len(), 125);
         assert_eq!(tokens[0].token_type, TokenType::MethodName);
@@ -481,7 +493,7 @@ mod test {
             "not a comment ; a comment\n
             ; entire line is a comment wow \n");
         let result = lexer.lex(&input);
-        let token = result.unwrap();
+        let token = result.0;
         // println!("{:#?}", token);
         assert_eq!(token.len(), 5);
         assert_eq!(token[0].token_type, TokenType::Not);
@@ -495,7 +507,7 @@ mod test {
         let input = String::from(
             "'first string constant'    'b'\n \"double quote of newline\"\n");
         let result = lexer.lex(&input);
-        let token = result.unwrap();
+        let token = result.0;
         // println!("{:#?}", token);
         assert_eq!(token.len(), 3);
         // first
@@ -521,7 +533,7 @@ mod test {
         let input = String::from(
             "10 12.55 10000\n 77.1234134141412424\n");
         let result = lexer.lex(&input);
-        let token = result.unwrap();
+        let token = result.0;
         // println!("{:#?}", token);
         assert_eq!(token.len(), 4);    
         // first
