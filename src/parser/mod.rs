@@ -7,15 +7,9 @@ use self::utils::prepend_msg_to_error;
 pub mod utils;
 
 #[derive(Debug, Clone)]
-pub struct MyError<'a>{
+pub struct ParserError<'a>{
    pub input: &'a [Token],
    pub msg: String
-}
-
-#[derive(Debug, Clone)]
-pub struct ParserError {
-   token: Token,
-   msg:String
 }
 
 pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNode>>), Vec<ParserError>) {
@@ -33,11 +27,11 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
       next = match alt_parse(&parsers)(next){
          Ok((r,n))=> {result.push(n); r},
          Err(e)=> {
-            let mut iter = next.iter();
-            errors.push(ParserError{
-               token: iter.next().unwrap().clone(), 
-               msg: e.msg.clone()}
-            );
+            let mut iter = e.input.iter();
+            // move one 
+            iter.next();
+            errors.push(e);
+            // set next as the input of the most matched error
             iter.as_slice()
          }
       };
@@ -45,7 +39,7 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
    ((next, result), errors)
 }
 
-fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError> {
+fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError> {
    // class keyword
    let (next, class_token) = match exp_token(TokenType::Class)(input) {
       Ok(r)=> (r.0, r.1),
@@ -90,7 +84,7 @@ fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNod
    // }   
 }
 
-fn parse_constant_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError> {
+fn parse_constant_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError> {
    // const keyword
    let (next, const_token) = match exp_token(TokenType::Const)(input){
       Ok(r) => r,
@@ -134,7 +128,7 @@ fn parse_constant_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
    ))
 }
 
-fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError> {
+fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError> {
    let (next, uses_token) = match exp_token(TokenType::Uses)(input){
       Ok((r, t)) => (r, t),
       Err(e) => return Err(e),
@@ -155,7 +149,7 @@ fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
    ));
 }
 
-fn parse_type_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
+fn parse_type_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>>{
    // type keyword, identifier, then colon
    let (next, tokens) = match seq_token(&[
       exp_token(TokenType::Type),
@@ -179,7 +173,7 @@ fn parse_type_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<
    return Ok((next, Box::new(type_declaration_node)));
 }
 
-fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
+fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>>{
    let parsers = [
       parse_type_basic_fixed_size,
       parse_type_basic_dynamic_size,
@@ -191,7 +185,7 @@ fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
 }
 
 fn parse_type_basic_fixed_size<'a>(input : &'a [Token]) 
--> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>> {
+-> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>> {
    let parse_result = alt_token(&[
       exp_token(TokenType::Int1),
       exp_token(TokenType::Int2),
@@ -218,7 +212,7 @@ fn parse_type_basic_fixed_size<'a>(input : &'a [Token])
 }
 
 fn parse_type_basic_dynamic_size<'a>(input : &'a [Token]) 
--> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>> {
+-> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>> {
    let parse_result = alt_token(&[
       exp_token(TokenType::Text),
    ])(input);
@@ -232,7 +226,7 @@ fn parse_type_basic_dynamic_size<'a>(input : &'a [Token])
    }
 }
 
-fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
+fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>>{
    let (next, s_raw_pos, s_pos) = match exp_token(TokenType::OBracket)(input){
       Ok((r,t)) => (r, t.raw_pos, t.pos),
       Err(e) => return Err(e)
@@ -253,7 +247,7 @@ fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAs
    })));
 }
 
-fn parse_type_reference<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
+fn parse_type_reference<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>>{
    let result = alt_token(&[
       exp_token(TokenType::RefTo),
       exp_token(TokenType::ListOf)
@@ -273,10 +267,12 @@ fn parse_type_reference<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
    // calc end pos
    let mut end_pos = ident_token.pos;
    end_pos.character += ident_token.value.unwrap().len();
-   // remove open and close sqr brackets
-   option_tokens.pop();
-   option_tokens.remove(0);
-   
+   // if there are options remove open and close sqr brackets
+   if option_tokens.len() > 0 {
+      option_tokens.pop();
+      option_tokens.remove(0);
+   }
+
    return Ok((next, Box::new(AstTypeReference{
       raw_pos: ref_token.raw_pos,
       pos: ref_token.pos.clone(),
@@ -286,7 +282,7 @@ fn parse_type_reference<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
    })));
 }
 
-fn parse_type_reference_options<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Vec<Token>), MyError<'a>>{
+fn parse_type_reference_options<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Vec<Token>), ParserError<'a>>{
    let mut result = Vec::<Token>::new();
    let (next, open_token) = match exp_token(TokenType::OSqrBracket)(input) {
       Ok((r,t)) => (r,t),
@@ -306,7 +302,7 @@ fn parse_type_reference_options<'a>(input : &'a [Token]) -> Result<(&'a [Token],
    return Ok((next, result));
 }
 
-fn parse_global_variable_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), MyError<'a>>{
+fn parse_global_variable_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>>{
    // memory?
    let (next, memory_token) = match exp_token(TokenType::Memory)(input){
       Ok((n, t)) => (n,Some(t)),
@@ -342,7 +338,7 @@ fn parse_global_variable_declaration<'a>(input : &'a [Token]) -> Result<(&'a [To
 }
 
 fn parse_separated_list<'a>(input : &'a [Token], item : TokenType, seperator: TokenType) 
--> Result<(&'a [Token],  Vec<Token>), MyError<'a>> {
+-> Result<(&'a [Token],  Vec<Token>), ParserError<'a>> {
    let mut identifiers = Vec::<Token>::new();
    // match first identifier
    let r = _parse_seperated_list_recursive(input, &item, &seperator, &mut identifiers);
@@ -357,11 +353,11 @@ fn _parse_seperated_list_recursive<'a, 'b>(
    item: &'b TokenType,
    sep: &'b TokenType,
    result: &'b mut Vec<Token>) 
--> Result<&'a [Token], MyError<'a>> {
+-> Result<&'a [Token], ParserError<'a>> {
    // match first identifier
    let mut next = match exp_token(item.clone())(input){
       Ok((r, t)) => {result.push(t); r},
-      Err(e) => return Err(MyError { input: e.input, msg:  String::from("Failed to parse uses list")})
+      Err(e) => return Err(ParserError { input: e.input, msg:  String::from("Failed to parse uses list")})
    };
    next = match exp_token(sep.clone())(next){
       Ok((r, _)) => r,
@@ -371,14 +367,14 @@ fn _parse_seperated_list_recursive<'a, 'b>(
 }
 
 fn exp_token(token_type : TokenType)
-   -> impl Fn(&[Token]) -> Result<(&[Token],  Token), MyError> 
+   -> impl Fn(&[Token]) -> Result<(&[Token],  Token), ParserError> 
 {
-   move |input: &[Token]| -> Result<(&[Token],  Token), MyError> {
+   move |input: &[Token]| -> Result<(&[Token],  Token), ParserError> {
       let mut it = input.iter();
       match it.next() {
       Some(t) if t.token_type == token_type => Ok((it.as_slice(), t.clone())),
-      Some(t) => Err(MyError {input: input, msg: String::from(format!("Expected {:?}, found {:?}",token_type,t.token_type))}),
-      None => Err(MyError {input: input, msg: String::from(format!("Expected {:?}, found None",token_type))})
+      Some(t) => Err(ParserError {input: input, msg: String::from(format!("Expected {:?}, found {:?}",token_type,t.token_type))}),
+      None => Err(ParserError {input: input, msg: String::from(format!("Expected {:?}, found None",token_type))})
       }
    }
 }
@@ -386,10 +382,10 @@ fn exp_token(token_type : TokenType)
 /*
    wraps the parser so that it doesn't throw error
  */
-fn opt_parse(parser : impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), MyError>) 
-   -> impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), MyError> 
+fn opt_parse(parser : impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError>) 
+   -> impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError> 
 {
-   move |input: &[Token]| -> Result<(&[Token],  Box<dyn IAstNode>), MyError> {
+   move |input: &[Token]| -> Result<(&[Token],  Box<dyn IAstNode>), ParserError> {
       match parser(input) {
           Ok(r) => return Ok(r),
           _ => ()
@@ -399,10 +395,10 @@ fn opt_parse(parser : impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>)
    }
 }
 
-fn alt_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token), MyError>])
-   -> impl Fn(&[Token]) -> Result<(&[Token],  Token), MyError> + '_
+fn alt_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token), ParserError>])
+   -> impl Fn(&[Token]) -> Result<(&[Token],  Token), ParserError> + '_
 {
-   move |input: &[Token]| -> Result<(&[Token],  Token), MyError> {
+   move |input: &[Token]| -> Result<(&[Token],  Token), ParserError> {
       let next = input;
       for parser in list_of_parsers {
          let r = parser(input);
@@ -411,37 +407,44 @@ fn alt_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token),
             Err(_) => continue
          }
       }
-      return Err(MyError{ input: next, msg: String::from("Failed to parse using alternatives") });
+      return Err(ParserError{ input: next, msg: String::from("Failed to parse using alternatives") });
    }
 }
 
-fn alt_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), MyError>])
-   -> impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), MyError> + '_
+fn alt_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError>])
+   -> impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError> + '_
 {
-   move |input: &[Token]| -> Result<(&[Token],  Box<dyn IAstNode>), MyError> {
-      let next = input;
+   move |input: &[Token]| -> Result<(&[Token],  Box<dyn IAstNode>), ParserError> {
+      let mut most_matched: Option<ParserError> = None;
       for parser in list_of_parsers {
          let r = parser(input);
          match r {
             Ok(r) => return Ok(r),
-            Err(_) => continue
+            Err(e) => {
+               // update most matched
+               if most_matched.is_some() && most_matched.as_ref().unwrap().input.len() > e.input.len() {
+                  most_matched = Some(e);
+               } else {
+                   most_matched = Some(e);
+               }
+            }
          }
       }
-      return Err(MyError{ input: next, msg: String::from("Failed to parse using alternatives") });
+      return Err(most_matched.unwrap());
    }
 }
 
-fn seq_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token), MyError>])
-   -> impl Fn(&[Token]) -> Result<(&[Token],  Vec<Token>), MyError> + '_
+fn seq_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token), ParserError>])
+   -> impl Fn(&[Token]) -> Result<(&[Token],  Vec<Token>), ParserError> + '_
 {
-   move |input: &[Token]| -> Result<(&[Token],  Vec<Token>), MyError> {
+   move |input: &[Token]| -> Result<(&[Token],  Vec<Token>), ParserError> {
       let mut i = 0;
       let mut next = input;
       let mut nodes = Vec::<Token>::new();
       while i < list_of_parsers.len(){
          next = match list_of_parsers[i](next){
             Ok(r) => {nodes.push(r.1); r.0},
-            Err(e) => return Err(MyError{ input: e.input, msg: String::from("Failed to parse using alternatives") })
+            Err(e) => return Err(ParserError{ input: e.input, msg: String::from("Failed to parse using alternatives") })
          };
          i+=1;
       }
@@ -449,17 +452,17 @@ fn seq_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token),
    }
 }
 
-fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), MyError>])
-   -> impl Fn(&[Token]) -> Result<(&[Token],  Vec<Box<dyn IAstNode>>), MyError> + '_
+fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError>])
+   -> impl Fn(&[Token]) -> Result<(&[Token],  Vec<Box<dyn IAstNode>>), ParserError> + '_
 {
-   move |input: &[Token]| -> Result<(&[Token],  Vec<Box<dyn IAstNode>>), MyError> {
+   move |input: &[Token]| -> Result<(&[Token],  Vec<Box<dyn IAstNode>>), ParserError> {
       let mut i = 0;
       let mut next = input;
       let mut nodes = Vec::<Box<dyn IAstNode>>::new();
       while i < list_of_parsers.len(){
          next = match list_of_parsers[i](next){
             Ok(r) => {nodes.push(r.1); r.0},
-            Err(e) => return Err(MyError{ input: e.input, msg: String::from("Failed to parse using alternatives") })
+            Err(e) => return Err(ParserError{ input: e.input, msg: String::from("Failed to parse using alternatives") })
          };
          i+=1;
       }
@@ -469,7 +472,7 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-    use crate::{lexer::tokens::{Token, TokenType, Position, Range}, parser::{MyError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration}};
+    use crate::{lexer::tokens::{Token, TokenType, Position, Range}, parser::{ParserError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration}};
 
     use super::{parse_class, parse_type};
 

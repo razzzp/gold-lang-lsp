@@ -1,6 +1,6 @@
 use std::{io::{Read}, fs::File};
 
-use crate::lexer::Lexer;
+use crate::{lexer::Lexer, parser::parse_gold};
 
 pub mod lexer;
 pub mod parser;
@@ -17,6 +17,10 @@ fn main() {
     let mut lexer = Lexer::new();
     let tokens = lexer.lex(&file_contents).0;
     println!("{:#?}", tokens);
+    let ast = parse_gold(&tokens);
+    println!("{:#?}", ast.0.0);
+    println!("{:#?}", ast.0.1);
+    println!("{:#?}", ast.1.len());
 }
 
 #[cfg(test)]
