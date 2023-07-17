@@ -337,6 +337,32 @@ fn parse_global_variable_declaration<'a>(input : &'a [Token]) -> Result<(&'a [To
    ));
 }
 
+
+fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>>{
+   todo!();
+   // parse proc [ident]
+   let (next, first_tokens) = match seq_token(&[
+      exp_token(TokenType::Proc),
+      exp_token(TokenType::Identifier),
+   ]) (input){
+      Ok(r) => r,
+      Err(e) => return Err(e)
+   };
+   // parse params
+   let (next, param_nodes) = match parse_parameter_declaration(next){
+      Ok(r) => r,
+      Err(e) => (next, Vec::<Box<dyn IAstNode>>::new())
+   };
+}
+
+fn parse_parameter_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Vec<Box<dyn IAstNode>>), ParserError<'a>>{
+   todo!();
+   let (next, obracket_token) = match exp_token(TokenType::OBracket)(input){
+      Ok((r,t)) => (r, Some(t)),
+      Err(e) => (input, None)
+   };
+}
+
 fn parse_separated_list<'a>(input : &'a [Token], item : TokenType, seperator: TokenType) 
 -> Result<(&'a [Token],  Vec<Token>), ParserError<'a>> {
    let mut identifiers = Vec::<Token>::new();
