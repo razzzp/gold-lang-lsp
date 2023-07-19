@@ -1,6 +1,6 @@
 
 use crate::lexer::tokens::{Token, TokenType, Range, Position};
-use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration};
+use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList};
 
 use self::utils::prepend_msg_to_error;
 
@@ -133,7 +133,7 @@ fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
       Ok((r, t)) => (r, t),
       Err(e) => return Err(e),
    };
-   let (next, idents) = match parse_separated_list(next, TokenType::Identifier, TokenType::Comma) {
+   let (next, idents) = match parse_separated_list_token(next, TokenType::Identifier, TokenType::Comma) {
       Ok((r, l)) => (r, l),
       Err(e) => return Err(e),
    };
@@ -231,7 +231,7 @@ fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAs
       Ok((r,t)) => (r, t.raw_pos, t.pos),
       Err(e) => return Err(e)
    };
-   let (next, tokens) = match parse_separated_list(next, TokenType::Identifier, TokenType::Comma){
+   let (next, tokens) = match parse_separated_list_token(next, TokenType::Identifier, TokenType::Comma){
        Ok((r, ts)) => (r, ts),
        Err(e) => return Err(e)
    };
@@ -288,7 +288,7 @@ fn parse_type_reference_options<'a>(input : &'a [Token]) -> Result<(&'a [Token],
       Ok((r,t)) => (r,t),
       Err(e) => return Err(e)
    };
-   let (next, mut option_tokens) = match parse_separated_list(next, TokenType::Identifier, TokenType::Comma){
+   let (next, mut option_tokens) = match parse_separated_list_token(next, TokenType::Identifier, TokenType::Comma){
       Ok((r, ts)) => (r,ts),
       Err(e) => return Err(e)
    };
@@ -339,7 +339,6 @@ fn parse_global_variable_declaration<'a>(input : &'a [Token]) -> Result<(&'a [To
 
 
 fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>>{
-   todo!();
    // parse proc [ident]
    let (next, first_tokens) = match seq_token(&[
       exp_token(TokenType::Proc),
@@ -351,23 +350,106 @@ fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
    // parse params
    let (next, param_nodes) = match parse_parameter_declaration(next){
       Ok(r) => r,
-      Err(e) => (next, Vec::<Box<dyn IAstNode>>::new())
+      Err(e) => return Err(prepend_msg_to_error("Failed to parse proc decl", e))
    };
-}
 
-fn parse_parameter_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Vec<Box<dyn IAstNode>>), ParserError<'a>>{
    todo!();
-   let (next, obracket_token) = match exp_token(TokenType::OBracket)(input){
-      Ok((r,t)) => (r, Some(t)),
-      Err(e) => (input, None)
-   };
 }
 
-fn parse_separated_list<'a>(input : &'a [Token], item : TokenType, seperator: TokenType) 
--> Result<(&'a [Token],  Vec<Token>), ParserError<'a>> {
-   let mut identifiers = Vec::<Token>::new();
+fn parse_parameter_list_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Option<AstParameterDeclarationList>), ParserError<'a>>{
+   // opening (
+   let (next, obracket_token) = match exp_token(TokenType::OBracket)(input){
+      Ok((r,t)) => (r, t),
+      Err(e) => return Ok((e.input, None))
+   };
+   // param decl list
+   let (next, param_decl_list) = match parse_separated_list(
+      next,
+      parse_parameter_declaration,
+      TokenType::Comma) {
+         Ok(r) => r,
+         Err(e) => return Err(prepend_msg_to_error("Failed to parse param list decl", e))
+   };
+   // closing )
+   let (next, cbracket_token) = match exp_token(TokenType::OBracket)(next){
+      Ok((r,t)) => (r, t),
+      Err(e) => return Err(prepend_msg_to_error("Failed to parse param list decl", e))
+   };
+
+   return Ok((next, Some(AstParameterDeclarationList{
+      raw_pos: obracket_token.raw_pos,
+      pos: obracket_token.pos.clone(),
+      range: Range{start: obracket_token.pos, end: cbracket_token.pos},
+      parameter_list: param_decl_list,
+   })));
+}
+
+fn parse_parameter_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>>{
+   // optional var/inout/const
+   let (next, modifier_token) = match alt_token(&[
+      exp_token(TokenType::Const),
+      exp_token(TokenType::Var),
+      exp_token(TokenType::InOut),
+   ])(input){
+      Ok((n, t)) => (n,Some(t)),
+      Err(e) => (e.input, None)
+   };
+   // identifier
+   let (next, ident_token) = match exp_token(TokenType::Identifier)(next) {
+       Ok(r) => r,
+       Err(e) => return Err(prepend_msg_to_error("Failed parsing parameter decl: {}", e))
+   };
+   // calculate pos and range
+   let mut raw_pos = 0;
+   let mut pos = None;
+   if modifier_token.is_some() {
+      raw_pos = modifier_token.as_ref().unwrap().raw_pos;
+      pos = Some(modifier_token.as_ref().unwrap().pos.clone());
+   } else {
+      raw_pos = ident_token.raw_pos;
+      pos = Some(ident_token.pos.clone());
+   };
+   let pos = pos.unwrap();
+   let mut range = Range{start: pos.clone(), end: ident_token.pos.clone()};
+   // colon
+   let (next, colon) = match exp_token(TokenType::Colon)(next) {
+      Ok((n, t)) => (n, Some(t)),
+      Err(e) => (e.input, None)
+   };
+   if colon.is_some(){
+      let (next, type_node) = match parse_type(next) {
+         Ok(r) => r,
+         Err(e) => return Err(prepend_msg_to_error("Failed parsing parameter decl: {}", e))
+      };
+      range.end = type_node.get_range().end.clone();
+      return Ok((next, Box::new(AstParameterDeclaration{
+         raw_pos,
+         pos,
+         range,
+         identifier: ident_token,
+         modifier: modifier_token,
+         type_node: Some(type_node)
+      })));
+   } else {
+      return Ok((next, Box::new(AstParameterDeclaration{
+         raw_pos,
+         pos,
+         range,
+         identifier: ident_token,
+         modifier: modifier_token,
+         type_node: None
+      })));
+   }
+}
+
+fn parse_separated_list<'a>(
+   input : &'a [Token],
+   parser : impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError>,
+   separator: TokenType) 
+-> Result<(&'a [Token],  Vec<Box<dyn IAstNode>>), ParserError<'a>> {
+   let mut identifiers = Vec::<Box<dyn IAstNode>>::new();
    // match first identifier
-   let r = _parse_seperated_list_recursive(input, &item, &seperator, &mut identifiers);
+   let r = _parse_seperated_list_recursive(input, &parser, &separator, &mut identifiers);
    match r{
       Ok(r) => return Ok((r, identifiers)),
       Err(e) => return Err(e)
@@ -376,6 +458,35 @@ fn parse_separated_list<'a>(input : &'a [Token], item : TokenType, seperator: To
 
 fn _parse_seperated_list_recursive<'a, 'b>(
    input : &'a [Token],
+   parser :&'b impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError>,
+   sep: &'b TokenType,
+   result: &'b mut Vec<Box<dyn IAstNode>>) 
+-> Result<&'a [Token], ParserError<'a>> {
+   // match first identifier
+   let next = match parser(input){
+      Ok((r, n)) => {result.push(n); r},
+      Err(e) => return Err(ParserError { input: e.input, msg:  String::from("Failed to parse uses list")})
+   };
+   let next = match exp_token(sep.clone())(next){
+      Ok((r, _)) => r,
+      Err(e) => return Ok(e.input)
+   };
+   return _parse_seperated_list_recursive(next, parser, sep, result)
+}
+
+fn parse_separated_list_token<'a>(input : &'a [Token], item : TokenType, separator: TokenType) 
+-> Result<(&'a [Token],  Vec<Token>), ParserError<'a>> {
+   let mut identifiers = Vec::<Token>::new();
+   // match first identifier
+   let r = _parse_seperated_list_token_recursive(input, &item, &separator, &mut identifiers);
+   match r{
+      Ok(r) => return Ok((r, identifiers)),
+      Err(e) => return Err(e)
+   };
+}
+
+fn _parse_seperated_list_token_recursive<'a, 'b>(
+   input : &'a [Token],
    item: &'b TokenType,
    sep: &'b TokenType,
    result: &'b mut Vec<Token>) 
@@ -383,15 +494,16 @@ fn _parse_seperated_list_recursive<'a, 'b>(
    // match first identifier
    let mut next = match exp_token(item.clone())(input){
       Ok((r, t)) => {result.push(t); r},
-      Err(e) => return Err(ParserError { input: e.input, msg:  String::from("Failed to parse uses list")})
+      Err(e) => return Err(ParserError { input: e.input, msg:  format!("Failed to parse token list: {}", e.msg)})
    };
    next = match exp_token(sep.clone())(next){
       Ok((r, _)) => r,
       Err(e) => return Ok(e.input)
    };
-   return _parse_seperated_list_recursive(next, item, sep, result)
+   return _parse_seperated_list_token_recursive(next, item, sep, result)
 }
 
+/// Returns parser that expects the given token
 fn exp_token(token_type : TokenType)
    -> impl Fn(&[Token]) -> Result<(&[Token],  Token), ParserError> 
 {
@@ -405,22 +517,22 @@ fn exp_token(token_type : TokenType)
    }
 }
 
-/*
-   wraps the parser so that it doesn't throw error
- */
+/// Wraps the parser so that it doesn't throw error
 fn opt_parse(parser : impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError>) 
-   -> impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError> 
+   -> impl Fn(&[Token]) -> Result<(&[Token],  Option<Box<dyn IAstNode>>), ParserError> 
 {
-   move |input: &[Token]| -> Result<(&[Token],  Box<dyn IAstNode>), ParserError> {
+   move |input: &[Token]| -> Result<(&[Token],  Option<Box<dyn IAstNode>>), ParserError> {
       match parser(input) {
-          Ok(r) => return Ok(r),
+          Ok((r, n)) => return Ok((r, Some(n))),
           _ => ()
       };
       // TODO better way to return Ok? AstEmpty will just be thrown away
-      return Ok((input, Box::new(AstEmpty{})));
+      return Ok((input, None));
    }
 }
 
+/// Returns parser which expects one of the provided tokens.
+/// Parser returns the first successful match.
 fn alt_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token), ParserError>])
    -> impl Fn(&[Token]) -> Result<(&[Token],  Token), ParserError> + '_
 {
@@ -437,6 +549,10 @@ fn alt_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token),
    }
 }
 
+/// Returns parser which parses with one of the provided parsers.
+/// Parser returns the first successful parse.
+/// If unable to parse, will return the error of the parser which was able
+/// to parse the most
 fn alt_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError>])
    -> impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError> + '_
 {
@@ -460,6 +576,7 @@ fn alt_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
    }
 }
 
+/// Returns parser that expects the sequence of tokens given
 fn seq_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token), ParserError>])
    -> impl Fn(&[Token]) -> Result<(&[Token],  Vec<Token>), ParserError> + '_
 {
@@ -478,6 +595,7 @@ fn seq_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token),
    }
 }
 
+/// Returns parser which parses with the given sequence of parsers.
 fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError>])
    -> impl Fn(&[Token]) -> Result<(&[Token],  Vec<Box<dyn IAstNode>>), ParserError> + '_
 {

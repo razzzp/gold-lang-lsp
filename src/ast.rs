@@ -312,3 +312,97 @@ impl IAstNode for AstGlobalVariableDeclaration {
         self
     }
 }
+
+#[derive(Debug)]
+pub struct AstProcedure {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub identifier: Token,
+    pub parameter_list: Option<AstParameterDeclarationList>,
+    pub modifiers: Option<AstMethodModifiers>,
+    // in case need to highlight only the declaration
+    pub end_decl: Position,
+    pub body: Option<AstMethodBody>
+}
+impl IAstNode for AstProcedure {
+    fn get_type(&self) -> &'static str {
+        "Procedure"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct AstParameterDeclarationList {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub parameter_list: Vec<Box<dyn IAstNode>>
+}
+
+#[derive(Debug)]
+pub struct AstParameterDeclaration {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub identifier: Token,
+    pub type_node: Option<Box<dyn IAstNode>>,
+    pub modifier: Option<Token>
+}
+impl IAstNode for AstParameterDeclaration {
+    fn get_type(&self) -> &'static str {
+        "Procedure"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct AstMethodModifiers {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub is_private: bool,
+    pub is_protected: bool,
+    pub is_final: bool,
+    pub is_override: bool,
+    pub external_dll_name: Option<String>,
+    pub is_forward: bool
+}
+
+#[derive(Debug)]
+pub struct AstMethodBody {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+}
+
