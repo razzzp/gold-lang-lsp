@@ -321,8 +321,6 @@ pub struct AstProcedure {
     pub identifier: Token,
     pub parameter_list: Option<AstParameterDeclarationList>,
     pub modifiers: Option<AstMethodModifiers>,
-    // in case need to highlight only the declaration
-    pub end_decl: Position,
     pub body: Option<AstMethodBody>
 }
 impl IAstNode for AstProcedure {

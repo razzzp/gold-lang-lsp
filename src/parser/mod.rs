@@ -1,6 +1,6 @@
 
 use crate::lexer::tokens::{Token, TokenType, Range, Position};
-use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList};
+use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure};
 
 use self::utils::prepend_msg_to_error;
 
@@ -19,6 +19,7 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
       parse_type_declaration,
       parse_constant_declaration,
       parse_global_variable_declaration,
+      parse_procedure_declaration,
    ];
    let mut result = Vec::<Box<dyn IAstNode>>::new();
    let mut errors = Vec::<ParserError>::new();
@@ -46,22 +47,20 @@ fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNod
       Err(e) => return Err(e)
    };
    // class name
-   let (next, token) =  match exp_token(TokenType::Identifier)(next) {
+   let (next, class_name_token) =  match exp_token(TokenType::Identifier)(next) {
       Ok(r) => (r.0, r.1),
       Err(e) => return Err(e)
    };
-   let class_name_token = token;
    // '('
    let (next, _) =  match exp_token(TokenType::OBracket)(next) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
    // parent class
-   let (next, token) =  match exp_token(TokenType::Identifier)(next) {
+   let (next, parent_class_name) =  match exp_token(TokenType::Identifier)(next) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
-   let parent_class_name = token;
    // ')'
    let (next, end_token) =  match exp_token(TokenType::CBracket)(next) {
       Ok(r)=> (r.0, r.1),
@@ -88,17 +87,17 @@ fn parse_constant_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
    // const keyword
    let (next, const_token) = match exp_token(TokenType::Const)(input){
       Ok(r) => r,
-      Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl:", e))
+      Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl: ", e))
    };
    // identifier
    let (next, ident_token) = match exp_token(TokenType::Identifier)(next){
       Ok(r) => r,
-      Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl:", e))
+      Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl: ", e))
    };
    // equals
    let (next, _) = match exp_token(TokenType::Equals)(next){
       Ok(r) => r,
-      Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl:", e))
+      Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl: ", e))
    };
    // string or numeric value
    let (next, value_token) = match alt_token(
@@ -107,7 +106,7 @@ fn parse_constant_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
          exp_token(TokenType::NumericConstant)]
    )(next){
       Ok(r) => r,
-      Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl:", e))
+      Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl: ", e))
    };
    // multi lang
    let (next, multilang_token) = match exp_token(TokenType::MultiLang)(next){
@@ -129,10 +128,12 @@ fn parse_constant_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
 }
 
 fn parse_uses<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError> {
+   // uses
    let (next, uses_token) = match exp_token(TokenType::Uses)(input){
       Ok((r, t)) => (r, t),
       Err(e) => return Err(e),
    };
+   // list of uses: uses1, uses2, ...
    let (next, idents) = match parse_separated_list_token(next, TokenType::Identifier, TokenType::Comma) {
       Ok((r, l)) => (r, l),
       Err(e) => return Err(e),
@@ -159,6 +160,7 @@ fn parse_type_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<
       Ok(r) => r,
       Err(e) => return Err(e)
    };
+   // parse the type
    let (next, type_node) = match  parse_type(next){
        Ok(r) => r,
        Err(e) => return Err(e)
@@ -174,6 +176,7 @@ fn parse_type_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<
 }
 
 fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>>{
+   // TODO record types
    let parsers = [
       parse_type_basic_fixed_size,
       parse_type_basic_dynamic_size,
@@ -186,6 +189,7 @@ fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
 
 fn parse_type_basic_fixed_size<'a>(input : &'a [Token]) 
 -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>> {
+   // basic fixed size
    let parse_result = alt_token(&[
       exp_token(TokenType::Int1),
       exp_token(TokenType::Int2),
@@ -213,6 +217,7 @@ fn parse_type_basic_fixed_size<'a>(input : &'a [Token])
 
 fn parse_type_basic_dynamic_size<'a>(input : &'a [Token]) 
 -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>> {
+   // for text
    let parse_result = alt_token(&[
       exp_token(TokenType::Text),
    ])(input);
@@ -227,14 +232,17 @@ fn parse_type_basic_dynamic_size<'a>(input : &'a [Token])
 }
 
 fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>>{
+   // opening (
    let (next, s_raw_pos, s_pos) = match exp_token(TokenType::OBracket)(input){
       Ok((r,t)) => (r, t.raw_pos, t.pos),
       Err(e) => return Err(e)
    };
+   // list of enums: enum1, enum2, enum3, ...
    let (next, tokens) = match parse_separated_list_token(next, TokenType::Identifier, TokenType::Comma){
        Ok((r, ts)) => (r, ts),
        Err(e) => return Err(e)
    };
+   // closing )
    let (next, e_pos) = match exp_token(TokenType::CBracket)(next){
       Ok((r,t)) => (r, t.pos),
       Err(e) => return Err(e)
@@ -248,6 +256,7 @@ fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAs
 }
 
 fn parse_type_reference<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError<'a>>{
+   // refto/listof
    let result = alt_token(&[
       exp_token(TokenType::RefTo),
       exp_token(TokenType::ListOf)
@@ -256,10 +265,12 @@ fn parse_type_reference<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
       Ok((r,t)) => (r,t),
       Err(e) => return Err(e)
    };
+   // [P,A,T,I,V]
    let (next, mut option_tokens) = match parse_type_reference_options(next){
       Ok((r,t)) => (r,t),
       Err(e) => (e.input, Vec::<Token>::new())
    };
+   // ident
    let (next, ident_token) = match exp_token(TokenType::Identifier)(next) {
       Ok((r,t)) => (r,t),
       Err(e) => return Err(e)
@@ -283,15 +294,18 @@ fn parse_type_reference<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
 }
 
 fn parse_type_reference_options<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Vec<Token>), ParserError<'a>>{
+   // opening [
    let mut result = Vec::<Token>::new();
    let (next, open_token) = match exp_token(TokenType::OSqrBracket)(input) {
       Ok((r,t)) => (r,t),
       Err(e) => return Err(e)
    };
+   // options P,A,T,I,V
    let (next, mut option_tokens) = match parse_separated_list_token(next, TokenType::Identifier, TokenType::Comma){
       Ok((r, ts)) => (r,ts),
       Err(e) => return Err(e)
    };
+   // closing ]
    let (next, closing_token) = match exp_token(TokenType::CSqrBracket)(next) {
       Ok((r,t)) => (r,t),
       Err(e) => return Err(e)
@@ -308,7 +322,7 @@ fn parse_global_variable_declaration<'a>(input : &'a [Token]) -> Result<(&'a [To
       Ok((n, t)) => (n,Some(t)),
       Err(e) => (e.input, None)
    };
-   
+   // ident
    let (next, identifier_token) = match exp_token(TokenType::Identifier)(next){
       Ok((n, t)) => (n,t),
       Err(e) => return Err(e)
@@ -318,6 +332,7 @@ fn parse_global_variable_declaration<'a>(input : &'a [Token]) -> Result<(&'a [To
       Ok((n, t)) => (n,t),
       Err(e) => return Err(e)
    };
+   // parse type
    let (next, type_node) = match parse_type(next){
       Ok((n, t)) => (n,t),
       Err(e) => return Err(e)
@@ -348,12 +363,21 @@ fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
       Err(e) => return Err(e)
    };
    // parse params
-   let (next, param_nodes) = match parse_parameter_declaration(next){
+   let (next, param_nodes) = match parse_parameter_list_declaration(next){
       Ok(r) => r,
-      Err(e) => return Err(prepend_msg_to_error("Failed to parse proc decl", e))
+      Err(e) => return Err(prepend_msg_to_error("Failed to parse proc decl: ", e))
    };
-
-   todo!();
+   // TODO implem proc modifiers
+   // TODO implem proc body
+   return Ok((next, Box::new(AstProcedure{
+      raw_pos: first_tokens[0].raw_pos,
+      pos: first_tokens[0].pos.clone(),
+      range: Range { start: first_tokens[0].pos.clone(), end: first_tokens[1].pos.clone()},
+      identifier: first_tokens[1].clone(),
+      parameter_list: param_nodes,
+      body: None,
+      modifiers: None
+   })))
 }
 
 fn parse_parameter_list_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Option<AstParameterDeclarationList>), ParserError<'a>>{
@@ -368,12 +392,12 @@ fn parse_parameter_list_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Tok
       parse_parameter_declaration,
       TokenType::Comma) {
          Ok(r) => r,
-         Err(e) => return Err(prepend_msg_to_error("Failed to parse param list decl", e))
+         Err(e) => return Err(prepend_msg_to_error("Failed to parse param list decl: ", e))
    };
    // closing )
-   let (next, cbracket_token) = match exp_token(TokenType::OBracket)(next){
+   let (next, cbracket_token) = match exp_token(TokenType::CBracket)(next){
       Ok((r,t)) => (r, t),
-      Err(e) => return Err(prepend_msg_to_error("Failed to parse param list decl", e))
+      Err(e) => return Err(prepend_msg_to_error("Failed to parse param list decl: ", e))
    };
 
    return Ok((next, Some(AstParameterDeclarationList{
@@ -397,7 +421,7 @@ fn parse_parameter_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
    // identifier
    let (next, ident_token) = match exp_token(TokenType::Identifier)(next) {
        Ok(r) => r,
-       Err(e) => return Err(prepend_msg_to_error("Failed parsing parameter decl: {}", e))
+       Err(e) => return Err(prepend_msg_to_error("Failed parsing parameter decl: ", e))
    };
    // calculate pos and range
    let mut raw_pos = 0;
@@ -419,7 +443,7 @@ fn parse_parameter_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
    if colon.is_some(){
       let (next, type_node) = match parse_type(next) {
          Ok(r) => r,
-         Err(e) => return Err(prepend_msg_to_error("Failed parsing parameter decl: {}", e))
+         Err(e) => return Err(prepend_msg_to_error("Failed parsing parameter decl: ", e))
       };
       range.end = type_node.get_range().end.clone();
       return Ok((next, Box::new(AstParameterDeclaration{
@@ -526,7 +550,7 @@ fn opt_parse(parser : impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>)
           Ok((r, n)) => return Ok((r, Some(n))),
           _ => ()
       };
-      // TODO better way to return Ok? AstEmpty will just be thrown away
+
       return Ok((input, None));
    }
 }
@@ -616,9 +640,8 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-    use crate::{lexer::tokens::{Token, TokenType, Position, Range}, parser::{ParserError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration}};
-
-    use super::{parse_class, parse_type};
+   use crate::{lexer::tokens::{Token, TokenType, Position, Range}, parser::{ParserError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, utils::test_utils::cast_and_unwrap}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration}};
+   use super::{parse_class, parse_type};
 
    fn gen_list_of_tokens(list : &[(TokenType, Option<String>)]) -> Vec<Token> {
       let mut result = Vec::<Token>::new();
@@ -950,5 +973,54 @@ mod test {
       assert_eq!(downcasted.options[0].value.as_ref().unwrap().as_str(), "A");
       assert_eq!(downcasted.options[1].value.as_ref().unwrap().as_str(), "P");
       assert_eq!(downcasted.options[2].value.as_ref().unwrap().as_str(), "T");
+   }
+
+   #[test]
+   fn test_parse_procedure_declaration() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::Proc, None),
+         (TokenType::Identifier, Some("FirstMethod".to_string())),
+         (TokenType::OBracket, None),
+         (TokenType::Identifier, Some("FirstParam".to_string())),
+         (TokenType::Colon, None),
+         (TokenType::Identifier, Some("FirstParamType".to_string())),
+         (TokenType::Comma, None),
+         (TokenType::Identifier, Some("SecondParam".to_string())),
+         (TokenType::Colon, None),
+         (TokenType::Identifier, Some("SecondParamType".to_string())),
+         (TokenType::CBracket, None),
+         (TokenType::Private, None),
+         (TokenType::Protected, None),
+         (TokenType::Final, None),
+         (TokenType::Override, None),
+         (TokenType::External, None),
+         (TokenType::StringConstant, Some("SomeDLL.Method".to_string())),
+         (TokenType::Forward, None),
+      ]);
+      let next : &[Token] = &input;
+      let (_, node) = parse_procedure_declaration(next).unwrap();
+      let downcasted = cast_and_unwrap::<AstProcedure>(&node);
+      assert_eq!(downcasted.raw_pos, 0);
+      assert_eq!(downcasted.pos.line, 0);
+      assert_eq!(downcasted.pos.character, 0);
+      assert_eq!(downcasted.range.start.line, 0);
+      assert_eq!(downcasted.range.start.character, 0);
+      // assert_eq!(downcasted.range.end.line, 2);
+      // assert_eq!(downcasted.range.end.character, 20);
+      assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "FirstMethod");
+
+      // test refto type
+      let params = downcasted.parameter_list.as_ref().unwrap();
+      assert_eq!(params.parameter_list.len(), 2);
+      let expected_param_idents = ["FirstParam", "SecondParam"];
+      let expected_param_types = ["FirstParamType", "SecondParamType"];
+      for (i, param_node) in params.parameter_list.iter().enumerate() {
+         let param_node = cast_and_unwrap::<AstParameterDeclaration>(param_node);
+         let ident = param_node.identifier.value.as_ref().unwrap().as_str();
+         let type_node = cast_and_unwrap::<AstTypeBasicFixedSize>(&param_node.type_node.as_ref().unwrap());
+         let type_ident = type_node.type_token.value.as_ref().unwrap().as_str();
+         assert_eq!(ident, expected_param_idents[i]);
+         assert_eq!(type_ident, expected_param_types[i]);
+      }
    }
 }
