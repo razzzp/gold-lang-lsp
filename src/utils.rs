@@ -3,7 +3,7 @@ pub trait IRange {
     fn get_range(&self) -> Range;
 }
 
-#[derive(Debug,Clone, Default)]
+#[derive(Debug,Clone,PartialEq, Default)]
 pub struct Range {
     pub start: Position,
     pub end: Position

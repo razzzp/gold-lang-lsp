@@ -63,7 +63,7 @@ endproc
         let class = &nodes[0].as_any().downcast_ref::<AstClass>().unwrap();
         assert_eq!(class.name.as_str(), "aTestClass");
         assert_eq!(class.parent_class.as_str(), "aParentClass");
-        assert_eq!(class.raw_pos, 6);
+        assert_eq!(class.raw_pos, 0);
 
         // assert second node is uses
         let uses = &nodes[1].as_any().downcast_ref::<AstUses>().unwrap();

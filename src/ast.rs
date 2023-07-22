@@ -366,6 +366,22 @@ impl IRange for AstParameterDeclarationList {
         self.range.clone()
     }
 }
+impl IAstNode for AstParameterDeclarationList {
+    fn get_type(&self) -> &'static str {
+        "Parameter Declaration List"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 
 #[derive(Debug)]
 pub struct AstParameterDeclaration {
@@ -415,6 +431,22 @@ impl IRange for AstMethodModifiers {
         self.range.clone()
     }
 }
+impl IAstNode for AstMethodModifiers {
+    fn get_type(&self) -> &'static str {
+        "Method Modifiers"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 
 #[derive(Debug)]
 pub struct AstMethodBody {
@@ -423,6 +455,27 @@ pub struct AstMethodBody {
     pub range: Range,
     pub statements: Vec<Box<dyn IAstNode>>,
     pub end_proc_token: Token,
+}
+impl IRange for AstMethodBody {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+}
+impl IAstNode for AstMethodBody {
+    fn get_type(&self) -> &'static str {
+        "Method Body"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 #[derive(Debug)]

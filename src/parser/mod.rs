@@ -3,7 +3,7 @@ use crate::lexer::tokens::{Token, TokenType};
 use crate::utils::Range;
 use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody};
 
-use self::utils::{prepend_msg_to_error, get_end_pos};
+use self::utils::{prepend_msg_to_error, get_end_pos, create_new_range};
 
 pub mod utils;
 
@@ -83,9 +83,9 @@ fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNod
    };
    // TODO change behaviour when class name empty
    return Ok((next, Box::new(AstClass{
-      raw_pos: class_name_token.raw_pos,
+      raw_pos: class_token.raw_pos,
       pos: class_token.pos.clone(),
-      range: Range { start: class_token.pos, end: end_token.pos},
+      range: create_new_range(&class_token, &end_token),
       name: class_name_token.value.unwrap().to_owned(),
       parent_class: parent_class_name.value.unwrap().to_owned()
    })));
@@ -136,7 +136,7 @@ fn parse_constant_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
          pos: const_token.pos.clone(),
          identifier: ident_token,
          value: value_token.clone(),
-         range: Range { start: const_token.pos, end: value_token.pos },
+         range: create_new_range(&const_token, &value_token),
          is_multi_lang : if multilang_token.is_some() {true} else {false} 
       })
    ))
@@ -248,8 +248,8 @@ fn parse_type_basic_dynamic_size<'a>(input : &'a [Token])
 
 fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
    // opening (
-   let (next, s_raw_pos, s_pos) = match exp_token(TokenType::OBracket)(input){
-      Ok((r,t)) => (r, t.raw_pos, t.pos),
+   let (next, obracket_token) = match exp_token(TokenType::OBracket)(input){
+      Ok((r,t)) => (r, t),
       Err(e) => return Err(e)
    };
    // list of enums: enum1, enum2, enum3, ...
@@ -258,14 +258,14 @@ fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAs
        Err(e) => return Err(e)
    };
    // closing )
-   let (next, e_pos) = match exp_token(TokenType::CBracket)(next){
-      Ok((r,t)) => (r, t.pos),
+   let (next, cbracket_token) = match exp_token(TokenType::CBracket)(next){
+      Ok((r,t)) => (r, t),
       Err(e) => return Err(e)
    };
    return Ok((next, Box::new(AstTypeEnum{
-      raw_pos: s_raw_pos,
-      pos: s_pos.clone(),
-      range: Range{start: s_pos, end: e_pos},
+      raw_pos: obracket_token.raw_pos,
+      pos: obracket_token.pos.clone(),
+      range: create_new_range(&obracket_token, &cbracket_token),
       variants: tokens
    })));
 }
@@ -379,7 +379,7 @@ fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
    };
    let mut end = first_tokens.get(1).unwrap().range.end.clone();
    // parse params
-   let (next, param_nodes) = match parse_parameter_list_declaration(next){
+   let (next, param_nodes) = match parse_parameter_declaration_list(next){
       Ok(r) => r,
       Err(e) => return Err(prepend_msg_to_error("Failed to parse proc decl: ", e))
    };
@@ -415,7 +415,7 @@ fn has_method_body(modifier_node: &AstMethodModifiers) -> bool {
    return !modifier_node.is_forward && modifier_node.external_dll_name.is_none()
 }
 
-fn parse_parameter_list_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Option<AstParameterDeclarationList>), GoldParserError<'a>>{
+fn parse_parameter_declaration_list<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Option<AstParameterDeclarationList>), GoldParserError<'a>>{
    // opening (
    let (next, obracket_token) = match exp_token(TokenType::OBracket)(input){
       Ok((r,t)) => (r, t),
@@ -438,7 +438,7 @@ fn parse_parameter_list_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Tok
    return Ok((next, Some(AstParameterDeclarationList{
       raw_pos: obracket_token.raw_pos,
       pos: obracket_token.pos.clone(),
-      range: Range{start: obracket_token.pos, end: cbracket_token.pos},
+      range: Range{start: obracket_token.pos, end: cbracket_token.range.end},
       parameter_list: param_decl_list,
    })));
 }
@@ -512,7 +512,7 @@ fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opti
       Err(e) => (e.input, None)
    };
    start = if start == None && private_token.is_some() {Some(private_token.as_ref().unwrap().pos.clone())} else {start};
-   end = if private_token.is_some() {Some(private_token.as_ref().unwrap().pos.clone())} else {end};
+   end = if private_token.is_some() {Some(get_end_pos(private_token.as_ref().unwrap()))} else {end};
    raw_pos = if raw_pos == None && private_token.is_some() {Some(private_token.as_ref().unwrap().raw_pos)} else {raw_pos};
    
    // protected
@@ -521,7 +521,7 @@ fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opti
       Err(e) => (e.input, None)
    };
    start = if start == None && protected_token.is_some() {Some(protected_token.as_ref().unwrap().pos.clone())} else {start};
-   end = if protected_token.is_some() {Some(protected_token.as_ref().unwrap().pos.clone())} else {end};
+   end = if protected_token.is_some() {Some(get_end_pos(protected_token.as_ref().unwrap()))} else {end};
    raw_pos = if raw_pos == None && protected_token.is_some() {Some(protected_token.as_ref().unwrap().raw_pos)} else {raw_pos};
    
    // final
@@ -530,7 +530,7 @@ fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opti
       Err(e) => (e.input, None)
    };
    start = if start == None && final_token.is_some() {Some(final_token.as_ref().unwrap().pos.clone())} else {start};
-   end = if final_token.is_some() {Some(final_token.as_ref().unwrap().pos.clone())} else {end};
+   end = if final_token.is_some() {Some(get_end_pos(final_token.as_ref().unwrap()))} else {end};
    raw_pos = if raw_pos == None && final_token.is_some() {Some(final_token.as_ref().unwrap().raw_pos)} else {raw_pos};
    
    // override
@@ -539,7 +539,7 @@ fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opti
       Err(e) => (e.input, None)
    };
    start = if start == None && override_token.is_some() {Some(override_token.as_ref().unwrap().pos.clone())} else {start};
-   end = if override_token.is_some() {Some(override_token.as_ref().unwrap().pos.clone())} else {end};
+   end = if override_token.is_some() {Some(get_end_pos(override_token.as_ref().unwrap()))} else {end};
    raw_pos = if raw_pos == None && override_token.is_some() {Some(override_token.as_ref().unwrap().raw_pos)} else {raw_pos};
    
    // external
@@ -551,7 +551,7 @@ fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opti
       Err(e) => (e.input, None)
    };
    start = if start == None && external_token_list.is_some() {Some(external_token_list.as_ref().unwrap()[1].pos.clone())} else {start};
-   end = if external_token_list.is_some() {Some(external_token_list.as_ref().unwrap()[1].pos.clone())} else {end};
+   end = if external_token_list.is_some() {Some(get_end_pos(external_token_list.as_ref().unwrap().get(1).unwrap()))} else {end};
    raw_pos = if raw_pos == None && external_token_list.is_some() {Some(external_token_list.as_ref().unwrap()[1].raw_pos)} else {raw_pos};
 
    // forward
@@ -560,7 +560,7 @@ fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opti
       Err(e) => (e.input, None)
    };
    start = if start == None && forward_token.is_some() {Some(forward_token.as_ref().unwrap().pos.clone())} else {start};
-   end = if forward_token.is_some() {Some(forward_token.as_ref().unwrap().pos.clone())} else {end};
+   end = if forward_token.is_some() {Some(get_end_pos(forward_token.as_ref().unwrap()))} else {end};
    raw_pos = if raw_pos == None && forward_token.is_some() {Some(forward_token.as_ref().unwrap().raw_pos)} else {raw_pos};
 
    if private_token.is_none() && protected_token.is_none() && final_token.is_none() &&
@@ -880,7 +880,7 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, utils::test_utils::cast_and_unwrap}, ast::{AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, utils::{test_utils::cast_and_unwrap, create_new_range}, parse_parameter_declaration_list, parse_method_modifiers}, ast::{AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode}};
    use crate::utils::{Position,Range};
    use super::{parse_class, parse_type};
 
@@ -902,20 +902,27 @@ mod test {
       return result;
    }
 
+   fn check_node_pos_and_range(node: &impl IAstNode,input: &Vec<Token>){
+      assert_eq!(node.get_raw_pos(), input.first().unwrap().raw_pos);
+      assert_eq!(node.get_pos(), input.first().unwrap().pos);
+      assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+   }
+
    #[test]
    fn test_parse_class(){
       let input = gen_list_of_tokens(&[
-         (TokenType::Class, None),
+         (TokenType::Class, Some("class".to_string())),
          (TokenType::Identifier, Some(String::from("aTestClass"))),
-         (TokenType::OBracket, None),
+         (TokenType::OBracket, Some("(".to_string())),
          (TokenType::Identifier, Some(String::from("aParentClass"))),
-         (TokenType::CBracket, None),
+         (TokenType::CBracket, Some(")".to_string())),
       ]);
       let r = parse_class(&input).unwrap();
       let class = r.1.as_any().downcast_ref::<AstClass>().unwrap();
+      check_node_pos_and_range(class, &input);
       assert_eq!(r.0.len(), 0);
       assert_eq!(class.name, "aTestClass");
-      assert_eq!(class.raw_pos, 5);
+      assert_eq!(class.raw_pos, 0);
       assert_eq!(class.parent_class, "aParentClass");
    }
 
@@ -944,15 +951,16 @@ mod test {
    #[test]
    fn test_parse_uses(){
       let input = gen_list_of_tokens(&[
-         (TokenType::Uses, None),
+         (TokenType::Uses, Some("uses".to_string())),
          (TokenType::Identifier, Some(String::from("aTestClass"))),
-         (TokenType::Comma, None),
+         (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some(String::from("aParentClass"))),
          ]);
       let r = parse_uses(&input).unwrap();
       // ensure returned input is empty
       assert_eq!(r.0.len(), 0);
       let uses_node = r.1.as_any().downcast_ref::<AstUses>().unwrap();
+      check_node_pos_and_range(uses_node, &input);
 
       // first uses
       let token = &uses_node.list_of_uses[0];
@@ -982,18 +990,18 @@ mod test {
    #[test]
    fn test_parse_type_basic_fixed_size() {
       let input = gen_list_of_tokens(&[
-         (TokenType::Int1, None),
-         (TokenType::Int2, None),
-         (TokenType::Int4, None),
-         (TokenType::Int8, None),
-         (TokenType::Boolean, None),
-         (TokenType::Char, None),
-         (TokenType::Num4, None),
-         (TokenType::Num8, None),
-         (TokenType::Num10, None),
-         (TokenType::Decimal, None),
-         (TokenType::CString, None),
-         (TokenType::String, None),
+         (TokenType::Int1, Some("int1".to_string())),
+         (TokenType::Int2, Some("int2".to_string())),
+         (TokenType::Int4, Some("Int4".to_string())),
+         (TokenType::Int8, Some("Int8".to_string())),
+         (TokenType::Boolean, Some("Boolean".to_string())),
+         (TokenType::Char, Some("Char".to_string())),
+         (TokenType::Num4, Some("Num4".to_string())),
+         (TokenType::Num8, Some("Num8".to_string())),
+         (TokenType::Num10, Some("Num10".to_string())),
+         (TokenType::Decimal, Some("Decimal".to_string())),
+         (TokenType::CString, Some("CString".to_string())),
+         (TokenType::String, Some("String".to_string())),
          (TokenType::Identifier, Some("tCustomType".to_string())),
       ]);
       let mut next : &[Token] = &input;
@@ -1004,10 +1012,9 @@ mod test {
             Err(e) => panic!("{}",e.msg.to_owned())
          };
          let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeBasicFixedSize>().unwrap();
-         assert_eq!(
-            downcasted.raw_pos,
-            input[count].raw_pos
-         );
+         assert_eq!(downcasted.raw_pos,input[count].raw_pos);
+         assert_eq!(downcasted.pos,input[count].pos);
+         assert_eq!(downcasted.range,input[count].range);
          assert_eq!(
             downcasted.type_token.token_type,
             input[count].token_type
@@ -1024,7 +1031,7 @@ mod test {
    #[test]
    fn test_parse_type_basic_dynamic_size() {
       let input = gen_list_of_tokens(&[
-         (TokenType::Text, None),
+         (TokenType::Text, Some("Text".to_string())),
       ]);
       let mut next : &[Token] = &input;
       let mut count = 0;
@@ -1034,10 +1041,9 @@ mod test {
             Err(e) => panic!("{}",e.msg.to_owned())
          };
          let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeBasicDynamicSize>().unwrap();
-         assert_eq!(
-            downcasted.raw_pos,
-            input[count].raw_pos
-         );
+         assert_eq!(downcasted.raw_pos,input[count].raw_pos);
+         assert_eq!(downcasted.pos,input[count].pos);
+         assert_eq!(downcasted.range,input[count].range);
          assert_eq!(
             downcasted.type_token.token_type,
             input[count].token_type
@@ -1050,13 +1056,13 @@ mod test {
    #[test]
    fn test_parse_type_enum() {
       let input = gen_list_of_tokens(&[
-         (TokenType::OBracket, None),
+         (TokenType::OBracket, Some("(".to_string())),
          (TokenType::Identifier, Some("Variant1".to_string())),
-         (TokenType::Comma, None),
+         (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("Variant2".to_string())),
-         (TokenType::Comma, None),
+         (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("Variant3".to_string())),
-         (TokenType::CBracket, None),
+         (TokenType::CBracket, Some(")".to_string())),
       ]);
       let next : &[Token] = &input;
 
@@ -1065,26 +1071,20 @@ mod test {
          Err(e) => panic!("{}",e.msg.to_owned())
       };
       let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeEnum>().unwrap();
-      assert_eq!(downcasted.raw_pos, 0);
-      assert_eq!(downcasted.pos.line, 0);
-      assert_eq!(downcasted.pos.character, 0);
-      assert_eq!(downcasted.range.start.line, 0);
-      assert_eq!(downcasted.range.start.character, 0);
-      assert_eq!(downcasted.range.end.line, 1);
-      assert_eq!(downcasted.range.end.character, 10);
+      check_node_pos_and_range(downcasted, &input);
    }
 
    #[test]
    fn test_parse_type_reference_refto() {
       let input = gen_list_of_tokens(&[
-         (TokenType::RefTo, None),
-         (TokenType::OSqrBracket, None),
+         (TokenType::RefTo, Some("refto".to_string())),
+         (TokenType::OSqrBracket, Some("[".to_string())),
          (TokenType::Identifier, Some("A".to_string())),
-         (TokenType::Comma, None),
+         (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("P".to_string())),
-         (TokenType::Comma, None),
+         (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("T".to_string())),
-         (TokenType::CSqrBracket, None),
+         (TokenType::CSqrBracket, Some("]".to_string())),
          (TokenType::Identifier, Some("aType".to_string())),
       ]);
       let next : &[Token] = &input;
@@ -1094,13 +1094,7 @@ mod test {
          Err(e) => panic!("{}",e.msg.to_owned())
       };
       let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeReference>().unwrap();
-      assert_eq!(downcasted.raw_pos, 0);
-      assert_eq!(downcasted.pos.line, 0);
-      assert_eq!(downcasted.pos.character, 0);
-      assert_eq!(downcasted.range.start.line, 0);
-      assert_eq!(downcasted.range.start.character, 0);
-      assert_eq!(downcasted.range.end.line, 2);
-      assert_eq!(downcasted.range.end.character, 5);
+      check_node_pos_and_range(downcasted, &input);
       assert_eq!(downcasted.ref_type.token_type, TokenType::RefTo);
       assert_eq!(downcasted.options.len(), 3);
       assert_eq!(downcasted.options[0].value.as_ref().unwrap().as_str(), "A");
@@ -1111,17 +1105,17 @@ mod test {
    #[test]
    fn test_parse_type_declaration_refto() {
       let input = gen_list_of_tokens(&[
-         (TokenType::Type, None),
+         (TokenType::Type, Some("type".to_string())),
          (TokenType::Identifier, Some("tTestType".to_owned())),
-         (TokenType::Colon, None),
-         (TokenType::RefTo, None),
-         (TokenType::OSqrBracket, None),
+         (TokenType::Colon, Some(":".to_string())),
+         (TokenType::RefTo, Some("refto".to_string())),
+         (TokenType::OSqrBracket, Some("[".to_string())),
          (TokenType::Identifier, Some("A".to_string())),
-         (TokenType::Comma, None),
+         (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("P".to_string())),
-         (TokenType::Comma, None),
+         (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("T".to_string())),
-         (TokenType::CSqrBracket, None),
+         (TokenType::CSqrBracket, Some("]".to_string())),
          (TokenType::Identifier, Some("aType".to_string())),
       ]);
       let next : &[Token] = &input;
@@ -1131,13 +1125,7 @@ mod test {
          Err(e) => panic!("{}",e.msg.to_owned())
       };
       let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeDeclaration>().unwrap();
-      assert_eq!(downcasted.raw_pos, 0);
-      assert_eq!(downcasted.pos.line, 0);
-      assert_eq!(downcasted.pos.character, 0);
-      assert_eq!(downcasted.range.start.line, 0);
-      assert_eq!(downcasted.range.start.character, 0);
-      assert_eq!(downcasted.range.end.line, 2);
-      assert_eq!(downcasted.range.end.character, 20);
+      check_node_pos_and_range(downcasted, &input);
       assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "tTestType");
 
       // test refto type
@@ -1152,9 +1140,9 @@ mod test {
    #[test]
    fn test_parse_constant_declaration_string() {
       let input = gen_list_of_tokens(&[
-         (TokenType::Const, None),
+         (TokenType::Const, Some("const".to_string())),
          (TokenType::Identifier, Some("cAConstant".to_string())),
-         (TokenType::Equals, None),
+         (TokenType::Equals, Some("=".to_string())),
          (TokenType::StringConstant, Some("a constant string".to_string())),
       ]);
       let next : &[Token] = &input;
@@ -1164,13 +1152,7 @@ mod test {
          Err(e) => panic!("{}",e.msg.to_owned())
       };
       let downcasted = node.as_ref().as_any().downcast_ref::<AstConstantDeclaration>().unwrap();
-      assert_eq!(downcasted.raw_pos, 0);
-      assert_eq!(downcasted.pos.line, 0);
-      assert_eq!(downcasted.pos.character, 0);
-      assert_eq!(downcasted.range.start.line, 0);
-      assert_eq!(downcasted.range.start.character, 0);
-      assert_eq!(downcasted.range.end.line, 0);
-      assert_eq!(downcasted.range.end.character, 15);
+      check_node_pos_and_range(downcasted, &input);
       assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "cAConstant");
       assert_eq!(downcasted.value.value.as_ref().unwrap().as_str(), "a constant string");
    }
@@ -1178,17 +1160,17 @@ mod test {
    #[test]
    fn test_parse_global_variable_declaration() {
       let input = gen_list_of_tokens(&[
-         (TokenType::Memory, None),
+         (TokenType::Memory, Some("memory".to_string())),
          (TokenType::Identifier, Some("aVariable".to_owned())),
-         (TokenType::Colon, None),
-         (TokenType::RefTo, None),
-         (TokenType::OSqrBracket, None),
+         (TokenType::Colon, Some(":".to_string())),
+         (TokenType::RefTo, Some("refto".to_string())),
+         (TokenType::OSqrBracket, Some("[".to_string())),
          (TokenType::Identifier, Some("A".to_string())),
-         (TokenType::Comma, None),
+         (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("P".to_string())),
-         (TokenType::Comma, None),
+         (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("T".to_string())),
-         (TokenType::CSqrBracket, None),
+         (TokenType::CSqrBracket, Some("]".to_string())),
          (TokenType::Identifier, Some("aType".to_string())),
       ]);
       let next : &[Token] = &input;
@@ -1198,13 +1180,7 @@ mod test {
          Err(e) => panic!("{}",e.msg.to_owned())
       };
       let downcasted = node.as_ref().as_any().downcast_ref::<AstGlobalVariableDeclaration>().unwrap();
-      assert_eq!(downcasted.raw_pos, 0);
-      assert_eq!(downcasted.pos.line, 0);
-      assert_eq!(downcasted.pos.character, 0);
-      assert_eq!(downcasted.range.start.line, 0);
-      assert_eq!(downcasted.range.start.character, 0);
-      assert_eq!(downcasted.range.end.line, 2);
-      assert_eq!(downcasted.range.end.character, 20);
+      check_node_pos_and_range(downcasted, &input);
       assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "aVariable");
 
       // test refto type
@@ -1219,36 +1195,30 @@ mod test {
    #[test]
    fn test_parse_procedure_declaration() {
       let input = gen_list_of_tokens(&[
-         (TokenType::Proc, None),
+         (TokenType::Proc, Some("procedure".to_string())),
          (TokenType::Identifier, Some("FirstMethod".to_string())),
-         (TokenType::OBracket, None),
-         (TokenType::InOut, None),
+         (TokenType::OBracket, Some("(".to_string())),
+         (TokenType::InOut, Some("inout".to_string())),
          (TokenType::Identifier, Some("FirstParam".to_string())),
-         (TokenType::Colon, None),
+         (TokenType::Colon, Some(":".to_string())),
          (TokenType::Identifier, Some("FirstParamType".to_string())),
-         (TokenType::Comma, None),
+         (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("SecondParam".to_string())),
-         (TokenType::Colon, None),
+         (TokenType::Colon, Some(":".to_string())),
          (TokenType::Identifier, Some("SecondParamType".to_string())),
-         (TokenType::CBracket, None),
-         (TokenType::Private, None),
-         (TokenType::Protected, None),
-         (TokenType::Final, None),
-         (TokenType::Override, None),
-         (TokenType::External, None),
+         (TokenType::CBracket, Some(")".to_string())),
+         (TokenType::Private, Some("private".to_string())),
+         (TokenType::Protected, Some("protected".to_string())),
+         (TokenType::Final, Some("final".to_string())),
+         (TokenType::Override, Some("override".to_string())),
+         (TokenType::External, Some("external".to_string())),
          (TokenType::StringConstant, Some("SomeDLL.Method".to_string())),
-         (TokenType::Forward, None),
+         (TokenType::Forward, Some("forward".to_string())),
       ]);
       let next : &[Token] = &input;
       let (_, node) = parse_procedure_declaration(next).unwrap();
       let downcasted = cast_and_unwrap::<AstProcedure>(&node);
-      assert_eq!(downcasted.raw_pos, 0);
-      assert_eq!(downcasted.pos.line, 0);
-      assert_eq!(downcasted.pos.character, 0);
-      assert_eq!(downcasted.range.start.line, 0);
-      assert_eq!(downcasted.range.start.character, 0);
-      // assert_eq!(downcasted.range.end.line, 2);
-      // assert_eq!(downcasted.range.end.character, 20);
+      check_node_pos_and_range(downcasted, &input);
       assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "FirstMethod");
 
       // test params
@@ -1272,5 +1242,111 @@ mod test {
       assert!(modifiers_node.is_override);
       assert_eq!(modifiers_node.external_dll_name.as_ref().unwrap().as_str(), "SomeDLL.Method");
       assert!(modifiers_node.is_forward);
+   }
+
+   #[test]
+   fn test_parse_parameter_declaration_list() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::OBracket, Some("(".to_string())),
+         (TokenType::InOut, Some("inout".to_string())),
+         (TokenType::Identifier, Some("FirstParam".to_string())),
+         (TokenType::Colon, Some(":".to_string())),
+         (TokenType::Identifier, Some("FirstParamType".to_string())),
+         (TokenType::Comma, Some(",".to_string())),
+         (TokenType::Var, Some("var".to_string())),
+         (TokenType::Identifier, Some("SecondParam".to_string())),
+         (TokenType::Colon, Some(":".to_string())),
+         (TokenType::Identifier, Some("SecondParamType".to_string())),
+         (TokenType::Comma, Some(",".to_string())),
+         (TokenType::Var, Some("const".to_string())),
+         (TokenType::Identifier, Some("ThirdParam".to_string())),
+         (TokenType::Colon, Some(":".to_string())),
+         (TokenType::Identifier, Some("ThirdParamType".to_string())),
+         (TokenType::CBracket, Some(")".to_string())),
+      ]);
+      // test pos
+      let next : &[Token] = &input;
+      let (_, node) = parse_parameter_declaration_list(next).unwrap();
+      let node = node.unwrap();
+      check_node_pos_and_range(&node, &input);
+
+      // test params
+      assert_eq!(node.parameter_list.len(), 3);
+      for (i, param_node) in node.parameter_list.iter().enumerate() {
+         let param_node = cast_and_unwrap::<AstParameterDeclaration>(param_node);
+         let ident = param_node.identifier.value.as_ref().unwrap().as_str();
+         let modifier = param_node.modifier.as_ref().unwrap().value.as_ref().unwrap().as_str();
+         let type_node = cast_and_unwrap::<AstTypeBasicFixedSize>(&param_node.type_node.as_ref().unwrap());
+         let type_ident = type_node.type_token.value.as_ref().unwrap().as_str();
+         assert_eq!(modifier, input[1+0+i*5].value.as_ref().unwrap().as_str());
+         assert_eq!(ident, input[1+1+i*5].value.as_ref().unwrap().as_str());
+         assert_eq!(type_ident, input[1+3+i*5].value.as_ref().unwrap().as_str());
+      }
+   }
+
+   #[test]
+   fn test_parse_parameter_declaration_list_2() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::OBracket, Some("(".to_string())),
+         (TokenType::InOut, Some("inout".to_string())),
+         (TokenType::Identifier, Some("FirstParam".to_string())),
+         (TokenType::Comma, Some(",".to_string())),
+         (TokenType::Identifier, Some("SecondParam".to_string())),
+         (TokenType::Colon, Some(":".to_string())),
+         (TokenType::Identifier, Some("SecondParamType".to_string())),
+         (TokenType::CBracket, Some(")".to_string())),
+      ]);
+      // test pos
+      let next : &[Token] = &input;
+      let (_, node) = parse_parameter_declaration_list(next).unwrap();
+      let node = node.unwrap();
+      check_node_pos_and_range(&node, &input);
+
+      assert_eq!(node.parameter_list.len(), 2);
+      // test param 1
+      let param_node = cast_and_unwrap::<AstParameterDeclaration>(&node.parameter_list[0]);
+      let ident = param_node.identifier.value.as_ref().unwrap().as_str();
+      let modifier = param_node.modifier.as_ref().unwrap().value.as_ref().unwrap().as_str();
+      let type_node = &param_node.type_node;
+      assert!(type_node.is_none());
+      assert_eq!(modifier, "inout");
+      assert_eq!(ident, "FirstParam");
+
+      // test param 2
+      let param_node = cast_and_unwrap::<AstParameterDeclaration>(&node.parameter_list[1]);
+      let ident = param_node.identifier.value.as_ref().unwrap().as_str();
+      let modifier = &param_node.modifier;
+      let type_node = cast_and_unwrap::<AstTypeBasicFixedSize>(&param_node.type_node.as_ref().unwrap());
+      let type_ident = type_node.type_token.value.as_ref().unwrap().as_str();
+      assert!(modifier.is_none());
+      assert_eq!(ident, "SecondParam");
+      assert_eq!(type_ident, "SecondParamType");
+
+   }
+
+   #[test]
+   fn test_parse_method_modifiers() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::Private, Some("private".to_string())),
+         (TokenType::Protected, Some("protected".to_string())),
+         (TokenType::Final, Some("final".to_string())),
+         (TokenType::Override, Some("override".to_string())),
+         (TokenType::External, Some("external".to_string())),
+         (TokenType::StringConstant, Some("SomeDLL.Method".to_string())),
+         (TokenType::Forward, Some("forward".to_string())),
+      ]);
+      // test pos
+      let next : &[Token] = &input;
+      let (_, node) = parse_method_modifiers(next).unwrap();
+      let node = node.unwrap();
+      check_node_pos_and_range(&node, &input);
+
+      // test modifiers
+      assert!(node.is_private);
+      assert!(node.is_protected);
+      assert!(node.is_override);
+      assert!(node.is_final);
+      assert_eq!(node.external_dll_name.unwrap(), "SomeDLL.Method".to_string());
+      assert!(node.is_forward);
    }
 }
