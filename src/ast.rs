@@ -105,18 +105,18 @@ impl IAstNode for AstUses {
 }
 
 #[derive(Debug)]
-pub struct AstTypeBasicFixedSize {
+pub struct AstTypeBasic {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
     pub type_token: Token,
 }
-impl IRange for AstTypeBasicFixedSize {
+impl IRange for AstTypeBasic {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
 }
-impl IAstNode for AstTypeBasicFixedSize {
+impl IAstNode for AstTypeBasic {
     fn get_type(&self) -> &'static str {
         return "Type Basic Fixed";
     }
@@ -126,36 +126,6 @@ impl IAstNode for AstTypeBasicFixedSize {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_pos(&self) -> Position {
-        self.pos.clone()
-    }
-    fn as_range(&self) -> &dyn IRange {
-        self
-    }
-}
-#[derive(Debug)]
-pub struct AstTypeBasicDynamicSize {
-    pub raw_pos: usize,
-    pub pos: Position,
-    pub range: Range,
-    pub type_token: Token,
-}
-impl IRange for AstTypeBasicDynamicSize {
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
-}
-impl IAstNode for AstTypeBasicDynamicSize {
-    fn get_type(&self) -> &'static str {
-        return "Type Basic Dynamic";
-    }
-    fn get_raw_pos(&self) -> usize {
-        return self.raw_pos;
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }

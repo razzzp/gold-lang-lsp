@@ -1,7 +1,7 @@
 
 use crate::lexer::tokens::{Token, TokenType};
 use crate::utils::Range;
-use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction};
+use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction};
 
 use self::utils::{prepend_msg_to_error, get_end_pos, create_new_range};
 
@@ -194,8 +194,7 @@ fn parse_type_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<
 fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
    // TODO record types
    let parsers = [
-      parse_type_basic_fixed_size,
-      parse_type_basic_dynamic_size,
+      parse_type_basic,
       parse_type_enum,
       parse_type_reference,
    ];
@@ -203,7 +202,7 @@ fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
    return parse_result;
 }
 
-fn parse_type_basic_fixed_size<'a>(input : &'a [Token]) 
+fn parse_type_basic<'a>(input : &'a [Token]) 
 -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>> {
    // basic fixed size
    let parse_result = alt_token(&[
@@ -219,27 +218,12 @@ fn parse_type_basic_fixed_size<'a>(input : &'a [Token])
       exp_token(TokenType::Decimal),
       exp_token(TokenType::CString),
       exp_token(TokenType::String),
+      exp_token(TokenType::Text),
       exp_token(TokenType::Identifier),
    ])(input);
    return match parse_result {
-      Ok((r, t)) => Ok((r, Box::new(AstTypeBasicFixedSize{
+      Ok((r, t)) => Ok((r, Box::new(AstTypeBasic{
          raw_pos:t.raw_pos,
-         pos: t.pos.clone(),
-         range: t.range.clone(),
-         type_token: t}))),
-      Err(e) => Err(e)
-   }
-}
-
-fn parse_type_basic_dynamic_size<'a>(input : &'a [Token]) 
--> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>> {
-   // for text
-   let parse_result = alt_token(&[
-      exp_token(TokenType::Text),
-   ])(input);
-   return match parse_result {
-      Ok((r, t)) => Ok((r, Box::new(AstTypeBasicDynamicSize{
-         raw_pos:t.raw_pos, 
          pos: t.pos.clone(),
          range: t.range.clone(),
          type_token: t}))),
@@ -435,8 +419,7 @@ fn parse_function_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
    };
    // return type
    let return_type_parsers = [
-      parse_type_basic_fixed_size,
-      parse_type_basic_dynamic_size
+      parse_type_basic
    ];
    let (next, return_type_node) = match alt_parse(&return_type_parsers)(next){
       Ok(r) => r,
@@ -942,7 +925,7 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, utils::{test_utils::cast_and_unwrap, create_new_range}, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration}, ast::{AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode, AstFunction}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, utils::{test_utils::cast_and_unwrap, create_new_range}, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic}, ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode, AstFunction}};
    use crate::utils::{Position,Range};
    use super::{parse_class, parse_type};
 
@@ -1050,7 +1033,7 @@ mod test {
    }
 
    #[test]
-   fn test_parse_type_basic_fixed_size() {
+   fn test_parse_type_basic() {
       let input = gen_list_of_tokens(&[
          (TokenType::Int1, Some("int1".to_string())),
          (TokenType::Int2, Some("int2".to_string())),
@@ -1064,16 +1047,17 @@ mod test {
          (TokenType::Decimal, Some("Decimal".to_string())),
          (TokenType::CString, Some("CString".to_string())),
          (TokenType::String, Some("String".to_string())),
+         (TokenType::Text, Some("Text".to_string())),
          (TokenType::Identifier, Some("tCustomType".to_string())),
       ]);
       let mut next : &[Token] = &input;
       let mut count = 0;
       while !next.is_empty(){
-         let (remaining, node) = match parse_type(next) {
+         let (remaining, node) = match parse_type_basic(next) {
             Ok((r, n)) => (r,n),
             Err(e) => panic!("{}",e.msg.to_owned())
          };
-         let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeBasicFixedSize>().unwrap();
+         let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeBasic>().unwrap();
          assert_eq!(downcasted.raw_pos,input[count].raw_pos);
          assert_eq!(downcasted.pos,input[count].pos);
          assert_eq!(downcasted.range,input[count].range);
@@ -1089,31 +1073,6 @@ mod test {
          }
       }
    } 
-
-   #[test]
-   fn test_parse_type_basic_dynamic_size() {
-      let input = gen_list_of_tokens(&[
-         (TokenType::Text, Some("Text".to_string())),
-      ]);
-      let mut next : &[Token] = &input;
-      let mut count = 0;
-      while !next.is_empty(){
-         let (remaining, node) = match parse_type(next) {
-            Ok((r, n)) => (r,n),
-            Err(e) => panic!("{}",e.msg.to_owned())
-         };
-         let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeBasicDynamicSize>().unwrap();
-         assert_eq!(downcasted.raw_pos,input[count].raw_pos);
-         assert_eq!(downcasted.pos,input[count].pos);
-         assert_eq!(downcasted.range,input[count].range);
-         assert_eq!(
-            downcasted.type_token.token_type,
-            input[count].token_type
-         );
-         count += 1;
-         next = remaining;
-      }
-   }
 
    #[test]
    fn test_parse_type_enum() {
@@ -1290,7 +1249,7 @@ mod test {
       for (i, param_node) in params.parameter_list.iter().enumerate() {
          let param_node = cast_and_unwrap::<AstParameterDeclaration>(param_node);
          let ident = param_node.identifier.value.as_ref().unwrap().as_str();
-         let type_node = cast_and_unwrap::<AstTypeBasicFixedSize>(&param_node.type_node.as_ref().unwrap());
+         let type_node = cast_and_unwrap::<AstTypeBasic>(&param_node.type_node.as_ref().unwrap());
          let type_ident = type_node.type_token.value.as_ref().unwrap().as_str();
          assert_eq!(ident, expected_param_idents[i]);
          assert_eq!(type_ident, expected_param_types[i]);
@@ -1341,13 +1300,13 @@ mod test {
       for (i, param_node) in params.parameter_list.iter().enumerate() {
          let param_node = cast_and_unwrap::<AstParameterDeclaration>(param_node);
          let ident = param_node.identifier.value.as_ref().unwrap().as_str();
-         let type_node = cast_and_unwrap::<AstTypeBasicFixedSize>(&param_node.type_node.as_ref().unwrap());
+         let type_node = cast_and_unwrap::<AstTypeBasic>(&param_node.type_node.as_ref().unwrap());
          let type_ident = type_node.type_token.value.as_ref().unwrap().as_str();
          assert_eq!(ident, expected_param_idents[i]);
          assert_eq!(type_ident, expected_param_types[i]);
       }
       // test return type
-      let return_node = downcasted.return_type.as_any().downcast_ref::<AstTypeBasicFixedSize>().unwrap();
+      let return_node = downcasted.return_type.as_any().downcast_ref::<AstTypeBasic>().unwrap();
       assert_eq!(return_node.type_token.value.as_ref().unwrap().as_str(), "aReturnType");
       // test modifiers
       let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
@@ -1391,7 +1350,7 @@ mod test {
          let param_node = cast_and_unwrap::<AstParameterDeclaration>(param_node);
          let ident = param_node.identifier.value.as_ref().unwrap().as_str();
          let modifier = param_node.modifier.as_ref().unwrap().value.as_ref().unwrap().as_str();
-         let type_node = cast_and_unwrap::<AstTypeBasicFixedSize>(&param_node.type_node.as_ref().unwrap());
+         let type_node = cast_and_unwrap::<AstTypeBasic>(&param_node.type_node.as_ref().unwrap());
          let type_ident = type_node.type_token.value.as_ref().unwrap().as_str();
          assert_eq!(modifier, input[1+0+i*5].value.as_ref().unwrap().as_str());
          assert_eq!(ident, input[1+1+i*5].value.as_ref().unwrap().as_str());
@@ -1431,7 +1390,7 @@ mod test {
       let param_node = cast_and_unwrap::<AstParameterDeclaration>(&node.parameter_list[1]);
       let ident = param_node.identifier.value.as_ref().unwrap().as_str();
       let modifier = &param_node.modifier;
-      let type_node = cast_and_unwrap::<AstTypeBasicFixedSize>(&param_node.type_node.as_ref().unwrap());
+      let type_node = cast_and_unwrap::<AstTypeBasic>(&param_node.type_node.as_ref().unwrap());
       let type_ident = type_node.type_token.value.as_ref().unwrap().as_str();
       assert!(modifier.is_none());
       assert_eq!(ident, "SecondParam");
