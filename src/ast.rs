@@ -9,9 +9,11 @@ pub trait IAstNode: std::fmt::Debug + IRange {
     fn get_pos(&self) -> Position;
     // fn get_range(&self) -> Range;
     fn as_any(&self) -> &dyn Any;
+    fn as_range(&self) -> &dyn IRange;
     // fn get_token(&self) -> Token;
     // fn eval() -> ();
 }
+
 
 #[derive(Debug)]
 pub struct AstTerminal {
@@ -34,6 +36,9 @@ impl IAstNode for AstTerminal {
     }
     fn get_pos(&self) -> Position {
         self.token.pos.clone()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
     }
 }
 
@@ -64,6 +69,9 @@ impl IAstNode for AstClass {
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -90,6 +98,9 @@ impl IAstNode for AstUses {
     }
     fn get_pos(&self) -> Position {
         self.pos.clone()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
     }
 }
 
@@ -118,7 +129,9 @@ impl IAstNode for AstTypeBasicFixedSize {
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }
-
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 #[derive(Debug)]
 pub struct AstTypeBasicDynamicSize {
@@ -146,6 +159,9 @@ impl IAstNode for AstTypeBasicDynamicSize {
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -168,6 +184,9 @@ impl IAstNode for AstEmpty {
 
     fn get_pos(&self) -> Position {
         todo!()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
     }
 }
 
@@ -197,6 +216,9 @@ impl IAstNode for AstTypeEnum {
     }
     fn as_any(&self) -> &dyn Any {
         self 
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
     }
 }
 
@@ -228,6 +250,9 @@ impl IAstNode for AstTypeReference {
     fn as_any(&self) -> &dyn Any {
         self
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -256,6 +281,9 @@ impl IAstNode for AstTypeDeclaration {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_range(&self) -> &dyn IRange {
         self
     }
 }
@@ -289,6 +317,9 @@ impl IAstNode for AstConstantDeclaration {
     fn as_any(&self) -> &dyn Any {
         self
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -320,6 +351,9 @@ impl IAstNode for AstGlobalVariableDeclaration {
     fn as_any(&self) -> &dyn Any {
         self
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -337,9 +371,9 @@ impl IRange for AstProcedure {
         self.range.clone()
     }
 }
-impl IAstNode for AstProcedure {
+impl IAstNode for AstFunction {
     fn get_type(&self) -> &'static str {
-        "Procedure"
+        "Procedure Declaration"
     }
 
     fn get_raw_pos(&self) -> usize {
@@ -350,6 +384,46 @@ impl IAstNode for AstProcedure {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+
+
+#[derive(Debug)]
+pub struct AstFunction {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub identifier: Token,
+    pub parameter_list: Option<AstParameterDeclarationList>,
+    pub return_type: Box<dyn IAstNode>,
+    pub modifiers: Option<AstMethodModifiers>,
+    pub body: Option<AstMethodBody>
+}
+impl IRange for AstFunction {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+}
+impl IAstNode for AstProcedure {
+    fn get_type(&self) -> &'static str {
+        "Function Declaration"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_range(&self) -> &dyn IRange {
         self
     }
 }
@@ -381,6 +455,9 @@ impl IAstNode for AstParameterDeclarationList {
     fn as_any(&self) -> &dyn Any {
         self
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -410,6 +487,9 @@ impl IAstNode for AstParameterDeclaration {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_range(&self) -> &dyn IRange {
         self
     }
 }
@@ -446,6 +526,9 @@ impl IAstNode for AstMethodModifiers {
     fn as_any(&self) -> &dyn Any {
         self
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -454,7 +537,7 @@ pub struct AstMethodBody {
     pub pos: Position,
     pub range: Range,
     pub statements: Vec<Box<dyn IAstNode>>,
-    pub end_proc_token: Token,
+    pub end_token: Token,
 }
 impl IRange for AstMethodBody {
     fn get_range(&self) -> Range {
@@ -474,6 +557,9 @@ impl IAstNode for AstMethodBody {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_range(&self) -> &dyn IRange {
         self
     }
 }
@@ -503,6 +589,9 @@ impl IAstNode for AstComment {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_range(&self) -> &dyn IRange {
         self
     }
 }

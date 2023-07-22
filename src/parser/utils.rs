@@ -7,13 +7,11 @@ pub fn prepend_msg_to_error<'a>(s: &str, mut error: GoldParserError<'a>) -> Gold
     return error;
 }
 
-pub fn get_start_pos<T>(item: &T) -> Position
-where T: IRange {
+pub fn get_start_pos(item: &(dyn IRange)) -> Position {
     return item.get_range().start.clone();
 }
 
-pub fn get_end_pos<T>(item: &T) -> Position
-where T: IRange {
+pub fn get_end_pos(item: &(dyn IRange)) -> Position {
     return item.get_range().end.clone();
 }
 

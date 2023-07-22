@@ -1,7 +1,7 @@
 
 use crate::lexer::tokens::{Token, TokenType};
 use crate::utils::Range;
-use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody};
+use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction};
 
 use self::utils::{prepend_msg_to_error, get_end_pos, create_new_range};
 
@@ -22,6 +22,7 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
       parse_constant_declaration,
       parse_global_variable_declaration,
       parse_procedure_declaration,
+      parse_function_declaration
    ];
    let mut result = Vec::<Box<dyn IAstNode>>::new();
    let mut errors = Vec::<GoldParserError>::new();
@@ -393,12 +394,12 @@ fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
    // if proc is not forward and not external, parse body
    let mut method_body = None;
    if modifier_node.is_none() || modifier_node.is_some() && has_method_body(&modifier_node.as_ref().unwrap()) {
-      (next , method_body) = match parse_method_body(input){
+      (next , method_body) = match parse_method_body(input, TokenType::EndProc){
          Ok((n, node)) => (n, Some(node)),
          Err(_) => (next, None)
       }
    }
-   end = if method_body.is_some() {get_end_pos(&method_body.as_ref().unwrap().end_proc_token)} else {end};
+   end = if method_body.is_some() {get_end_pos(&method_body.as_ref().unwrap().end_token)} else {end};
 
    return Ok((next, Box::new(AstProcedure{
       raw_pos: first_tokens[0].raw_pos,
@@ -406,6 +407,65 @@ fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
       range: Range { start: first_tokens[0].pos.clone(), end: end},
       identifier: first_tokens[1].clone(),
       parameter_list: param_nodes,
+      modifiers: modifier_node,
+      body: method_body
+   })))
+}
+
+
+fn parse_function_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+   // parse func [ident]
+   let (next, first_tokens) = match seq_token(&[
+      exp_token(TokenType::Func),
+      exp_token(TokenType::Identifier),
+   ]) (input){
+      Ok(r) => r,
+      Err(e) => return Err(e)
+   };
+   
+   // parse params
+   let (next, param_nodes) = match parse_parameter_declaration_list(next){
+      Ok(r) => r,
+      Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: ", e))
+   };
+   // return 
+   let (next, return_token) = match exp_token(TokenType::Return)(next){
+      Ok(r) => r,
+      Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: ", e))
+   };
+   // return type
+   let return_type_parsers = [
+      parse_type_basic_fixed_size,
+      parse_type_basic_dynamic_size
+   ];
+   let (next, return_type_node) = match alt_parse(&return_type_parsers)(next){
+      Ok(r) => r,
+      Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: failed to parse return type: ", e))
+   };
+   let mut end = get_end_pos(return_type_node.as_range());
+   // modifiers (private, protected, etc.)
+   let (mut next, modifier_node) = match parse_method_modifiers(next) {
+      Ok((n, node)) => (n, node),
+      Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: ", e))
+   };
+   end = if modifier_node.is_some() {get_end_pos(modifier_node.as_ref().unwrap())} else {end};
+   // if func is not forward and not external, parse body
+   let mut method_body = None;
+   if modifier_node.is_none() || modifier_node.is_some() && has_method_body(&modifier_node.as_ref().unwrap()) {
+      (next , method_body) = match parse_method_body(input, TokenType::EndFunc){
+         Ok((n, node)) => (n, Some(node)),
+         Err(_) => (next, None)
+      }
+   }
+   end = if method_body.is_some() {get_end_pos(&method_body.as_ref().unwrap().end_token)} else {end};
+
+   return Ok((next, Box::new(AstFunction{
+      raw_pos: first_tokens[0].raw_pos,
+      pos: first_tokens[0].pos.clone(),
+      range: Range { start: first_tokens[0].pos.clone(), end: end},
+      identifier: first_tokens[1].clone(),
+      parameter_list: param_nodes,
+      return_type: return_type_node,
       modifiers: modifier_node,
       body: method_body
    })))
@@ -636,7 +696,7 @@ fn parse_method_modifiers_<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opt
    todo!()
 } 
 
-fn parse_method_body<'a>(input : &'a [Token]) -> Result<(&'a [Token], AstMethodBody), GoldParserError<'a>>{
+fn parse_method_body<'a>(input : &'a [Token], end_token_type : TokenType) -> Result<(&'a [Token], AstMethodBody), GoldParserError<'a>>{
 
    if input.len() == 0 {
       return Err(GoldParserError { input: input, msg: format!("expected method body: found end fo stream") })
@@ -650,9 +710,11 @@ fn parse_method_body<'a>(input : &'a [Token]) -> Result<(&'a [Token], AstMethodB
    let mut end_proc_token : Option<Token> = None;
    while next.is_some() {
       let next_token = next.unwrap();
-      match next_token.token_type {
-         TokenType::End | TokenType::EndProc => {end_proc_token = Some(next_token.clone()); break},
-         _ => body_tokens.push(next_token.clone())
+      if next_token.token_type == end_token_type || next_token.token_type == TokenType::End {
+         end_proc_token = Some(next_token.clone()); 
+         break;
+      } else  {
+         body_tokens.push(next_token.clone())
       }
       next = it.next()
    }
@@ -670,7 +732,7 @@ fn parse_method_body<'a>(input : &'a [Token]) -> Result<(&'a [Token], AstMethodB
       pos,
       range,
       statements,
-      end_proc_token: end_proc_token.unwrap(),
+      end_token: end_proc_token.unwrap(),
    }))
 }
 
@@ -880,7 +942,7 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, utils::{test_utils::cast_and_unwrap, create_new_range}, parse_parameter_declaration_list, parse_method_modifiers}, ast::{AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, utils::{test_utils::cast_and_unwrap, create_new_range}, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration}, ast::{AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode, AstFunction}};
    use crate::utils::{Position,Range};
    use super::{parse_class, parse_type};
 
@@ -1198,7 +1260,6 @@ mod test {
          (TokenType::Proc, Some("procedure".to_string())),
          (TokenType::Identifier, Some("FirstMethod".to_string())),
          (TokenType::OBracket, Some("(".to_string())),
-         (TokenType::InOut, Some("inout".to_string())),
          (TokenType::Identifier, Some("FirstParam".to_string())),
          (TokenType::Colon, Some(":".to_string())),
          (TokenType::Identifier, Some("FirstParamType".to_string())),
@@ -1242,6 +1303,60 @@ mod test {
       assert!(modifiers_node.is_override);
       assert_eq!(modifiers_node.external_dll_name.as_ref().unwrap().as_str(), "SomeDLL.Method");
       assert!(modifiers_node.is_forward);
+   }
+
+   #[test]
+   fn test_parse_function_declaration() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::Func, Some("function".to_string())),
+         (TokenType::Identifier, Some("FirstMethod".to_string())),
+         (TokenType::OBracket, Some("(".to_string())),
+         (TokenType::InOut, Some("inout".to_string())),
+         (TokenType::Identifier, Some("FirstParam".to_string())),
+         (TokenType::Colon, Some(":".to_string())),
+         (TokenType::Identifier, Some("FirstParamType".to_string())),
+         (TokenType::Comma, Some(",".to_string())),
+         (TokenType::Identifier, Some("SecondParam".to_string())),
+         (TokenType::Colon, Some(":".to_string())),
+         (TokenType::Identifier, Some("SecondParamType".to_string())),
+         (TokenType::CBracket, Some(")".to_string())),
+         (TokenType::Return, Some("return".to_string())),
+         (TokenType::Identifier, Some("aReturnType".to_string())),
+         (TokenType::Protected, Some("protected".to_string())),
+         (TokenType::Override, Some("override".to_string())),
+         (TokenType::EndFunc, Some("endFunc".to_string())),
+
+      ]);
+      let next : &[Token] = &input;
+      let (_, node) = parse_function_declaration(next).unwrap();
+      let downcasted = cast_and_unwrap::<AstFunction>(&node);
+      check_node_pos_and_range(downcasted, &input);
+      assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "FirstMethod");
+
+      // test params
+      let params = downcasted.parameter_list.as_ref().unwrap();
+      assert_eq!(params.parameter_list.len(), 2);
+      let expected_param_idents = ["FirstParam", "SecondParam"];
+      let expected_param_types = ["FirstParamType", "SecondParamType"];
+      for (i, param_node) in params.parameter_list.iter().enumerate() {
+         let param_node = cast_and_unwrap::<AstParameterDeclaration>(param_node);
+         let ident = param_node.identifier.value.as_ref().unwrap().as_str();
+         let type_node = cast_and_unwrap::<AstTypeBasicFixedSize>(&param_node.type_node.as_ref().unwrap());
+         let type_ident = type_node.type_token.value.as_ref().unwrap().as_str();
+         assert_eq!(ident, expected_param_idents[i]);
+         assert_eq!(type_ident, expected_param_types[i]);
+      }
+      // test return type
+      let return_node = downcasted.return_type.as_any().downcast_ref::<AstTypeBasicFixedSize>().unwrap();
+      assert_eq!(return_node.type_token.value.as_ref().unwrap().as_str(), "aReturnType");
+      // test modifiers
+      let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
+      assert!(!modifiers_node.is_private);
+      assert!(modifiers_node.is_protected);
+      assert!(!modifiers_node.is_final);
+      assert!(modifiers_node.is_override);
+      assert!(modifiers_node.external_dll_name.is_none());
+      assert!(!modifiers_node.is_forward);
    }
 
    #[test]

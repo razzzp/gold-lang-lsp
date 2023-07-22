@@ -50,6 +50,11 @@ procedure FirstProcedure(FirstParam: FirstParamType, SecondParam: SecondParamTyp
 proc SecondProc(inout FirstParam)
     ; method body
 endproc
+
+func FirstFunc return SomeType
+    ; method body
+    ; bla bla
+endfunc
         ");
         let tokens = lexer.lex(&input).0;
         let ast = parser::parse_gold(&tokens);
@@ -74,6 +79,6 @@ endproc
         let uses_ident = &uses.list_of_uses[1];
         assert_eq!(uses_ident.value.as_ref().unwrap().as_str(), "aSecondClass");
 
-        println!("{:#?}", nodes);
+        // println!("{:#?}", nodes);
     }
 }
