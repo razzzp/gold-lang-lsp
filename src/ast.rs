@@ -1,12 +1,13 @@
 use std::any::Any;
 
-use crate::lexer::tokens::{Position, Range, Token};
+use crate::lexer::tokens::Token;
+use crate::utils::{Position, Range, IRange};
 
-pub trait IAstNode: std::fmt::Debug {
+pub trait IAstNode: std::fmt::Debug + IRange {
     fn get_type(&self) -> &'static str;
     fn get_raw_pos(&self) -> usize;
     fn get_pos(&self) -> Position;
-    fn get_range(&self) -> Range;
+    // fn get_range(&self) -> Range;
     fn as_any(&self) -> &dyn Any;
     // fn get_token(&self) -> Token;
     // fn eval() -> ();
@@ -15,6 +16,11 @@ pub trait IAstNode: std::fmt::Debug {
 #[derive(Debug)]
 pub struct AstTerminal {
     pub token: Token,
+}
+impl IRange for AstTerminal {
+    fn get_range(&self) -> Range {
+        self.token.range.clone()
+    }
 }
 impl IAstNode for AstTerminal {
     fn get_type(&self) -> &'static str {
@@ -29,9 +35,6 @@ impl IAstNode for AstTerminal {
     fn get_pos(&self) -> Position {
         self.token.pos.clone()
     }
-    fn get_range(&self) -> Range {
-        self.token.range.clone()
-    }
 }
 
 #[derive(Debug)]
@@ -41,6 +44,11 @@ pub struct AstClass {
     pub range: Range,
     pub name: String,
     pub parent_class: String,
+}
+impl IRange for AstClass {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
 }
 impl IAstNode for AstClass {
     fn get_type(&self) -> &'static str {
@@ -56,10 +64,6 @@ impl IAstNode for AstClass {
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }
-
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
 }
 
 #[derive(Debug)]
@@ -68,6 +72,11 @@ pub struct AstUses {
     pub pos: Position,
     pub range: Range,
     pub list_of_uses: Vec<Token>,
+}
+impl IRange for AstUses {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
 }
 impl IAstNode for AstUses {
     fn get_type(&self) -> &'static str {
@@ -79,13 +88,8 @@ impl IAstNode for AstUses {
     fn as_any(&self) -> &dyn Any {
         self
     }
-
     fn get_pos(&self) -> Position {
         self.pos.clone()
-    }
-
-    fn get_range(&self) -> Range {
-        self.range.clone()
     }
 }
 
@@ -95,6 +99,11 @@ pub struct AstTypeBasicFixedSize {
     pub pos: Position,
     pub range: Range,
     pub type_token: Token,
+}
+impl IRange for AstTypeBasicFixedSize {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
 }
 impl IAstNode for AstTypeBasicFixedSize {
     fn get_type(&self) -> &'static str {
@@ -109,9 +118,7 @@ impl IAstNode for AstTypeBasicFixedSize {
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
+
 }
 #[derive(Debug)]
 pub struct AstTypeBasicDynamicSize {
@@ -119,6 +126,11 @@ pub struct AstTypeBasicDynamicSize {
     pub pos: Position,
     pub range: Range,
     pub type_token: Token,
+}
+impl IRange for AstTypeBasicDynamicSize {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
 }
 impl IAstNode for AstTypeBasicDynamicSize {
     fn get_type(&self) -> &'static str {
@@ -134,14 +146,15 @@ impl IAstNode for AstTypeBasicDynamicSize {
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }
-
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
 }
 
 #[derive(Debug)]
 pub struct AstEmpty {}
+impl IRange for AstEmpty {
+    fn get_range(&self) -> Range {
+        todo!()
+    }
+}
 impl IAstNode for AstEmpty {
     fn get_type(&self) -> &'static str {
         return "";
@@ -156,10 +169,6 @@ impl IAstNode for AstEmpty {
     fn get_pos(&self) -> Position {
         todo!()
     }
-
-    fn get_range(&self) -> Range {
-        todo!()
-    }
 }
 
 #[derive(Debug)]
@@ -168,6 +177,11 @@ pub struct AstTypeEnum{
     pub pos: Position,
     pub range: Range,
     pub variants: Vec<Token>
+}
+impl IRange for AstTypeEnum {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
 }
 impl IAstNode for AstTypeEnum {
     fn get_type(&self) -> &'static str {
@@ -181,11 +195,6 @@ impl IAstNode for AstTypeEnum {
     fn get_pos(&self) -> Position {
         return self.pos.clone();
     }
-
-    fn get_range(&self) -> Range {
-        return self.range.clone();
-    }
-
     fn as_any(&self) -> &dyn Any {
         self 
     }
@@ -199,6 +208,11 @@ pub struct AstTypeReference {
     pub ref_type: Token,
     pub options: Vec<Token>   
 }
+impl IRange for AstTypeReference {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+}
 impl IAstNode for AstTypeReference {
     fn get_type(&self) -> &'static str {
         return "Type Reference"
@@ -211,11 +225,6 @@ impl IAstNode for AstTypeReference {
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }
-
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
-
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -229,6 +238,11 @@ pub struct AstTypeDeclaration {
     pub identifier: Token,
     pub type_node: Box<dyn IAstNode>
 }
+impl IRange for AstTypeDeclaration {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+}
 impl IAstNode for AstTypeDeclaration {
     fn get_type(&self) -> &'static str {
         return "Type Declaration"
@@ -241,11 +255,6 @@ impl IAstNode for AstTypeDeclaration {
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }
-
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
-
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -260,6 +269,11 @@ pub struct AstConstantDeclaration {
     pub value: Token,
     pub is_multi_lang : bool
 }
+impl IRange for AstConstantDeclaration {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+}
 impl IAstNode for AstConstantDeclaration {
     fn get_type(&self) -> &'static str {
         return "Constant Declaration"
@@ -272,11 +286,6 @@ impl IAstNode for AstConstantDeclaration {
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }
-
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
-
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -291,6 +300,11 @@ pub struct AstGlobalVariableDeclaration {
     pub type_node: Box<dyn IAstNode>,
     pub is_memory: bool
 }
+impl IRange for AstGlobalVariableDeclaration {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+}
 impl IAstNode for AstGlobalVariableDeclaration {
     fn get_type(&self) -> &'static str {
         return "Variable Declaration"
@@ -303,11 +317,6 @@ impl IAstNode for AstGlobalVariableDeclaration {
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }
-
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
-
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -323,6 +332,11 @@ pub struct AstProcedure {
     pub modifiers: Option<AstMethodModifiers>,
     pub body: Option<AstMethodBody>
 }
+impl IRange for AstProcedure {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+}
 impl IAstNode for AstProcedure {
     fn get_type(&self) -> &'static str {
         "Procedure"
@@ -335,11 +349,6 @@ impl IAstNode for AstProcedure {
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }
-
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
-
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -352,6 +361,11 @@ pub struct AstParameterDeclarationList {
     pub range: Range,
     pub parameter_list: Vec<Box<dyn IAstNode>>
 }
+impl IRange for AstParameterDeclarationList {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+}
 
 #[derive(Debug)]
 pub struct AstParameterDeclaration {
@@ -361,6 +375,11 @@ pub struct AstParameterDeclaration {
     pub identifier: Token,
     pub type_node: Option<Box<dyn IAstNode>>,
     pub modifier: Option<Token>
+}
+impl IRange for AstParameterDeclaration {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
 }
 impl IAstNode for AstParameterDeclaration {
     fn get_type(&self) -> &'static str {
@@ -374,17 +393,12 @@ impl IAstNode for AstParameterDeclaration {
     fn get_pos(&self) -> Position {
         self.pos.clone()
     }
-
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
-
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Default)]
 pub struct AstMethodModifiers {
     pub raw_pos: usize,
     pub pos: Position,
@@ -396,11 +410,48 @@ pub struct AstMethodModifiers {
     pub external_dll_name: Option<String>,
     pub is_forward: bool
 }
+impl IRange for AstMethodModifiers { 
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+}
 
 #[derive(Debug)]
 pub struct AstMethodBody {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
+    pub statements: Vec<Box<dyn IAstNode>>
 }
+
+#[derive(Debug)]
+pub struct AstComment {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub comment: String,
+}
+impl IRange for AstComment {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+}
+impl IAstNode for AstComment {
+    fn get_type(&self) -> &'static str {
+        "Comment"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+
 

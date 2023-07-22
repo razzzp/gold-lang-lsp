@@ -1,10 +1,11 @@
-use std::{io::{Read}, fs::File};
+use std::{io::Read, fs::File};
 
 use crate::{lexer::Lexer, parser::parse_gold};
 
 pub mod lexer;
 pub mod parser;
 pub mod ast;
+pub mod utils;
 
 fn main() {
     let  mut f = File::open("./test_inputs/aTestClass.god").expect("file not found");
@@ -42,6 +43,13 @@ memory GlobalVariable : refTo [P,A] SomeType
 SecondGlobalVariable : listOf [T] AnotherType
 IntGlobalVariable : int4
 CStringVar : cstring
+
+procedure FirstProcedure(FirstParam: FirstParamType, SecondParam: SecondParamType) private override 
+    external 'DLL.Method' forward
+
+proc SecondProc(inout FirstParam)
+    ; method body
+endproc
         ");
         let tokens = lexer.lex(&input).0;
         let ast = parser::parse_gold(&tokens);
@@ -66,8 +74,8 @@ CStringVar : cstring
         let uses_ident = &uses.list_of_uses[1];
         assert_eq!(uses_ident.value.as_ref().unwrap().as_str(), "aSecondClass");
 
-        for node in nodes{
-            println!("{:#?}", node);
-        }
+        // for node in nodes{
+        //     println!("{:#?}", node);
+        // }
     }
 }

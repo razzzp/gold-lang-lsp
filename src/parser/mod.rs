@@ -1,8 +1,9 @@
 
-use crate::lexer::tokens::{Token, TokenType, Range, Position};
-use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure};
+use crate::lexer::tokens::{Token, TokenType};
+use crate::utils::{Position, Range};
+use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody};
 
-use self::utils::prepend_msg_to_error;
+use self::utils::{prepend_msg_to_error, get_end_pos};
 
 pub mod utils;
 
@@ -14,6 +15,7 @@ pub struct ParserError<'a>{
 
 pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNode>>), Vec<ParserError>) {
    let parsers = [
+      parse_comment,
       parse_class,
       parse_uses,
       parse_type_declaration,
@@ -38,6 +40,19 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
       };
    }
    ((next, result), errors)
+}
+
+fn parse_comment<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError> {
+   let (next, comment_token) = match exp_token(TokenType::Comment)(input){
+      Ok(r) => r,
+      Err(e) => return Err(prepend_msg_to_error("falied to parse comment: ", e))
+   };
+   return Ok((next, Box::new(AstComment{
+      raw_pos: comment_token.raw_pos,
+      pos: comment_token.pos.clone(),
+      range: comment_token.range.clone(),
+      comment: comment_token.value.unwrap()
+   })))
 }
 
 fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParserError> {
@@ -362,22 +377,39 @@ fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
       Ok(r) => r,
       Err(e) => return Err(e)
    };
+   let mut end = first_tokens.get(1).unwrap().range.end.clone();
    // parse params
    let (next, param_nodes) = match parse_parameter_list_declaration(next){
       Ok(r) => r,
       Err(e) => return Err(prepend_msg_to_error("Failed to parse proc decl: ", e))
    };
-   // TODO implem proc modifiers
-   // TODO implem proc body
+   end = if param_nodes.is_some() {get_end_pos(param_nodes.as_ref().unwrap())} else {end};
+   // modifiers (private, protected, etc.)
+   let (mut next, modifier_node) = match parse_method_modifiers(next) {
+      Ok((n, node)) => (n, node),
+      Err(e) => return Err(prepend_msg_to_error("Failed to parse proc decl: ", e))
+   };
+   // if proc is not forward and not external, parse body
+   let mut method_body = None;
+   if modifier_node.is_none() || modifier_node.is_some() && has_method_body(&modifier_node.as_ref().unwrap()) {
+      (next , method_body) = match parse_method_body(input){
+         Ok((n, node)) => (n, Some(node)),
+         Err(_) => (next, None)
+      }
+   }
    return Ok((next, Box::new(AstProcedure{
       raw_pos: first_tokens[0].raw_pos,
       pos: first_tokens[0].pos.clone(),
       range: Range { start: first_tokens[0].pos.clone(), end: first_tokens[1].pos.clone()},
       identifier: first_tokens[1].clone(),
       parameter_list: param_nodes,
-      body: None,
-      modifiers: None
+      modifiers: modifier_node,
+      body: method_body
    })))
+}
+
+fn has_method_body(modifier_node: &AstMethodModifiers) -> bool {
+   return !modifier_node.is_forward && modifier_node.external_dll_name.is_none()
 }
 
 fn parse_parameter_list_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Option<AstParameterDeclarationList>), ParserError<'a>>{
@@ -466,6 +498,187 @@ fn parse_parameter_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
    }
 }
 
+/// parsers all modifiers, whether it is valid will be done in sematic analysis
+fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Option<AstMethodModifiers>), ParserError<'a>>{
+   // private
+   let mut start = None;
+   let mut end = None;
+   let mut raw_pos : Option<usize>= None;
+   let (next, private_token) = match opt_token(TokenType::Private)(input) {
+      Ok((n,t)) => (n, t),
+      Err(e) => (e.input, None)
+   };
+   start = if start == None && private_token.is_some() {Some(private_token.as_ref().unwrap().pos.clone())} else {start};
+   end = if private_token.is_some() {Some(private_token.as_ref().unwrap().pos.clone())} else {end};
+   raw_pos = if raw_pos == None && private_token.is_some() {Some(private_token.as_ref().unwrap().raw_pos)} else {raw_pos};
+   
+   // protected
+   let (next, protected_token) = match opt_token(TokenType::Protected)(next) {
+      Ok((n,t)) => (n, t),
+      Err(e) => (e.input, None)
+   };
+   start = if start == None && protected_token.is_some() {Some(protected_token.as_ref().unwrap().pos.clone())} else {start};
+   end = if protected_token.is_some() {Some(protected_token.as_ref().unwrap().pos.clone())} else {end};
+   raw_pos = if raw_pos == None && protected_token.is_some() {Some(protected_token.as_ref().unwrap().raw_pos)} else {raw_pos};
+   
+   // final
+   let (next, final_token) = match opt_token(TokenType::Final)(next) {
+      Ok((n,t)) => (n, t),
+      Err(e) => (e.input, None)
+   };
+   start = if start == None && final_token.is_some() {Some(final_token.as_ref().unwrap().pos.clone())} else {start};
+   end = if final_token.is_some() {Some(final_token.as_ref().unwrap().pos.clone())} else {end};
+   raw_pos = if raw_pos == None && final_token.is_some() {Some(final_token.as_ref().unwrap().raw_pos)} else {raw_pos};
+   
+   // override
+   let (next, override_token) = match opt_token(TokenType::Override)(next) {
+      Ok((n,t)) => (n, t),
+      Err(e) => (e.input, None)
+   };
+   start = if start == None && override_token.is_some() {Some(override_token.as_ref().unwrap().pos.clone())} else {start};
+   end = if override_token.is_some() {Some(override_token.as_ref().unwrap().pos.clone())} else {end};
+   raw_pos = if raw_pos == None && override_token.is_some() {Some(override_token.as_ref().unwrap().raw_pos)} else {raw_pos};
+   
+   // external
+   let (next, external_token_list) = match seq_token(&[
+      exp_token(TokenType::External),
+      exp_token(TokenType::StringConstant)
+   ])(next) {
+      Ok((n, token_list)) => (n, Some(token_list)),
+      Err(e) => (e.input, None)
+   };
+   start = if start == None && external_token_list.is_some() {Some(external_token_list.as_ref().unwrap()[1].pos.clone())} else {start};
+   end = if external_token_list.is_some() {Some(external_token_list.as_ref().unwrap()[1].pos.clone())} else {end};
+   raw_pos = if raw_pos == None && external_token_list.is_some() {Some(external_token_list.as_ref().unwrap()[1].raw_pos)} else {raw_pos};
+
+   // forward
+   let (next, forward_token) = match opt_token(TokenType::Forward)(next) {
+      Ok((n,t)) => (n, t),
+      Err(e) => (e.input, None)
+   };
+   start = if start == None && forward_token.is_some() {Some(forward_token.as_ref().unwrap().pos.clone())} else {start};
+   end = if forward_token.is_some() {Some(forward_token.as_ref().unwrap().pos.clone())} else {end};
+   raw_pos = if raw_pos == None && forward_token.is_some() {Some(forward_token.as_ref().unwrap().raw_pos)} else {raw_pos};
+
+   if private_token.is_none() && protected_token.is_none() && final_token.is_none() &&
+   override_token.is_none() && external_token_list.is_none() && forward_token.is_none(){
+      return Ok((input, None))
+   } else {
+      return Ok((next, Some(AstMethodModifiers{
+         raw_pos: raw_pos.unwrap(),
+         pos: start.clone().unwrap(),
+         range: Range { start: start.unwrap(), end: end.unwrap()},
+         is_private: private_token.is_some(),
+         is_protected: protected_token.is_some(),
+         is_final: final_token.is_some(),
+         is_override: override_token.is_some(),
+         external_dll_name: if external_token_list.is_some() {
+            external_token_list.as_ref().unwrap()[1].value.clone()
+         } else {
+            None
+         },
+         is_forward: forward_token.is_some()
+      })))
+   }
+} 
+
+
+/// parsers all modifiers, whether it is valid will be done in sematic analysis
+fn parse_method_modifiers_<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Option<AstMethodModifiers>), ParserError<'a>>{
+   // private
+   let (next, token_list) = match seq_opt_token(&[
+      opt_token(TokenType::Private),
+      opt_token(TokenType::Protected),
+      opt_token(TokenType::Final),
+      opt_token(TokenType::Override),
+      opt_token(TokenType::External),
+      opt_token(TokenType::StringConstant),
+      opt_token(TokenType::Forward),
+   ])(input) {
+      Ok((n, token_list)) => (n, Some(token_list)),
+      Err(_) => (input, None)
+   };
+   // external
+   let (next, external_token_list) = match seq_token(&[
+      exp_token(TokenType::External),
+      exp_token(TokenType::StringConstant)
+   ])(next) {
+      Ok((n, token_list)) => (n, Some(token_list)),
+      Err(e) => (e.input, None)
+   };
+   // forward
+   let (next, forward_token) = match opt_token(TokenType::Forward)(next) {
+      Ok((n,t)) => (n, t),
+      Err(e) => (e.input, None)
+   };
+   // if private_token.is_none() && protected_token.is_none() && final_token.is_none() &&
+   // override_token.is_none() && external_token_list.is_none() && forward_token.is_none(){
+   //    return Ok((input, None))
+   // } else {
+   //    return Ok((next, Some(AstMethodModifiers{
+   //       raw_pos
+   //       is_private: private_token.is_some(),
+   //       is_protected: protected_token.is_some(),
+   //       is_final: final_token.is_some(),
+   //       is_override: override_token.is_some(),
+   //       external_dll_name: if external_token_list.is_some() {
+   //          external_token_list.unwrap()[0].value
+   //       } else {
+   //          None
+   //       },
+   //       is_forward: forward_token.is_some()
+   //    })))
+   // }
+   // maybe a better way to do it?
+   todo!()
+} 
+
+fn parse_method_body<'a>(input : &'a [Token]) -> Result<(&'a [Token], AstMethodBody), ParserError<'a>>{
+
+   // TODO complete implem
+   let mut body_tokens = Vec::<Token>::new();
+   let mut statements = Vec::<Box<dyn IAstNode>>::new();
+   let mut it = input.iter();
+
+   let mut next = it.next();
+   while next.is_some() {
+      let next_token = next.unwrap();
+      match next_token.token_type {
+         TokenType::End | TokenType::EndProc => break,
+         _ => body_tokens.push(next_token.clone())
+      }
+      next = it.next()
+   }
+   
+   let raw_pos = if statements.len() != 0{
+      statements[0].get_raw_pos()
+   } else {
+      input[0].raw_pos
+   };
+   let pos = if statements.len() != 0{
+      statements[0].get_pos()
+   } else {
+      input[0].pos.clone()
+   };
+   let range = if statements.len() != 0 {
+      Range {
+         start: statements.first().unwrap().get_pos(),
+         end: statements.last().unwrap().get_range().end.clone()
+      }
+   } else {
+      Range{
+         start: input[0].pos.clone(),
+         end: input[0].pos.clone()
+      }
+   };
+   return Ok((it.as_slice(), AstMethodBody{
+      raw_pos,
+      pos,
+      range,
+      statements
+   }))
+}
+
 fn parse_separated_list<'a>(
    input : &'a [Token],
    parser : impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParserError>,
@@ -534,9 +747,22 @@ fn exp_token(token_type : TokenType)
    move |input: &[Token]| -> Result<(&[Token],  Token), ParserError> {
       let mut it = input.iter();
       match it.next() {
-      Some(t) if t.token_type == token_type => Ok((it.as_slice(), t.clone())),
-      Some(t) => Err(ParserError {input: input, msg: String::from(format!("Expected {:?}, found {:?}",token_type,t.token_type))}),
-      None => Err(ParserError {input: input, msg: String::from(format!("Expected {:?}, found None",token_type))})
+         Some(t) if t.token_type == token_type => Ok((it.as_slice(), t.clone())),
+         Some(t) => Err(ParserError {input: input, msg: String::from(format!("Expected {:?}, found {:?}",token_type,t.token_type))}),
+         None => Err(ParserError {input: input, msg: String::from(format!("Expected {:?}, found None",token_type))})
+      }
+   }
+}
+
+/// Wraps the parser so that it doesn't throw error
+fn opt_token(token_type: TokenType) 
+   -> impl Fn(&[Token]) -> Result<(&[Token],  Option<Token>), ParserError> 
+{
+   move |input: &[Token]| -> Result<(&[Token],  Option<Token>), ParserError> {
+      let mut it = input.iter();
+      match it.next() {
+         Some(t) if t.token_type == token_type => Ok((it.as_slice(), Some(t.clone()))),
+         _ => Ok((input, None))
       }
    }
 }
@@ -611,7 +837,26 @@ fn seq_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Token),
       while i < list_of_parsers.len(){
          next = match list_of_parsers[i](next){
             Ok(r) => {nodes.push(r.1); r.0},
-            Err(e) => return Err(ParserError{ input: e.input, msg: String::from("Failed to parse using alternatives") })
+            Err(e) => return Err(ParserError{input: input, msg: format!("failed to parse sequence: {}",e.msg) })
+         };
+         i+=1;
+      }
+      return Ok((next, nodes));
+   }
+}
+
+/// Returns parser that expects the sequence of opional tokens parsers
+fn seq_opt_token(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Option<Token>), ParserError>])
+   -> impl Fn(&[Token]) -> Result<(&[Token],  Vec<Option<Token>>), ParserError> + '_
+{
+   move |input: &[Token]| -> Result<(&[Token],  Vec<Option<Token>>), ParserError> {
+      let mut i = 0;
+      let mut next = input;
+      let mut nodes = Vec::<Option<Token>>::new();
+      while i < list_of_parsers.len(){
+         next = match list_of_parsers[i](next){
+            Ok(r) => {nodes.push(r.1); r.0},
+            Err(e) => return Err(ParserError{input: input, msg: format!("failed to parse sequence: {}",e.msg) })
          };
          i+=1;
       }
@@ -630,7 +875,7 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
       while i < list_of_parsers.len(){
          next = match list_of_parsers[i](next){
             Ok(r) => {nodes.push(r.1); r.0},
-            Err(e) => return Err(ParserError{ input: e.input, msg: String::from("Failed to parse using alternatives") })
+            Err(e) => return Err(ParserError{ input: e.input, msg: format!("failed to parse sequence: {}",e.msg) })
          };
          i+=1;
       }
@@ -640,7 +885,8 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType, Position, Range}, parser::{ParserError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, utils::test_utils::cast_and_unwrap}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{ParserError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, utils::test_utils::cast_and_unwrap}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration}};
+   use crate::utils::{Position,Range};
    use super::{parse_class, parse_type};
 
    fn gen_list_of_tokens(list : &[(TokenType, Option<String>)]) -> Vec<Token> {
@@ -981,6 +1227,7 @@ mod test {
          (TokenType::Proc, None),
          (TokenType::Identifier, Some("FirstMethod".to_string())),
          (TokenType::OBracket, None),
+         (TokenType::InOut, None),
          (TokenType::Identifier, Some("FirstParam".to_string())),
          (TokenType::Colon, None),
          (TokenType::Identifier, Some("FirstParamType".to_string())),
@@ -1009,7 +1256,7 @@ mod test {
       // assert_eq!(downcasted.range.end.character, 20);
       assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "FirstMethod");
 
-      // test refto type
+      // test params
       let params = downcasted.parameter_list.as_ref().unwrap();
       assert_eq!(params.parameter_list.len(), 2);
       let expected_param_idents = ["FirstParam", "SecondParam"];
@@ -1022,5 +1269,13 @@ mod test {
          assert_eq!(ident, expected_param_idents[i]);
          assert_eq!(type_ident, expected_param_types[i]);
       }
+      // test modifiers
+      let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
+      assert!(modifiers_node.is_private);
+      assert!(modifiers_node.is_protected);
+      assert!(modifiers_node.is_final);
+      assert!(modifiers_node.is_override);
+      assert_eq!(modifiers_node.external_dll_name.as_ref().unwrap().as_str(), "SomeDLL.Method");
+      assert!(modifiers_node.is_forward);
    }
 }

@@ -1,8 +1,20 @@
+use crate::utils::{Position, Range, IRange};
+
 use super::ParserError;
 
 pub fn prepend_msg_to_error<'a>(s: &str, mut error: ParserError<'a>) -> ParserError<'a>{
     error.msg.insert_str(0, s);
     return error;
+}
+
+pub fn get_start_pos<T>(item: &T) -> Position
+where T: IRange {
+    return item.get_range().start.clone();
+}
+
+pub fn get_end_pos<T>(item: &T) -> Position
+where T: IRange {
+    return item.get_range().end.clone();
 }
 
 #[cfg(test)]

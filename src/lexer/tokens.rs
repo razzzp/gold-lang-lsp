@@ -1,4 +1,6 @@
 
+use crate::utils::{IRange, Position, Range};
+
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TokenType {
     // types
@@ -194,14 +196,9 @@ pub struct Token {
     pub value: Option<String>
 }
 
-#[derive(Debug,Clone)]
-pub struct Range {
-    pub start: Position,
-    pub end: Position
+impl IRange for Token {
+    fn get_range(&self) -> Range{
+        self.range.clone()
+    }
 }
 
-#[derive(Debug,Clone,PartialEq)]
-pub struct Position {
-    pub line: usize,
-    pub character: usize
-}

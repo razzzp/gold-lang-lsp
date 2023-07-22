@@ -1,7 +1,8 @@
 
 use std::{str::Chars, iter::{Peekable, Enumerate}};
 
-use self::tokens::{Token, TokenType, Position, Range};
+use self::tokens::{Token, TokenType};
+use crate::utils::{Position, Range};
 
 pub mod tokens;
 
@@ -410,7 +411,8 @@ impl Lexer{
 mod test {
     use std::{iter::{Enumerate, Peekable}, str::Chars, fs::File, io::Read};
 
-    use crate::lexer::{TokenType, Lexer, tokens::Position};
+    use crate::lexer::{TokenType, Lexer};
+    use crate::utils::Position;
 
     fn create_buffer(val : &String) -> Peekable<Enumerate<Chars>> {
         return val.chars().enumerate().peekable();
