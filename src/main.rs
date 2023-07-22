@@ -1,6 +1,6 @@
 use std::{io::Read, fs::File};
 
-use crate::{lexer::Lexer, parser::parse_gold};
+use crate::{lexer::GoldLexer, parser::parse_gold};
 
 pub mod lexer;
 pub mod parser;
@@ -15,7 +15,7 @@ fn main() {
         Err(msg) => panic!("{msg}")
     };
     println!("{file_contents}");
-    let mut lexer = Lexer::new();
+    let mut lexer = GoldLexer::new();
     let tokens = lexer.lex(&file_contents).0;
     println!("{:#?}", tokens);
     let ast = parse_gold(&tokens);
@@ -28,12 +28,12 @@ fn main() {
 mod test {
     use crate::ast::AstClass;
     use crate::ast::AstUses;
-    use crate::lexer::Lexer;
+    use crate::lexer::GoldLexer;
     use crate::parser;
 
     #[test]
     fn test_class_everything(){
-        let mut lexer = Lexer::new();
+        let mut lexer = GoldLexer::new();
         let input = String::from
         ("class aTestClass   (aParentClass)\r\n\n
 uses aFirstClass, aSecondClass\n

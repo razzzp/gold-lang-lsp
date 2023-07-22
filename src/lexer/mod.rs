@@ -7,25 +7,25 @@ use crate::utils::{Position, Range};
 pub mod tokens;
 
 #[derive(Debug)]
-pub struct Lexer {
+pub struct GoldLexer {
     line_pos: Vec<usize>
 }
 
 #[derive(Debug)]
-pub struct LexerError {
+pub struct GoldLexerError {
     range: Range,
     msg: String,
 }
 
-impl Lexer{
-    pub fn new() -> Lexer{
-        return Lexer{line_pos:Vec::<usize>::new()};
+impl GoldLexer{
+    pub fn new() -> GoldLexer{
+        return GoldLexer{line_pos:Vec::<usize>::new()};
     }
 
-    pub fn lex(&mut self, buf: &String) -> (Vec<Token>, Vec<LexerError>) {
+    pub fn lex(&mut self, buf: &String) -> (Vec<Token>, Vec<GoldLexerError>) {
         let mut chars =buf.chars().enumerate().peekable();
         let mut result = Vec::<Token>::new();
-        let mut errors = Vec::<LexerError>::new();
+        let mut errors = Vec::<GoldLexerError>::new();
         loop {
             let cur_char =  self.skip_whitespace(&mut chars);
             if cur_char.is_none() { break };
@@ -75,7 +75,7 @@ impl Lexer{
         return next_char;
     }
     
-    fn read_word(&self, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, LexerError> {
+    fn read_word(&self, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, GoldLexerError> {
         let mut word = String::new();
         let pos = buf.peek().unwrap().0;
         
@@ -91,7 +91,7 @@ impl Lexer{
         return Ok(self.create_word_token(pos, word));
     }
 
-    fn read_number(&self, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, LexerError> {
+    fn read_number(&self, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, GoldLexerError> {
         let mut number = String::new();
         let pos = buf.peek().unwrap().0;
         
@@ -110,10 +110,10 @@ impl Lexer{
         return Ok(self.create_token(pos, TokenType::NumericConstant, Some(number)));
     }
 
-    fn read_symbol(&mut self, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, LexerError> {
+    fn read_symbol(&mut self, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, GoldLexerError> {
         let next = buf.next().unwrap();
         let pos = next.0;
-        let token: Result<Token, LexerError> = match next.1 {
+        let token: Result<Token, GoldLexerError> = match next.1 {
             '(' => Ok(self.create_token(pos, TokenType::OBracket, Some(next.1.to_string()))),
             ')' => Ok(self.create_token(pos, TokenType::CBracket, Some(next.1.to_string()))),
             '[' => Ok(self.create_token(pos, TokenType::OSqrBracket, Some(next.1.to_string()))),
@@ -136,7 +136,7 @@ impl Lexer{
             ':' => self.read_double_char_op(next.1, pos, buf),
             '&' => self.read_double_char_op(next.1, pos, buf),
             ';' => Ok(self.read_comment(pos, buf)),
-            _=> Err(LexerError { range: self.create_range(pos, 1), msg: format!("Unknown first symbol: {}", next.1) })
+            _=> Err(GoldLexerError { range: self.create_range(pos, 1), msg: format!("Unknown first symbol: {}", next.1) })
         };
         return token;
     }
@@ -186,11 +186,11 @@ impl Lexer{
         return self.create_token(pos, TokenType::Comment, Some(comment));
     }
     
-    fn read_double_char_op(&self, first_op: char, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, LexerError> {
+    fn read_double_char_op(&self, first_op: char, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, GoldLexerError> {
         let next = buf.peek();
     
         let mut is_double_op = true;
-        let mut result: Result<Token, LexerError>;
+        let mut result: Result<Token, GoldLexerError>;
         if  first_op == '<'{
             result = match next {
                 Some((_,'<')) => Ok(self.create_token(pos, TokenType::LeftShift, Some("<<".to_string()))),
@@ -207,7 +207,7 @@ impl Lexer{
         } else if  first_op == '&'{
             result = match next {
                 Some((_,'&')) => Ok(self.create_token(pos, TokenType::StringConcat, Some("&&".to_string()))),
-                _ => {is_double_op = false; Err(LexerError { range: self.create_range(pos, 1), msg: "& is not a valid symbol".to_string() })}
+                _ => {is_double_op = false; Err(GoldLexerError { range: self.create_range(pos, 1), msg: "& is not a valid symbol".to_string() })}
             };
         } else if  first_op == '+'{
             result = match next{
@@ -227,7 +227,7 @@ impl Lexer{
                 _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::Colon, Some(":".to_string())))}
             };
         } else {
-            result = Err(LexerError { range: self.create_range(pos, 1), msg: format!("Unknown first symbol: {}", first_op) });
+            result = Err(GoldLexerError { range: self.create_range(pos, 1), msg: format!("Unknown first symbol: {}", first_op) });
         }
         if is_double_op {buf.next();};
     
@@ -411,7 +411,7 @@ impl Lexer{
 mod test {
     use std::{iter::{Enumerate, Peekable}, str::Chars, fs::File, io::Read};
 
-    use crate::lexer::{TokenType, Lexer};
+    use crate::lexer::{TokenType, GoldLexer};
     use crate::utils::Position;
 
     fn create_buffer(val : &String) -> Peekable<Enumerate<Chars>> {
@@ -420,7 +420,7 @@ mod test {
 
     #[test]
     fn test_symbol_plus(){
-        let mut lexer = Lexer::new();
+        let mut lexer = GoldLexer::new();
         let input = String::from("+");
         let mut buf = create_buffer(&input);
         let result = lexer.read_symbol(&mut buf);
@@ -435,7 +435,7 @@ mod test {
 
     #[test]
     fn test_lex_symbols(){
-        let mut lexer = Lexer::new();
+        let mut lexer = GoldLexer::new();
         let input = String::from(
             "* / % + - && << >> < <= > >=
 = <> @ . ++ += -- -= :=");
@@ -473,7 +473,7 @@ mod test {
 
     #[test]
     fn test_words(){
-        let mut lexer = Lexer::new();
+        let mut lexer = GoldLexer::new();
         let  mut f = File::open("./test_inputs/words.txt").expect("file not found");
         let mut file_contents = String::new();
         match f.read_to_string(&mut file_contents){
@@ -490,7 +490,7 @@ mod test {
 
     #[test]
     fn test_comment(){
-        let mut lexer = Lexer::new();
+        let mut lexer = GoldLexer::new();
         let input = String::from(
             "not a comment ; a comment\n
             ; entire line is a comment wow \n");
@@ -505,7 +505,7 @@ mod test {
 
     #[test]
     fn test_string_constants(){
-        let mut lexer = Lexer::new();
+        let mut lexer = GoldLexer::new();
         let input = String::from(
             "'first string constant'    'b'\n \"double quote of newline\"\n");
         let result = lexer.lex(&input);
@@ -531,7 +531,7 @@ mod test {
 
     #[test]
     fn test_numeric_constants(){
-        let mut lexer = Lexer::new();
+        let mut lexer = GoldLexer::new();
         let input = String::from(
             "10 12.55 10000\n 77.1234134141412424\n");
         let result = lexer.lex(&input);
