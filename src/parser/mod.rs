@@ -1,7 +1,7 @@
 
 use crate::lexer::tokens::{Token, TokenType};
-use crate::utils::{Position, Range};
-use crate::ast::{AstClass, AstUses, AstTerminal, IAstNode, AstEmpty, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody};
+use crate::utils::Range;
+use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody};
 
 use self::utils::{prepend_msg_to_error, get_end_pos};
 
@@ -389,6 +389,7 @@ fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
       Ok((n, node)) => (n, node),
       Err(e) => return Err(prepend_msg_to_error("Failed to parse proc decl: ", e))
    };
+   end = if modifier_node.is_some() {get_end_pos(modifier_node.as_ref().unwrap())} else {end};
    // if proc is not forward and not external, parse body
    let mut method_body = None;
    if modifier_node.is_none() || modifier_node.is_some() && has_method_body(&modifier_node.as_ref().unwrap()) {
@@ -397,10 +398,12 @@ fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
          Err(_) => (next, None)
       }
    }
+   end = if method_body.is_some() {get_end_pos(&method_body.as_ref().unwrap().end_proc_token)} else {end};
+
    return Ok((next, Box::new(AstProcedure{
       raw_pos: first_tokens[0].raw_pos,
       pos: first_tokens[0].pos.clone(),
-      range: Range { start: first_tokens[0].pos.clone(), end: first_tokens[1].pos.clone()},
+      range: Range { start: first_tokens[0].pos.clone(), end: end},
       identifier: first_tokens[1].clone(),
       parameter_list: param_nodes,
       modifiers: modifier_node,
@@ -456,8 +459,8 @@ fn parse_parameter_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
        Err(e) => return Err(prepend_msg_to_error("Failed parsing parameter decl: ", e))
    };
    // calculate pos and range
-   let mut raw_pos = 0;
-   let mut pos = None;
+   let raw_pos;
+   let pos;
    if modifier_token.is_some() {
       raw_pos = modifier_token.as_ref().unwrap().raw_pos;
       pos = Some(modifier_token.as_ref().unwrap().pos.clone());
@@ -635,47 +638,39 @@ fn parse_method_modifiers_<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opt
 
 fn parse_method_body<'a>(input : &'a [Token]) -> Result<(&'a [Token], AstMethodBody), GoldParserError<'a>>{
 
+   if input.len() == 0 {
+      return Err(GoldParserError { input: input, msg: format!("expected method body: found end fo stream") })
+   }
    // TODO complete implem
    let mut body_tokens = Vec::<Token>::new();
    let mut statements = Vec::<Box<dyn IAstNode>>::new();
    let mut it = input.iter();
 
    let mut next = it.next();
+   let mut end_proc_token : Option<Token> = None;
    while next.is_some() {
       let next_token = next.unwrap();
       match next_token.token_type {
-         TokenType::End | TokenType::EndProc => break,
+         TokenType::End | TokenType::EndProc => {end_proc_token = Some(next_token.clone()); break},
          _ => body_tokens.push(next_token.clone())
       }
       next = it.next()
    }
+
+   if end_proc_token.is_none() {
+      return Err(GoldParserError { input: it.as_slice(), msg: format!("endProc not found")});
+   }
    
-   let raw_pos = if statements.len() != 0{
-      statements[0].get_raw_pos()
-   } else {
-      input[0].raw_pos
-   };
-   let pos = if statements.len() != 0{
-      statements[0].get_pos()
-   } else {
-      input[0].pos.clone()
-   };
-   let range = if statements.len() != 0 {
-      Range {
-         start: statements.first().unwrap().get_pos(),
-         end: statements.last().unwrap().get_range().end.clone()
-      }
-   } else {
-      Range{
-         start: input[0].pos.clone(),
-         end: input[0].pos.clone()
-      }
-   };
+   let raw_pos = body_tokens.first().unwrap().raw_pos;
+   let pos = body_tokens.first().unwrap().pos.clone();
+   // range is until the endProc
+   let range = Range{start: pos.clone(), end: end_proc_token.as_ref().unwrap().pos.clone()};
    return Ok((it.as_slice(), AstMethodBody{
       raw_pos,
       pos,
       range,
-      statements
+      statements,
+      end_proc_token: end_proc_token.unwrap(),
    }))
 }
 
@@ -885,7 +880,7 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{GoldParserError, parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, utils::test_utils::cast_and_unwrap}, ast::{AstTerminal, AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, utils::test_utils::cast_and_unwrap}, ast::{AstClass, AstUses, AstTypeBasicFixedSize, AstTypeBasicDynamicSize, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration}};
    use crate::utils::{Position,Range};
    use super::{parse_class, parse_type};
 

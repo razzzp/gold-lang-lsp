@@ -74,8 +74,6 @@ endproc
         let uses_ident = &uses.list_of_uses[1];
         assert_eq!(uses_ident.value.as_ref().unwrap().as_str(), "aSecondClass");
 
-        // for node in nodes{
-        //     println!("{:#?}", node);
-        // }
+        println!("{:#?}", nodes);
     }
 }

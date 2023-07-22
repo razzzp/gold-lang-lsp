@@ -190,7 +190,7 @@ impl GoldLexer{
         let next = buf.peek();
     
         let mut is_double_op = true;
-        let mut result: Result<Token, GoldLexerError>;
+        let result: Result<Token, GoldLexerError>;
         if  first_op == '<'{
             result = match next {
                 Some((_,'<')) => Ok(self.create_token(pos, TokenType::LeftShift, Some("<<".to_string()))),

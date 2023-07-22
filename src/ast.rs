@@ -421,7 +421,8 @@ pub struct AstMethodBody {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub statements: Vec<Box<dyn IAstNode>>
+    pub statements: Vec<Box<dyn IAstNode>>,
+    pub end_proc_token: Token,
 }
 
 #[derive(Debug)]
