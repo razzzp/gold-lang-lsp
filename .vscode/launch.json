@@ -8,10 +8,17 @@
             "type": "lldb",
             "request": "launch",
             "preLaunchTask": "rust: cargo build",
-            "name": "Debug",
+            "name": "Rust Debug",
             "program": "${workspaceFolder}/target/debug/gold-lang-lsp",
             "args": [],
-            "cwd": "${workspaceFolder}"
+            "cwd": "${workspaceFolder}",
+        },
+        {
+            "name": "Python File",
+            "type": "python",
+            "request": "launch",
+            "args": ["test/initialize.json"],
+            "program": "${file}"
         }
     ]
 }

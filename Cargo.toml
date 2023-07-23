@@ -6,5 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+lsp-server = "0.7.2"
+lsp-types = "0.94.0"
 nom = "7"
 regex = "1"
+serde = "1.0.174"
+serde_json = "1.0.103"

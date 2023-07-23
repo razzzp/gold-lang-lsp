@@ -1,9 +1,9 @@
 
 use crate::lexer::tokens::{Token, TokenType};
-use crate::utils::Range;
+use crate::utils::{Range, get_end_pos, create_new_range};
 use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction};
 
-use self::utils::{prepend_msg_to_error, get_end_pos, create_new_range};
+use self::utils::{prepend_msg_to_error};
 
 pub mod utils;
 
@@ -925,8 +925,8 @@ fn seq_parse(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, utils::{test_utils::cast_and_unwrap, create_new_range}, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic}, ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode, AstFunction}};
-   use crate::utils::{Position,Range};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic}, ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode, AstFunction}};
+   use crate::utils::{Position,Range, create_new_range, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type};
 
    fn gen_list_of_tokens(list : &[(TokenType, Option<String>)]) -> Vec<Token> {
