@@ -474,7 +474,7 @@ mod test {
     #[test]
     fn test_words(){
         let mut lexer = GoldLexer::new();
-        let  mut f = File::open("./test_inputs/words.txt").expect("file not found");
+        let  mut f = File::open("./test/words.txt").expect("file not found");
         let mut file_contents = String::new();
         match f.read_to_string(&mut file_contents){
             Ok(_)=>(),
