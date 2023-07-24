@@ -1,7 +1,7 @@
 
 
 import socket, sys, json
-
+import time
 
 TCP_IP = 'localhost'
 TCP_PORT = 5001
@@ -30,29 +30,44 @@ initialize_req = {
 		"capabilities": {}
 	}
 }
-initialized_notif_req = {
+initialized_notif = {
     "jsonrpc": "2.0",
 	"method": "initialized",
 	"params": {}
 }
 shutdown_req = {
     "jsonrpc": "2.0",
-	"method": "shutdown",
+    "id": 2,
+    "method": "shutdown",
 	"params": None
 }
-payload = make_json_rpc(initialize_req)
+exit_notif = {
+    "jsonrpc": "2.0",
+    "method": "exit",
+	"params": None
+}
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect((TCP_IP, TCP_PORT))
+
+payload = make_json_rpc(initialize_req)
 s.send(bytes(payload,'utf-8'))
-while 1:
-    data =''
-    data = s.recv(BUFFER_SIZE)
-    if data != '':
-        break
+
+data = s.recv(BUFFER_SIZE)
 print('received data: ', data)
-payload = make_json_rpc(initialized_notif_req)
+
+time.sleep(1)
+payload = make_json_rpc(initialized_notif)
 s.send(bytes(payload,'utf-8'))
+
+time.sleep(1)
 payload = make_json_rpc(shutdown_req)
+s.send(bytes(payload,'utf-8'))
+
+data = s.recv(BUFFER_SIZE)
+print('received data: ', data)
+
+time.sleep(1)
+payload = make_json_rpc(exit_notif)
 s.send(bytes(payload,'utf-8'))
 s.close()

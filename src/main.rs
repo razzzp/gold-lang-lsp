@@ -4,7 +4,8 @@ use std::{io::Read, fs::File};
 use crate::{lexer::GoldLexer, parser::parse_gold};
 use std::error::Error;
 
-use lsp_types::OneOf;
+use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbol, SymbolKind, Range};
+use lsp_types::request::DocumentSymbolRequest;
 use lsp_types::{
     request::GotoDefinition, GotoDefinitionResponse, InitializeParams, ServerCapabilities,
 };
@@ -54,10 +55,20 @@ fn main_loop(
                     return Ok(());
                 }
                 eprintln!("got request: {req:?}");
-                match cast::<GotoDefinition>(req) {
+                match cast::<DocumentSymbolRequest>(req) {
                     Ok((id, params)) => {
-                        eprintln!("got gotoDefinition request #{id}: {params:?}");
-                        let result = Some(GotoDefinitionResponse::Array(Vec::new()));
+                        eprintln!("got Document Symbol request #{id}: {params:?}");
+                        let mut symbols = Vec::<DocumentSymbol>::new();
+                        symbols.push(DocumentSymbol { 
+                            name: "Test".to_string(), 
+                            detail: None, 
+                            kind: SymbolKind::CLASS, 
+                            tags: None, 
+                            deprecated: None, 
+                            range: Range::default(), 
+                            selection_range: Range::default(), 
+                            children: None });
+                        let result = Some(DocumentSymbolResponse::Nested(symbols));
                         let result = serde_json::to_value(&result).unwrap();
                         let resp = Response { id, result: Some(result), error: None };
                         connection.sender.send(Message::Response(resp))?;
