@@ -1,6 +1,7 @@
 use std::net::ToSocketAddrs;
 use std::{io::Read, fs::File};
 
+use crate::manager::GoldDocumentManager;
 use crate::{lexer::GoldLexer, parser::parse_gold};
 use std::error::Error;
 
@@ -10,21 +11,22 @@ use lsp_types::{
     request::GotoDefinition, GotoDefinitionResponse, InitializeParams, ServerCapabilities,
 };
 
-use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response};
+use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError, ErrorCode};
+use nom::error;
 
 pub mod lexer;
 pub mod parser;
 pub mod ast;
 pub mod utils;
+pub mod manager;
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Note that  we must have our logging only write out to stderr.
     eprintln!("starting generic LSP server");
-
     // Create the transport. Includes the stdio (stdin and stdout) versions but this could
     // also be implemented to use sockets or HTTP.
     let mut addrs_iter = "localhost:5001".to_socket_addrs().unwrap();
-    let (connection, io_threads) = Connection::listen(addrs_iter.next().unwrap())?;
+    let (connection, io_threads) = Connection::connect(addrs_iter.next().unwrap())?;
 
     // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
     let server_capabilities = serde_json::to_value(&ServerCapabilities {
@@ -46,6 +48,9 @@ fn main_loop(
     params: serde_json::Value,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let _params: InitializeParams = serde_json::from_value(params).unwrap();
+    
+    let mut doc_manager = GoldDocumentManager::new();
+
     eprintln!("starting example main loop");
     for msg in &connection.receiver {
         eprintln!("got msg: {msg:?}");
@@ -58,16 +63,22 @@ fn main_loop(
                 match cast::<DocumentSymbolRequest>(req) {
                     Ok((id, params)) => {
                         eprintln!("got Document Symbol request #{id}: {params:?}");
-                        let mut symbols = Vec::<DocumentSymbol>::new();
-                        symbols.push(DocumentSymbol { 
-                            name: "Test".to_string(), 
-                            detail: None, 
-                            kind: SymbolKind::CLASS, 
-                            tags: None, 
-                            deprecated: None, 
-                            range: Range::default(), 
-                            selection_range: Range::default(), 
-                            children: None });
+
+                        let req_doc_uri = params.text_document.uri;
+                        let doc = match doc_manager.get_document(req_doc_uri.as_str()){
+                            Ok(d) => d,
+                            Err(e) =>{
+                                let error = Some(ResponseError {
+                                    code: e.error_code as i32,
+                                    message: e.msg,
+                                    data: None
+                                });
+                                let resp = Response { id, result: None, error: error };
+                                connection.sender.send(Message::Response(resp))?;
+                                continue;
+                            }
+                        };
+                        let symbols = doc.get_symbols();
                         let result = Some(DocumentSymbolResponse::Nested(symbols));
                         let result = serde_json::to_value(&result).unwrap();
                         let resp = Response { id, result: Some(result), error: None };

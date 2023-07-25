@@ -13,7 +13,13 @@ pub struct GoldParserError<'a>{
    pub msg: String
 }
 
-pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNode>>), Vec<GoldParserError>) {
+#[derive(Debug, Clone)]
+pub struct GoldDocumentError{
+   pub range: Range,
+   pub msg: String
+}
+
+pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNode>>), Vec<GoldDocumentError>) {
    let parsers = [
       parse_comment,
       parse_class,
@@ -25,16 +31,22 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
       parse_function_declaration
    ];
    let mut result = Vec::<Box<dyn IAstNode>>::new();
-   let mut errors = Vec::<GoldParserError>::new();
+   let mut errors = Vec::<GoldDocumentError>::new();
    let mut next = input;
    while next.len() > 0 {
       next = match alt_parse(&parsers)(next){
          Ok((r,n))=> {result.push(n); r},
          Err(e)=> {
             let mut iter = e.input.iter();
+            let first_error_token = next.first();
+            let last_error_token = e.input.last();
+            let doc_error = GoldDocumentError {
+               range: create_new_range(first_error_token.unwrap(), last_error_token.unwrap()),
+               msg: e.msg
+            };
             // move one 
             iter.next();
-            errors.push(e);
+            errors.push(doc_error);
             // set next as the input of the most matched error
             iter.as_slice()
          }

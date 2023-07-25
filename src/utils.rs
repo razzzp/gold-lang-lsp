@@ -1,4 +1,5 @@
 
+
 pub trait IRange {
     fn get_range(&self) -> Range;
 }
@@ -8,11 +9,21 @@ pub struct Range {
     pub start: Position,
     pub end: Position
 }
+impl Range{
+    pub fn as_lsp_type_range(&self) -> lsp_types::Range{
+        lsp_types::Range {start: self.start.as_lsp_type_pos(), end: self.end.as_lsp_type_pos()}
+    }
+}
 
 #[derive(Debug,Clone,PartialEq, Default)]
 pub struct Position {
     pub line: usize,
     pub character: usize
+}
+impl Position{
+    pub fn as_lsp_type_pos(&self) -> lsp_types::Position{
+        lsp_types::Position { line: self.line as u32, character: self.character as u32 }
+    }
 }
 
 pub fn get_start_pos(item: &(dyn IRange)) -> Position {

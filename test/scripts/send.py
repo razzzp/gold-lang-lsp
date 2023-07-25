@@ -46,6 +46,14 @@ exit_notif = {
     "method": "exit",
 	"params": None
 }
+doc_sym_req = {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "textDocument/documentSymbol",
+	"params": {
+        "uri": "test/aTestClass.god"
+    }
+}
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.connect((TCP_IP, TCP_PORT))
@@ -59,6 +67,13 @@ print('received data: ', data)
 time.sleep(1)
 payload = make_json_rpc(initialized_notif)
 s.send(bytes(payload,'utf-8'))
+
+time.sleep(1)
+payload = make_json_rpc(doc_sym_req)
+s.send(bytes(payload,'utf-8'))
+
+data = s.recv(BUFFER_SIZE)
+print('received data: ', data)
 
 time.sleep(1)
 payload = make_json_rpc(shutdown_req)
