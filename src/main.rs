@@ -23,11 +23,23 @@ pub mod manager;
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Note that  we must have our logging only write out to stderr.
     eprintln!("starting generic LSP server");
+    // determine which transport to use
+    let args: Vec<String>= std::env::args().collect();
+    let transport_arg = args.iter().fold(String::new(),
+        |mut acc, cur| match cur.as_str() {
+            "--socket" | "--stdio" | "--pipe" => if acc.is_empty() {acc.push_str(cur.as_str()); acc} else {acc},
+            _ => acc
+        }
+    );
     // Create the transport. Includes the stdio (stdin and stdout) versions but this could
     // also be implemented to use sockets or HTTP.
+    // TODO don't hardcode port
     let mut addrs_iter = "localhost:5001".to_socket_addrs().unwrap();
-    let (connection, io_threads) = Connection::listen(addrs_iter.next().unwrap())?;
-
+    let (connection, io_threads) = match transport_arg.as_str() {
+        "--socket" => Connection::connect(addrs_iter.next().unwrap())?,
+        "--stdio" => Connection::stdio(),
+        _=> Connection::connect(addrs_iter.next().unwrap())?,
+    };
     // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
     let server_capabilities = serde_json::to_value(&ServerCapabilities {
         document_symbol_provider: Some(OneOf::Left(true)),
