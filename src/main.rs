@@ -5,7 +5,7 @@ use crate::manager::GoldDocumentManager;
 use crate::{lexer::GoldLexer, parser::parse_gold};
 use std::error::Error;
 
-use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbol, SymbolKind, Range};
+use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbol, SymbolKind, Range, Url};
 use lsp_types::request::DocumentSymbolRequest;
 use lsp_types::{
     request::GotoDefinition, GotoDefinitionResponse, InitializeParams, ServerCapabilities,
@@ -13,6 +13,7 @@ use lsp_types::{
 
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError, ErrorCode};
 use nom::error;
+use parser::GoldDocumentError;
 
 pub mod lexer;
 pub mod parser;
@@ -76,17 +77,17 @@ fn main_loop(
                     Ok((id, params)) => {
                         eprintln!("got Document Symbol request #{id}: {params:?}");
 
-                        let req_doc_uri = params.text_document.uri;
-                        let doc = match doc_manager.get_document(req_doc_uri.as_str()){
+                        let req_doc_path = match convert_uri_to_file_path_str(&params.text_document.uri){
+                            Ok(r) => r,
+                            _ => {
+                                send_error(&connection, id, ErrorCode::InvalidRequest as i32, "invalid uri".to_string())?;
+                                continue;
+                            }
+                        };
+                        let doc = match doc_manager.get_document(req_doc_path.as_str()){
                             Ok(d) => d,
                             Err(e) =>{
-                                let error = Some(ResponseError {
-                                    code: e.error_code as i32,
-                                    message: e.msg,
-                                    data: None
-                                });
-                                let resp = Response { id, result: None, error: error };
-                                connection.sender.send(Message::Response(resp))?;
+                                send_error(&connection, id, e.error_code as i32, e.msg)?;
                                 continue;
                             }
                         };
@@ -121,14 +122,39 @@ where
     req.extract(R::METHOD)
 }
 
+fn send_error(connection: &Connection, id: RequestId, code: i32, message: String)
+-> Result<(), Box<dyn Error + Sync + Send>> {
+    let error = Some(ResponseError {
+        code,
+        message,
+        data: None
+    });
+    let resp = Response { id, result: None, error: error };
+    Ok(connection.sender.send(Message::Response(resp))?)
+}
+
+fn convert_uri_to_file_path_str(uri : &Url) -> Result<String, String>{
+    let req_doc_uri = match uri.to_file_path(){
+        Ok(r) => r,
+        _ => return Err("invalid uri".to_string())
+    };
+    match req_doc_uri.as_path().to_str() {
+        Some(p) => return Ok(p.to_string()),
+        _ => return Err("invalid uri".to_string())
+    };
+}
+
 
 #[cfg(test)]
 mod test {
     use std::fs::File;
     use std::io::Read;
 
+    use lsp_types::Url;
+
     use crate::ast::AstClass;
     use crate::ast::AstUses;
+    use crate::convert_uri_to_file_path_str;
     use crate::lexer::GoldLexer;
     use crate::parser;
     use crate::parser::parse_gold;
@@ -184,8 +210,9 @@ endfunc
         // println!("{:#?}", nodes);
     }
 
+    #[test]
     fn test_read_file() {
-        let  mut f = File::open("./test_inputs/aTestClass.god").expect("file not found");
+        let  mut f = File::open("./test/aTestClass.god").expect("file not found");
         let mut file_contents = String::new();
         match f.read_to_string(&mut file_contents){
             Ok(_)=>(),
@@ -199,5 +226,12 @@ endfunc
         println!("{:#?}", ast.0.0);
         println!("{:#?}", ast.0.1);
         println!("{:#?}", ast.1.len());
+    }
+
+    #[test]
+    fn test_conver_uri_to_file_path(){
+        let uri = Url::parse("file:///home/razzzp/dev/gold-lang-lsp/test/aTestClass.god").unwrap();
+        let path = convert_uri_to_file_path_str(&uri).unwrap();
+        assert_eq!(path, "/home/razzzp/dev/gold-lang-lsp/test/aTestClass.god");
     }
 }

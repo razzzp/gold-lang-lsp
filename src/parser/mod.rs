@@ -721,8 +721,14 @@ fn parse_method_body<'a>(input : &'a [Token], end_token_type : TokenType) -> Res
       return Err(GoldParserError { input: it.as_slice(), msg: format!("{:?} not found",end_token_type)});
    }
    
-   let raw_pos = body_tokens.first().unwrap().raw_pos;
-   let pos = body_tokens.first().unwrap().pos.clone();
+   let raw_pos = match body_tokens.first(){
+      Some(t) => t.raw_pos,
+      _ => input.first().unwrap().raw_pos
+   };
+   let pos = match body_tokens.first(){
+      Some(t) => t.pos.clone(),
+      _ => input.first().unwrap().pos.clone()
+   };
    // range is until the endProc
    let range = Range{start: pos.clone(), end: end_method_token.as_ref().unwrap().pos.clone()};
    return Ok((it.as_slice(), AstMethodBody{
