@@ -32,6 +32,9 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
    ];
    let mut result = Vec::<Box<dyn IAstNode>>::new();
    let mut errors = Vec::<GoldDocumentError>::new();
+   if input.len() == 0 {
+      return ((input, result), errors)
+   }
    let mut next = input;
    while next.len() > 0 {
       next = match alt_parse(&parsers)(next){
@@ -39,9 +42,9 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
          Err(e)=> {
             let mut iter = e.input.iter();
             let first_error_token = next.first();
-            let last_error_token = e.input.last();
+            let last_error_token = if e.input.last().is_some(){e.input.first().unwrap()} else {input.last().unwrap()};
             let doc_error = GoldDocumentError {
-               range: create_new_range(first_error_token.unwrap(), last_error_token.unwrap()),
+               range: create_new_range(first_error_token.unwrap(), last_error_token),
                msg: e.msg
             };
             // move one 
@@ -390,7 +393,7 @@ fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
    // if proc is not forward and not external, parse body
    let mut method_body = None;
    if modifier_node.is_none() || modifier_node.is_some() && has_method_body(&modifier_node.as_ref().unwrap()) {
-      (next , method_body) = match parse_method_body(input, TokenType::EndProc){
+      (next , method_body) = match parse_method_body(next, TokenType::EndProc){
          Ok((n, node)) => (n, Some(node)),
          Err(_) => (next, None)
       }
@@ -425,7 +428,7 @@ fn parse_function_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
       Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: ", e))
    };
    // return 
-   let (next, return_token) = match exp_token(TokenType::Return)(next){
+   let (next, _) = match exp_token(TokenType::Return)(next){
       Ok(r) => r,
       Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: ", e))
    };
@@ -447,9 +450,9 @@ fn parse_function_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
    // if func is not forward and not external, parse body
    let mut method_body = None;
    if modifier_node.is_none() || modifier_node.is_some() && has_method_body(&modifier_node.as_ref().unwrap()) {
-      (next , method_body) = match parse_method_body(input, TokenType::EndFunc){
+      (next , method_body) = match parse_method_body(next, TokenType::EndFunc){
          Ok((n, node)) => (n, Some(node)),
-         Err(_) => (next, None)
+         Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: ", e))
       }
    }
    end = if method_body.is_some() {get_end_pos(&method_body.as_ref().unwrap().end_token)} else {end};
@@ -702,11 +705,11 @@ fn parse_method_body<'a>(input : &'a [Token], end_token_type : TokenType) -> Res
    let mut it = input.iter();
 
    let mut next = it.next();
-   let mut end_proc_token : Option<Token> = None;
+   let mut end_method_token : Option<Token> = None;
    while next.is_some() {
       let next_token = next.unwrap();
       if next_token.token_type == end_token_type || next_token.token_type == TokenType::End {
-         end_proc_token = Some(next_token.clone()); 
+         end_method_token = Some(next_token.clone()); 
          break;
       } else  {
          body_tokens.push(next_token.clone())
@@ -714,20 +717,20 @@ fn parse_method_body<'a>(input : &'a [Token], end_token_type : TokenType) -> Res
       next = it.next()
    }
 
-   if end_proc_token.is_none() {
-      return Err(GoldParserError { input: it.as_slice(), msg: format!("endProc not found")});
+   if end_method_token.is_none() {
+      return Err(GoldParserError { input: it.as_slice(), msg: format!("{:?} not found",end_token_type)});
    }
    
    let raw_pos = body_tokens.first().unwrap().raw_pos;
    let pos = body_tokens.first().unwrap().pos.clone();
    // range is until the endProc
-   let range = Range{start: pos.clone(), end: end_proc_token.as_ref().unwrap().pos.clone()};
+   let range = Range{start: pos.clone(), end: end_method_token.as_ref().unwrap().pos.clone()};
    return Ok((it.as_slice(), AstMethodBody{
       raw_pos,
       pos,
       range,
       statements,
-      end_token: end_proc_token.unwrap(),
+      end_token: end_method_token.unwrap(),
    }))
 }
 

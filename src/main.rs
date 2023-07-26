@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Create the transport. Includes the stdio (stdin and stdout) versions but this could
     // also be implemented to use sockets or HTTP.
     let mut addrs_iter = "localhost:5001".to_socket_addrs().unwrap();
-    let (connection, io_threads) = Connection::connect(addrs_iter.next().unwrap())?;
+    let (connection, io_threads) = Connection::listen(addrs_iter.next().unwrap())?;
 
     // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
     let server_capabilities = serde_json::to_value(&ServerCapabilities {

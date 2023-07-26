@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc::Rc};
+use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc::Rc, alloc::GlobalAlloc};
 
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind};
@@ -9,6 +9,7 @@ use crate::{ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstG
 // pub trait IDocument {
 //     fn get_symbols(&self)-> Vec<&'static DocumentSymbol>;
 // }
+#[derive(Debug)]
 pub struct GoldDocument{
     symbols: Vec<DocumentSymbol>,
     ast_nodes: Vec<Box<dyn IAstNode>>,
@@ -20,10 +21,12 @@ impl GoldDocument{
     }
 }
 
+#[derive(Debug)]
 pub struct GoldDocumentManager{
     document_map: HashMap<String, Rc<GoldDocument>>,
 }
 
+#[derive(Debug)]
 pub struct GoldDocumentManagerError{
     pub msg: String,
     pub error_code: ErrorCode,
@@ -53,7 +56,7 @@ impl GoldDocumentManager{
 
     fn parse_document(&self, uri: &str) -> Result<GoldDocument, GoldDocumentManagerError>{
         // open file
-        let mut file = match File::open("foo.txt"){
+        let mut file = match File::open(uri){
             Ok(f) => f,
             Err(e) => return Err(GoldDocumentManagerError{msg:e.to_string(), error_code: ErrorCode::InternalError})
         };
@@ -74,14 +77,18 @@ impl GoldDocumentManager{
     }
 
     fn generate_document_symbols(&self, ast_nodes: &Vec<Box<dyn IAstNode>>) -> Result<Vec<DocumentSymbol>, GoldDocumentManagerError>{
-        let mut result = Vec::<DocumentSymbol>::new();
-        let class_symbol = self.find_and_generate_class_symbol(ast_nodes);
+        let mut result = Vec::<DocumentSymbol, >::new();
+        let mut class_symbol = self.find_and_generate_class_symbol(ast_nodes);
         for node in ast_nodes {
             let symbol = self.generate_symbol_for_node(node.as_ref());
             if symbol.is_some(){
-                result.push(symbol.unwrap());
+                match &mut class_symbol {
+                    Some(class_sym) => class_sym.children.as_mut().unwrap().push(symbol.unwrap()),
+                    None => result.push(symbol.unwrap())
+                };
             }
         }
+        if class_symbol.is_some(){result.push(class_symbol.unwrap())}
         return Ok(result);
     }
 
@@ -203,7 +210,7 @@ impl GoldDocumentManager{
                         selection_range: n.get_range().as_lsp_type_range(), 
                         tags: None,
                         deprecated: None,
-                        children: None
+                        children: Some(Vec::new())
                     });
                     break;
                 }
@@ -211,5 +218,18 @@ impl GoldDocumentManager{
             }
         }
         return result;
+    }
+}
+
+#[cfg(test)]
+mod test{
+    use super::GoldDocumentManager;
+
+
+    #[test]
+    fn test_gold_document_manager(){
+        let mut doc_manager = GoldDocumentManager::new();
+        let doc = doc_manager.get_document("test/aTestClass.god").unwrap();
+        println!("{:#?}",doc);
     }
 }

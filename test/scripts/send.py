@@ -51,7 +51,9 @@ doc_sym_req = {
     "id": 3,
     "method": "textDocument/documentSymbol",
 	"params": {
-        "uri": "test/aTestClass.god"
+        "textDocument": {
+            "uri": "test/aTestClass.god"
+        }
     }
 }
 
@@ -68,8 +70,9 @@ time.sleep(1)
 payload = make_json_rpc(initialized_notif)
 s.send(bytes(payload,'utf-8'))
 
-time.sleep(1)
+time.sleep(3)
 payload = make_json_rpc(doc_sym_req)
+print("sending: {}".format(payload),'\n')
 s.send(bytes(payload,'utf-8'))
 
 data = s.recv(BUFFER_SIZE)
