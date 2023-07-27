@@ -6,6 +6,7 @@ use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstType
 use self::utils::{prepend_msg_to_error};
 
 pub mod utils;
+pub mod body_parser;
 
 #[derive(Debug, Clone)]
 pub struct GoldParserError<'a>{
