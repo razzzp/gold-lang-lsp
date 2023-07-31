@@ -951,7 +951,7 @@ mod test {
    use crate::utils::{Position,Range, create_new_range, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type};
 
-   fn gen_list_of_tokens(list : &[(TokenType, Option<String>)]) -> Vec<Token> {
+   pub fn gen_list_of_tokens(list : &[(TokenType, Option<String>)]) -> Vec<Token> {
       let mut result = Vec::<Token>::new();
       let mut raw_pos = 0;
       for (tok_type, val) in list.to_vec() {

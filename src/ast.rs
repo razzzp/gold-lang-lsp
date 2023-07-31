@@ -566,5 +566,39 @@ impl IAstNode for AstComment {
     }
 }
 
+#[derive(Debug)]
+pub struct AstBinaryOp {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub op_token: Token,
+    pub left_node: Box<dyn IAstNode>,
+    pub right_node: Box<dyn IAstNode>
+}
+impl IRange for AstBinaryOp {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+}
+impl IAstNode for AstBinaryOp {
+    fn get_type(&self) -> &'static str {
+        "Binary Op"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+
 
 
