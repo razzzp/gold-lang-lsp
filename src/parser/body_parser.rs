@@ -88,12 +88,26 @@ fn parse_factor<'a>(input: &'a[Token], left_node: Box<dyn IAstNode>) -> Result<(
     })))
 }
 
-fn parse_term<'a>(input: &'a[Token], left_node: Box<dyn IAstNode>) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
-    let (next, op_token) = alt_token(&[
+fn parse_term<'a>(input: &'a[Token], left_node: Box<dyn IAstNode>) -> Result<(&'a [Token], Box<dyn IAstNode>), Box<dyn IAstNode>>{
+    let (next, op_token) = match alt_token(&[
         exp_token(TokenType::Plus),
         exp_token(TokenType::Minus),
-    ])(input)?;
-    todo!();
+    ])(input){
+        Ok(r) => r,
+        Err(e) => return Err(left_node)
+    };
+    let (next, right_node) = match parse_terminal(next){
+        Ok(r) => r,
+        Err(e) => return Err(left_node)
+    };
+    return Ok((next, Box::new(AstBinaryOp{
+        raw_pos: left_node.get_raw_pos(),
+        pos: left_node.get_pos(),
+        range: create_new_range(left_node.as_range(), right_node.as_range()),
+        op_token: op_token,
+        left_node: left_node,
+        right_node: right_node
+    })))
 }
 
 
@@ -126,18 +140,24 @@ fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNod
 #[cfg(test)]
 mod test{
 
+    use crate::ast::AstBinaryOp;
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
+    use crate::parser::body_parser;
+
     #[test]
     fn test_parse_factor(){
         let input = gen_list_of_tokens(&[
-            (TokenType::Identifier, Some("Left".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
             (TokenType::Multiply, Some("*".to_string())),
-            (TokenType::Identifier, Some("Right".to_string())),
-            (TokenType::Override, Some("override".to_string())),
-            (TokenType::External, Some("external".to_string())),
-            (TokenType::StringConstant, Some("SomeDLL.Method".to_string())),
-            (TokenType::Forward, Some("forward".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),
+            (TokenType::Multiply, Some("/".to_string())),
+            (TokenType::Identifier, Some("Third".to_string())),
+            
         ]);
-        todo!()
+        let (next, node) = body_parser::parse_factors(&input).unwrap();
+        let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
+        let left_bin_op = &bin_op.left_node;
+        let right_bin_op = &bin_op.right_node;
+        println!("{:#?}", node);
     }
 }
