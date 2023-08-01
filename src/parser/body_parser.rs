@@ -1,7 +1,7 @@
 
 use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp}, utils::create_new_range};
 
-use super::{GoldParserError, exp_token, alt_parse, alt_token};
+use super::{GoldParserError, exp_token, alt_parse, alt_token, utils::prepend_msg_to_error};
 
 /// expr = ident
 ///     | bin_op
@@ -52,7 +52,7 @@ fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode
 }
 
 fn parse_factors<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
-    let (mut next, mut left_node) = parse_primary(input)?;
+    let (mut next, left_node) = parse_primary(input)?;
     let mut left_node = Some(left_node);
     loop {
         (next, left_node) = match parse_factor(next, left_node.unwrap()) {
@@ -74,7 +74,7 @@ fn parse_factor<'a>(input: &'a[Token], left_node: Box<dyn IAstNode>) -> Result<(
         Ok(r) => r,
         Err(e) => return Err(left_node)
     };
-    let (next, right_node) = match parse_terminal(next){
+    let (next, right_node) = match parse_primary(next){
         Ok(r) => r,
         Err(e) => return Err(left_node)
     };
@@ -88,17 +88,32 @@ fn parse_factor<'a>(input: &'a[Token], left_node: Box<dyn IAstNode>) -> Result<(
     })))
 }
 
+fn parse_terms<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let (mut next, left_node) = parse_factors(input)?;
+    let mut left_node = Some(left_node);
+    loop {
+        (next, left_node) = match parse_term(next, left_node.unwrap()) {
+            Ok((n, node)) => (n, Some(node)),
+            Err(ln)=> {
+                left_node = Some(ln);
+                break;
+            }
+        };
+    }
+    return Ok((next, left_node.unwrap()));
+} 
+
 fn parse_term<'a>(input: &'a[Token], left_node: Box<dyn IAstNode>) -> Result<(&'a [Token], Box<dyn IAstNode>), Box<dyn IAstNode>>{
     let (next, op_token) = match alt_token(&[
         exp_token(TokenType::Plus),
         exp_token(TokenType::Minus),
     ])(input){
         Ok(r) => r,
-        Err(e) => return Err(left_node)
+        Err(_) => return Err(left_node)
     };
-    let (next, right_node) = match parse_terminal(next){
+    let (next, right_node) = match parse_factors(next){
         Ok(r) => r,
-        Err(e) => return Err(left_node)
+        Err(_) => return Err(left_node)
     };
     return Ok((next, Box::new(AstBinaryOp{
         raw_pos: left_node.get_raw_pos(),
