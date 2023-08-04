@@ -44,6 +44,10 @@ pub fn create_new_range<T: IRange + ?Sized>(first_item: &T, second_item: &T) -> 
 }
 
 pub fn print_ast_brief(ast_node: &dyn IAstNode) -> String{
+    return format!("[{}:{}]", ast_node.get_type(), ast_node.get_identifier())
+}
+
+pub fn print_ast_brief_recursive(ast_node: &dyn IAstNode) -> String{
     let mut result = String::new();
     _print_ast_brief(&mut result, ast_node, 0);
     return result;
@@ -63,6 +67,22 @@ fn _print_ast_brief(result: &mut String, ast_node: &dyn IAstNode, indent_level: 
         },
         None => return
     }
+}
+
+pub fn inorder(ast_node: &dyn IAstNode) -> impl IntoIterator<Item = &dyn IAstNode, IntoIter= std::vec::IntoIter<&dyn IAstNode>> {
+    let mut result = Vec::new();
+    _inorder(ast_node, &mut result);
+    return result;
+}
+
+fn _inorder<'a>(ast_node: &'a dyn IAstNode, result: &mut Vec<&'a dyn IAstNode>){
+    let children = match ast_node.get_children() {
+        Some(c) => c,
+        None => {result.push(ast_node); return}
+    };
+    _inorder(children.first().unwrap().as_ast_node(), result);
+    result.push(ast_node);
+    _inorder(children.last().unwrap().as_ast_node(), result);
 }
 
 #[cfg(test)]

@@ -158,7 +158,7 @@ mod test {
     use crate::lexer::GoldLexer;
     use crate::parser;
     use crate::parser::parse_gold;
-    use crate::utils::print_ast_brief;
+    use crate::utils::print_ast_brief_recursive;
 
     #[test]
     fn test_class_everything(){
@@ -226,7 +226,7 @@ endfunc
         let ast = parse_gold(&tokens);
         println!("{:#?}", ast.0.0);
         for node in ast.0.1{
-            println!("{}",print_ast_brief(node.as_ref()));
+            println!("{}",print_ast_brief_recursive(node.as_ref()));
         }
         println!("{:#?}", ast.1.len());
     }
