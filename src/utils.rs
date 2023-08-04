@@ -1,3 +1,5 @@
+use crate::ast::IAstNode;
+use std::fmt::Write;
 
 
 pub trait IRange {
@@ -38,6 +40,28 @@ pub fn create_new_range<T: IRange + ?Sized>(first_item: &T, second_item: &T) -> 
     return Range{
         start: first_item.get_range().start.clone(),
         end: second_item.get_range().end.clone()
+    }
+}
+
+pub fn print_ast_brief(ast_node: &dyn IAstNode) -> String{
+    let mut result = String::new();
+    _print_ast_brief(&mut result, ast_node, 0);
+    return result;
+}
+
+fn _print_ast_brief(result: &mut String, ast_node: &dyn IAstNode, indent_level: usize){
+    for x in (0..indent_level){
+        write!(result, "  ");
+    }
+    writeln!(result, "[{}:{}]", ast_node.get_type(), ast_node.get_identifier());
+    let children = ast_node.get_children();
+    match children {
+        Some(children) =>{
+            for child in children {
+                _print_ast_brief(result, child, indent_level+1)
+            }
+        },
+        None => return
     }
 }
 

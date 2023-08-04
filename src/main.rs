@@ -158,6 +158,7 @@ mod test {
     use crate::lexer::GoldLexer;
     use crate::parser;
     use crate::parser::parse_gold;
+    use crate::utils::print_ast_brief;
 
     #[test]
     fn test_class_everything(){
@@ -224,12 +225,14 @@ endfunc
         println!("{:#?}", tokens);
         let ast = parse_gold(&tokens);
         println!("{:#?}", ast.0.0);
-        println!("{:#?}", ast.0.1);
+        for node in ast.0.1{
+            println!("{}",print_ast_brief(node.as_ref()));
+        }
         println!("{:#?}", ast.1.len());
     }
 
     #[test]
-    fn test_conver_uri_to_file_path(){
+    fn test_convert_uri_to_file_path(){
         let uri = Url::parse("file:///home/razzzp/dev/gold-lang-lsp/test/aTestClass.god").unwrap();
         let path = convert_uri_to_file_path_str(&uri).unwrap();
         assert_eq!(path, "/home/razzzp/dev/gold-lang-lsp/test/aTestClass.god");

@@ -35,6 +35,11 @@ impl IAstNode for AstTerminal {
     fn get_type(&self) -> &'static str {
         return "Terminal";
     }
+
+    fn get_identifier(&self) -> String {
+        self.token.value.as_ref().unwrap().to_string()
+    }
+
     fn get_raw_pos(&self) -> usize {
         return self.token.raw_pos;
     }
@@ -677,6 +682,10 @@ impl IRange for AstBinaryOp {
 impl IAstNode for AstBinaryOp {
     fn get_type(&self) -> &'static str {
         "Binary Op"
+    }
+
+    fn get_identifier(&self) -> String {
+        self.op_token.value.as_ref().unwrap().to_string()
     }
 
     fn get_raw_pos(&self) -> usize {
