@@ -10,6 +10,13 @@ pub trait IAstNode: std::fmt::Debug + IRange {
     // fn get_range(&self) -> Range;
     fn as_any(&self) -> &dyn Any;
     fn as_range(&self) -> &dyn IRange;
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>>{
+        return None;
+    }
+    fn get_identifier(&self) -> String{
+        return "".to_string();
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode;
     // fn get_token(&self) -> Token;
     // fn eval() -> ();
 }
@@ -38,6 +45,9 @@ impl IAstNode for AstTerminal {
         self.token.pos.clone()
     }
     fn as_range(&self) -> &dyn IRange {
+        self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
 }
@@ -72,6 +82,9 @@ impl IAstNode for AstClass {
     fn as_range(&self) -> &dyn IRange {
         self
     }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -100,6 +113,9 @@ impl IAstNode for AstUses {
         self.pos.clone()
     }
     fn as_range(&self) -> &dyn IRange {
+        self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
 }
@@ -132,6 +148,9 @@ impl IAstNode for AstTypeBasic {
     fn as_range(&self) -> &dyn IRange {
         self
     }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -156,6 +175,9 @@ impl IAstNode for AstEmpty {
         todo!()
     }
     fn as_range(&self) -> &dyn IRange {
+        self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
 }
@@ -188,6 +210,9 @@ impl IAstNode for AstTypeEnum {
         self 
     }
     fn as_range(&self) -> &dyn IRange {
+        self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
 }
@@ -223,6 +248,9 @@ impl IAstNode for AstTypeReference {
     fn as_range(&self) -> &dyn IRange {
         self
     }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -256,6 +284,14 @@ impl IAstNode for AstTypeDeclaration {
     fn as_range(&self) -> &dyn IRange {
         self
     }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.type_node.as_ref().as_ast_node());
+        return Some(result);
+    }
 }
 
 #[derive(Debug)]
@@ -288,6 +324,9 @@ impl IAstNode for AstConstantDeclaration {
         self
     }
     fn as_range(&self) -> &dyn IRange {
+        self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
 }
@@ -324,6 +363,14 @@ impl IAstNode for AstGlobalVariableDeclaration {
     fn as_range(&self) -> &dyn IRange {
         self
     }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.type_node.as_ref().as_ast_node());
+        return Some(result);
+    }
 }
 
 #[derive(Debug)]
@@ -341,7 +388,7 @@ impl IRange for AstProcedure {
         self.range.clone()
     }
 }
-impl IAstNode for AstFunction {
+impl IAstNode for AstProcedure {
     fn get_type(&self) -> &'static str {
         "Procedure Declaration"
     }
@@ -358,6 +405,16 @@ impl IAstNode for AstFunction {
     }
     fn as_range(&self) -> &dyn IRange {
         self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
+        if self.modifiers.is_some() {result.push(self.modifiers.as_ref().unwrap().as_ast_node());}
+        if self.body.is_some() {result.push(self.body.as_ref().unwrap().as_ast_node());}
+        return Some(result);
     }
 }
 
@@ -378,7 +435,7 @@ impl IRange for AstFunction {
         self.range.clone()
     }
 }
-impl IAstNode for AstProcedure {
+impl IAstNode for AstFunction {
     fn get_type(&self) -> &'static str {
         "Function Declaration"
     }
@@ -394,6 +451,17 @@ impl IAstNode for AstProcedure {
         self
     }
     fn as_range(&self) -> &dyn IRange {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
+        result.push(self.return_type.as_ref().as_ast_node());
+        if self.modifiers.is_some() {result.push(self.modifiers.as_ref().unwrap().as_ast_node());}
+        if self.body.is_some() {result.push(self.body.as_ref().unwrap().as_ast_node());}
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
 }
@@ -428,6 +496,12 @@ impl IAstNode for AstParameterDeclarationList {
     fn as_range(&self) -> &dyn IRange {
         self
     }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        return Some(self.parameter_list.iter().map(|node| {node.as_ref()}).collect());
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -460,6 +534,14 @@ impl IAstNode for AstParameterDeclaration {
         self
     }
     fn as_range(&self) -> &dyn IRange {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        if self.type_node.is_some() {result.push(self.type_node.as_ref().unwrap().as_ref())}
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
 }
@@ -499,6 +581,9 @@ impl IAstNode for AstMethodModifiers {
     fn as_range(&self) -> &dyn IRange {
         self
     }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -530,6 +615,12 @@ impl IAstNode for AstMethodBody {
         self
     }
     fn as_range(&self) -> &dyn IRange {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        return Some(self.statements.iter().map(|node| {node.as_ref()}).collect());
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
 }
@@ -564,6 +655,9 @@ impl IAstNode for AstComment {
     fn as_range(&self) -> &dyn IRange {
         self
     }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
 }
 
 #[derive(Debug)]
@@ -596,6 +690,15 @@ impl IAstNode for AstBinaryOp {
         self
     }
     fn as_range(&self) -> &dyn IRange {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.left_node.as_ref());
+        result.push(self.right_node.as_ref());
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
 }
