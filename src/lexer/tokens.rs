@@ -1,7 +1,7 @@
 
 use crate::utils::{IRange, Position, Range};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
     // types
     Absolute,
@@ -199,6 +199,9 @@ pub struct Token {
 impl IRange for Token {
     fn get_range(&self) -> Range{
         self.range.clone()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
     }
 }
 

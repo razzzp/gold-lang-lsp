@@ -9,7 +9,6 @@ pub trait IAstNode: std::fmt::Debug + IRange {
     fn get_pos(&self) -> Position;
     // fn get_range(&self) -> Range;
     fn as_any(&self) -> &dyn Any;
-    fn as_range(&self) -> &dyn IRange;
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>>{
         return None;
     }
@@ -30,6 +29,9 @@ impl IRange for AstTerminal {
     fn get_range(&self) -> Range {
         self.token.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstTerminal {
     fn get_type(&self) -> &'static str {
@@ -49,9 +51,6 @@ impl IAstNode for AstTerminal {
     fn get_pos(&self) -> Position {
         self.token.pos.clone()
     }
-    fn as_range(&self) -> &dyn IRange {
-        self
-    }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
@@ -69,6 +68,9 @@ impl IRange for AstClass {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstClass {
     fn get_type(&self) -> &'static str {
@@ -83,9 +85,6 @@ impl IAstNode for AstClass {
 
     fn get_pos(&self) -> Position {
         self.pos.clone()
-    }
-    fn as_range(&self) -> &dyn IRange {
-        self
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
@@ -103,6 +102,9 @@ impl IRange for AstUses {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstUses {
     fn get_type(&self) -> &'static str {
@@ -116,9 +118,6 @@ impl IAstNode for AstUses {
     }
     fn get_pos(&self) -> Position {
         self.pos.clone()
-    }
-    fn as_range(&self) -> &dyn IRange {
-        self
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
@@ -136,10 +135,16 @@ impl IRange for AstTypeBasic {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstTypeBasic {
     fn get_type(&self) -> &'static str {
         return "Type Basic Fixed";
+    }
+    fn get_identifier(&self) -> String {
+        return self.type_token.value.as_ref().unwrap().to_string();
     }
     fn get_raw_pos(&self) -> usize {
         return self.raw_pos;
@@ -149,9 +154,6 @@ impl IAstNode for AstTypeBasic {
     }
     fn get_pos(&self) -> Position {
         self.pos.clone()
-    }
-    fn as_range(&self) -> &dyn IRange {
-        self
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
@@ -163,6 +165,9 @@ pub struct AstEmpty {}
 impl IRange for AstEmpty {
     fn get_range(&self) -> Range {
         todo!()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
     }
 }
 impl IAstNode for AstEmpty {
@@ -178,9 +183,6 @@ impl IAstNode for AstEmpty {
 
     fn get_pos(&self) -> Position {
         todo!()
-    }
-    fn as_range(&self) -> &dyn IRange {
-        self
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
@@ -198,6 +200,9 @@ impl IRange for AstTypeEnum {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstTypeEnum {
     fn get_type(&self) -> &'static str {
@@ -213,9 +218,6 @@ impl IAstNode for AstTypeEnum {
     }
     fn as_any(&self) -> &dyn Any {
         self 
-    }
-    fn as_range(&self) -> &dyn IRange {
-        self
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
@@ -234,6 +236,9 @@ impl IRange for AstTypeReference {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstTypeReference {
     fn get_type(&self) -> &'static str {
@@ -248,9 +253,6 @@ impl IAstNode for AstTypeReference {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_range(&self) -> &dyn IRange {
         self
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -270,6 +272,9 @@ impl IRange for AstTypeDeclaration {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstTypeDeclaration {
     fn get_type(&self) -> &'static str {
@@ -284,9 +289,6 @@ impl IAstNode for AstTypeDeclaration {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_range(&self) -> &dyn IRange {
         self
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -312,6 +314,9 @@ impl IRange for AstConstantDeclaration {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstConstantDeclaration {
     fn get_type(&self) -> &'static str {
@@ -326,9 +331,6 @@ impl IAstNode for AstConstantDeclaration {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_range(&self) -> &dyn IRange {
         self
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -349,6 +351,9 @@ impl IRange for AstGlobalVariableDeclaration {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstGlobalVariableDeclaration {
     fn get_type(&self) -> &'static str {
@@ -363,9 +368,6 @@ impl IAstNode for AstGlobalVariableDeclaration {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_range(&self) -> &dyn IRange {
         self
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -392,6 +394,9 @@ impl IRange for AstProcedure {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstProcedure {
     fn get_type(&self) -> &'static str {
@@ -406,9 +411,6 @@ impl IAstNode for AstProcedure {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_range(&self) -> &dyn IRange {
         self
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -439,6 +441,9 @@ impl IRange for AstFunction {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstFunction {
     fn get_type(&self) -> &'static str {
@@ -453,9 +458,6 @@ impl IAstNode for AstFunction {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_range(&self) -> &dyn IRange {
         self
     }
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
@@ -482,6 +484,9 @@ impl IRange for AstParameterDeclarationList {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstParameterDeclarationList {
     fn get_type(&self) -> &'static str {
@@ -496,9 +501,6 @@ impl IAstNode for AstParameterDeclarationList {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_range(&self) -> &dyn IRange {
         self
     }
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
@@ -522,6 +524,9 @@ impl IRange for AstParameterDeclaration {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstParameterDeclaration {
     fn get_type(&self) -> &'static str {
@@ -536,9 +541,6 @@ impl IAstNode for AstParameterDeclaration {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_range(&self) -> &dyn IRange {
         self
     }
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
@@ -567,6 +569,9 @@ impl IRange for AstMethodModifiers {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstMethodModifiers {
     fn get_type(&self) -> &'static str {
@@ -581,9 +586,6 @@ impl IAstNode for AstMethodModifiers {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_range(&self) -> &dyn IRange {
         self
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -603,6 +605,9 @@ impl IRange for AstMethodBody {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstMethodBody {
     fn get_type(&self) -> &'static str {
@@ -617,9 +622,6 @@ impl IAstNode for AstMethodBody {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_range(&self) -> &dyn IRange {
         self
     }
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
@@ -641,6 +643,9 @@ impl IRange for AstComment {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
 }
 impl IAstNode for AstComment {
     fn get_type(&self) -> &'static str {
@@ -655,9 +660,6 @@ impl IAstNode for AstComment {
         self.pos.clone()
     }
     fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_range(&self) -> &dyn IRange {
         self
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -677,6 +679,9 @@ pub struct AstBinaryOp {
 impl IRange for AstBinaryOp {
     fn get_range(&self) -> Range {
         self.range.clone()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
     }
 }
 impl IAstNode for AstBinaryOp {
@@ -698,9 +703,6 @@ impl IAstNode for AstBinaryOp {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn as_range(&self) -> &dyn IRange {
-        self
-    }
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.left_node.as_ref());
@@ -712,5 +714,50 @@ impl IAstNode for AstBinaryOp {
     }
 }
 
+#[derive(Debug)]
+pub struct AstCast {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub type_node: Box<dyn IAstNode>,
+    pub expr_node: Box<dyn IAstNode>
+}
+impl IRange for AstCast {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstCast {
+    fn get_type(&self) -> &'static str {
+        "Cast"
+    }
+
+    fn get_identifier(&self) -> String {
+        format!("Cast({})", self.type_node.get_identifier())
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.type_node.as_ref());
+        result.push(self.expr_node.as_ref());
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+}
 
 

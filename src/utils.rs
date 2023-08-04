@@ -4,6 +4,7 @@ use std::fmt::Write;
 
 pub trait IRange {
     fn get_range(&self) -> Range;
+    fn as_range(&self) -> &dyn IRange;
 }
 
 #[derive(Debug,Clone,PartialEq, Default)]

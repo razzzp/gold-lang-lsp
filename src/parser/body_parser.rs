@@ -1,7 +1,7 @@
 
-use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp}, utils::create_new_range};
+use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast}, utils::{create_new_range, IRange}};
 
-use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse};
+use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic};
 
 /// expr = ident
 ///     | bin_op
@@ -42,6 +42,20 @@ fn parse_bracket_closure<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn 
     return Ok((next,expr_node))
 }
 
+fn parse_cast<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let (next, type_node) = parse_type_basic(input)?;
+    let (next, _) = exp_token(TokenType::OBracket)(next)?;
+    let (next, expr_node) = parse_expr(next)?;
+    let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
+    return Ok((next, Box::new(AstCast{
+        raw_pos: type_node.get_raw_pos(),
+        pos: type_node.get_pos(),
+        range: create_new_range(type_node.as_range(), cbracket_token.as_range()),
+        type_node,
+        expr_node
+    })));
+}
+
 fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
     let parsers = [
         parse_terminal,
@@ -70,6 +84,7 @@ fn parse_terms<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>)
     let op_token_parsers = [
         exp_token(TokenType::Plus),
         exp_token(TokenType::Minus),
+        exp_token(TokenType::StringConcat),
     ];
     let op_parser = alt_parse(&op_token_parsers);
     return parse_binary_ops(input, &op_parser, &parse_factors);
@@ -126,10 +141,25 @@ fn parse_binary_op<'a>(
 #[cfg(test)]
 mod test{
 
-    use crate::ast::AstBinaryOp;
+    use crate::ast::{AstBinaryOp, AstCast};
     use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast};
+
+    #[test]
+    fn test_parse_cast(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Identifier, Some("CastType".to_string())),
+            (TokenType::OBracket, Some("(".to_string())),
+            (TokenType::Identifier, Some("Expression".to_string())),
+            (TokenType::CBracket, Some(")".to_string())),
+        ]);
+        let (next, node) = parse_cast(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        let node = node.as_any().downcast_ref::<AstCast>().unwrap();
+        assert_eq!(node.type_node.get_identifier(), "CastType");
+        assert_eq!(node.expr_node.get_identifier(), "Expression");
+    }
 
     #[test]
     fn test_parse_dot_ops(){
