@@ -10,10 +10,10 @@ pub trait IAstNode: std::fmt::Debug + IRange {
     // fn get_range(&self) -> Range;
     fn as_any(&self) -> &dyn Any;
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>>{
-        return None;
+        None
     }
     fn get_identifier(&self) -> String{
-        return "".to_string();
+        todo!()
     }
     fn as_ast_node(&self) -> &dyn IAstNode;
     // fn get_token(&self) -> Token;
@@ -89,6 +89,9 @@ impl IAstNode for AstClass {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
+    fn get_identifier(&self) -> String {
+        self.name.clone()
+    }
 }
 
 #[derive(Debug)]
@@ -122,6 +125,9 @@ impl IAstNode for AstUses {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
+    fn get_identifier(&self) -> String {
+        self.pos.to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -144,7 +150,7 @@ impl IAstNode for AstTypeBasic {
         return "Type Basic Fixed";
     }
     fn get_identifier(&self) -> String {
-        return self.type_token.value.as_ref().unwrap().to_string();
+        return self.type_token.get_value()
     }
     fn get_raw_pos(&self) -> usize {
         return self.raw_pos;
@@ -222,6 +228,9 @@ impl IAstNode for AstTypeEnum {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
+    fn get_identifier(&self) -> String {
+        self.pos.to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -257,6 +266,9 @@ impl IAstNode for AstTypeReference {
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
+    }
+    fn get_identifier(&self) -> String {
+        self.ref_type.get_value()
     }
 }
 
@@ -299,6 +311,9 @@ impl IAstNode for AstTypeDeclaration {
         result.push(self.type_node.as_ref().as_ast_node());
         return Some(result);
     }
+    fn get_identifier(&self) -> String {
+        self.identifier.get_value()
+    }
 }
 
 #[derive(Debug)]
@@ -335,6 +350,9 @@ impl IAstNode for AstConstantDeclaration {
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
+    }
+    fn get_identifier(&self) -> String {
+        self.identifier.get_value()
     }
 }
 
@@ -377,6 +395,9 @@ impl IAstNode for AstGlobalVariableDeclaration {
         let mut result = Vec::new();
         result.push(self.type_node.as_ref().as_ast_node());
         return Some(result);
+    }
+    fn get_identifier(&self) -> String {
+        self.identifier.get_value()
     }
 }
 
@@ -422,6 +443,9 @@ impl IAstNode for AstProcedure {
         if self.modifiers.is_some() {result.push(self.modifiers.as_ref().unwrap().as_ast_node());}
         if self.body.is_some() {result.push(self.body.as_ref().unwrap().as_ast_node());}
         return Some(result);
+    }
+    fn get_identifier(&self) -> String {
+        self.identifier.get_value()
     }
 }
 
@@ -471,6 +495,9 @@ impl IAstNode for AstFunction {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
+    fn get_identifier(&self) -> String {
+        self.identifier.get_value()
+    }
 }
 
 #[derive(Debug)]
@@ -508,6 +535,9 @@ impl IAstNode for AstParameterDeclarationList {
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
+    }
+    fn get_identifier(&self) -> String {
+        self.pos.to_string()
     }
 }
 
@@ -551,6 +581,9 @@ impl IAstNode for AstParameterDeclaration {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
+    fn get_identifier(&self) -> String {
+        self.identifier.get_value()
+    }
 }
 
 #[derive(Debug,Default)]
@@ -591,6 +624,9 @@ impl IAstNode for AstMethodModifiers {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
+    fn get_identifier(&self) -> String {
+        self.pos.to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -630,6 +666,9 @@ impl IAstNode for AstMethodBody {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
+    fn get_identifier(&self) -> String {
+        self.pos.to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -664,6 +703,9 @@ impl IAstNode for AstComment {
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
+    }
+    fn get_identifier(&self) -> String {
+        self.pos.to_string()
     }
 }
 
@@ -739,7 +781,7 @@ impl IAstNode for AstCast {
     }
 
     fn get_identifier(&self) -> String {
-        format!("Cast({})", self.type_node.get_identifier())
+        format!("{}", self.type_node.get_identifier())
     }
 
     fn get_raw_pos(&self) -> usize {

@@ -30,6 +30,9 @@ impl Position{
     pub fn as_lsp_type_pos(&self) -> lsp_types::Position{
         lsp_types::Position { line: self.line as u32, character: self.character as u32 }
     }
+    pub fn to_string(&self) -> String {
+        format!("{:?}", self)
+    }
 }
 
 pub fn get_start_pos(item: &(dyn IRange)) -> Position {
