@@ -182,9 +182,11 @@ pub enum TokenType {
     Identifier,
     Comma,
 
-    // constants
-    StringConstant,
-    NumericConstant
+    // lterals
+    StringLiteral,
+    NumericLiteral,
+    BooleanTrue,
+    BooleanFalse
 }
 
 #[derive(Debug,Clone)]

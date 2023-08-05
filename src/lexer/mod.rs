@@ -107,7 +107,7 @@ impl GoldLexer{
                 _ => break
             }
         }
-        return Ok(self.create_token(pos, TokenType::NumericConstant, Some(number)));
+        return Ok(self.create_token(pos, TokenType::NumericLiteral, Some(number)));
     }
 
     fn read_symbol(&mut self, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, GoldLexerError> {
@@ -156,7 +156,7 @@ impl GoldLexer{
                 None => break
             }
         }
-        return self.create_token(pos, TokenType::StringConstant, Some(value))
+        return self.create_token(pos, TokenType::StringLiteral, Some(value))
     }
 
     fn read_string_constant_doublequotes(&mut self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token {
@@ -168,7 +168,7 @@ impl GoldLexer{
                 None => break
             }
         }
-        return self.create_token(pos, TokenType::StringConstant, Some(value))
+        return self.create_token(pos, TokenType::StringLiteral, Some(value))
     }
     
     fn read_comment(&mut self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token{
@@ -370,6 +370,8 @@ impl GoldLexer{
             "_RESULT" =>self.create_token(pos, TokenType::Result, Some(word)),
             "MODULE" =>self.create_token(pos, TokenType::Module, Some(word)),
             "MULTILANG" => self.create_token(pos, TokenType::MultiLang, Some(word)),
+            "TRUE" => self.create_token(pos, TokenType::BooleanTrue, Some(word)),
+            "FALSE" => self.create_token(pos, TokenType::BooleanFalse, Some(word)),
             _ =>self.create_token(pos, TokenType::Identifier, Some(word))
         }
     }
@@ -513,17 +515,17 @@ mod test {
         // println!("{:#?}", token);
         assert_eq!(token.len(), 3);
         // first
-        assert_eq!(token[0].token_type, TokenType::StringConstant);
+        assert_eq!(token[0].token_type, TokenType::StringLiteral);
         assert_eq!(token[0].raw_pos, 0);
         assert_eq!(token[0].pos, Position {line:0,character:0});
         assert_eq!(token[0].value.as_ref().unwrap().as_str(), "first string constant");
         // second
-        assert_eq!(token[1].token_type, TokenType::StringConstant);
+        assert_eq!(token[1].token_type, TokenType::StringLiteral);
         assert_eq!(token[1].raw_pos, 27);
         assert_eq!(token[1].pos, Position {line:0,character:27});
         assert_eq!(token[1].value.as_ref().unwrap().as_str(), "b");
         // third
-        assert_eq!(token[2].token_type, TokenType::StringConstant);
+        assert_eq!(token[2].token_type, TokenType::StringLiteral);
         assert_eq!(token[2].raw_pos, 32);
         assert_eq!(token[2].pos, Position {line:1,character:1});
         assert_eq!(token[2].value.as_ref().unwrap().as_str(), "double quote of newline");
@@ -539,22 +541,22 @@ mod test {
         // println!("{:#?}", token);
         assert_eq!(token.len(), 4);    
         // first
-        assert_eq!(token[0].token_type, TokenType::NumericConstant);
+        assert_eq!(token[0].token_type, TokenType::NumericLiteral);
         assert_eq!(token[0].raw_pos, 0);
         assert_eq!(token[0].pos, Position {line:0,character:0});
         assert_eq!(token[0].value.as_ref().unwrap().as_str(), "10");
         // second
-        assert_eq!(token[1].token_type, TokenType::NumericConstant);
+        assert_eq!(token[1].token_type, TokenType::NumericLiteral);
         assert_eq!(token[1].raw_pos, 3);
         assert_eq!(token[1].pos, Position {line:0,character:3});
         assert_eq!(token[1].value.as_ref().unwrap().as_str(), "12.55");
         // third
-        assert_eq!(token[2].token_type, TokenType::NumericConstant);
+        assert_eq!(token[2].token_type, TokenType::NumericLiteral);
         assert_eq!(token[2].raw_pos, 9);
         assert_eq!(token[2].pos, Position {line:0,character:9});
         assert_eq!(token[2].value.as_ref().unwrap().as_str(), "10000");
         // fourth
-        assert_eq!(token[3].token_type, TokenType::NumericConstant);
+        assert_eq!(token[3].token_type, TokenType::NumericLiteral);
         assert_eq!(token[3].raw_pos, 16);
         assert_eq!(token[3].pos, Position {line:1,character:1});
         assert_eq!(token[3].value.as_ref().unwrap().as_str(), "77.1234134141412424");

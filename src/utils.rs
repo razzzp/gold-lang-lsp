@@ -4,6 +4,8 @@ use std::fmt::Write;
 
 pub trait IRange {
     fn get_range(&self) -> Range;
+    fn set_range(&mut self, new_range: Range){//TODO:implem for all classes
+    }
     fn as_range(&self) -> &dyn IRange;
 }
 
@@ -70,7 +72,7 @@ fn _print_ast_brief(result: &mut String, ast_node: &dyn IAstNode, indent_level: 
     }
 }
 
-pub fn inorder(ast_node: &dyn IAstNode) -> impl IntoIterator<Item = &dyn IAstNode, IntoIter= std::vec::IntoIter<&dyn IAstNode>> {
+pub fn inorder(ast_node: &dyn IAstNode) -> Vec<&dyn IAstNode>  {
     let mut result = Vec::new();
     _inorder(ast_node, &mut result);
     return result;
@@ -86,6 +88,22 @@ fn _inorder<'a>(ast_node: &'a dyn IAstNode, result: &mut Vec<&'a dyn IAstNode>){
     _inorder(children.last().unwrap().as_ast_node(), result);
 }
 
+
+pub fn dfs(ast_node: &dyn IAstNode) -> Vec<&dyn IAstNode> {
+    let mut result = Vec::new();
+    _dfs(ast_node, &mut result);
+    return result;
+}
+
+fn _dfs<'a>(ast_node: &'a dyn IAstNode, result: &mut Vec<&'a dyn IAstNode>){
+    let children = match ast_node.get_children() {
+        Some(c) => c,
+        None => {result.push(ast_node); return}
+    };
+    _dfs(children.first().unwrap().as_ast_node(), result);
+    _dfs(children.last().unwrap().as_ast_node(), result);
+    result.push(ast_node);
+}
 #[cfg(test)]
 pub mod test_utils{
     use crate::ast::IAstNode;

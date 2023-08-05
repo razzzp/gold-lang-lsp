@@ -134,8 +134,8 @@ fn parse_constant_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
    // string or numeric value
    let (next, value_token) = match alt_parse(
       &[
-         exp_token(TokenType::StringConstant),
-         exp_token(TokenType::NumericConstant)]
+         exp_token(TokenType::StringLiteral),
+         exp_token(TokenType::NumericLiteral)]
    )(next){
       Ok(r) => r,
       Err(e) => return Err(prepend_msg_to_error("Cannot parse constant decl: ", e))
@@ -604,7 +604,7 @@ fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opti
    // external
    let (next, external_token_list) = match seq_parse(&[
       exp_token(TokenType::External),
-      exp_token(TokenType::StringConstant)
+      exp_token(TokenType::StringLiteral)
    ])(next) {
       Ok((n, token_list)) => (n, Some(token_list)),
       Err(e) => (e.input, None)
@@ -654,7 +654,7 @@ fn parse_method_modifiers_<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opt
       opt_token(TokenType::Final),
       opt_token(TokenType::Override),
       opt_token(TokenType::External),
-      opt_token(TokenType::StringConstant),
+      opt_token(TokenType::StringLiteral),
       opt_token(TokenType::Forward),
    ])(input) {
       Ok((n, token_list)) => (n, Some(token_list)),
@@ -663,7 +663,7 @@ fn parse_method_modifiers_<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opt
    // external
    let (next, external_token_list) = match seq_parse(&[
       exp_token(TokenType::External),
-      exp_token(TokenType::StringConstant)
+      exp_token(TokenType::StringLiteral)
    ])(next) {
       Ok((n, token_list)) => (n, Some(token_list)),
       Err(e) => (e.input, None)
@@ -1130,7 +1130,7 @@ mod test {
          (TokenType::Const, Some("const".to_string())),
          (TokenType::Identifier, Some("cAConstant".to_string())),
          (TokenType::Equals, Some("=".to_string())),
-         (TokenType::StringConstant, Some("a constant string".to_string())),
+         (TokenType::StringLiteral, Some("a constant string".to_string())),
       ]);
       let next : &[Token] = &input;
 
@@ -1198,7 +1198,7 @@ mod test {
          (TokenType::Final, Some("final".to_string())),
          (TokenType::Override, Some("override".to_string())),
          (TokenType::External, Some("external".to_string())),
-         (TokenType::StringConstant, Some("SomeDLL.Method".to_string())),
+         (TokenType::StringLiteral, Some("SomeDLL.Method".to_string())),
          (TokenType::Forward, Some("forward".to_string())),
       ]);
       let next : &[Token] = &input;
@@ -1372,7 +1372,7 @@ mod test {
          (TokenType::Final, Some("final".to_string())),
          (TokenType::Override, Some("override".to_string())),
          (TokenType::External, Some("external".to_string())),
-         (TokenType::StringConstant, Some("SomeDLL.Method".to_string())),
+         (TokenType::StringLiteral, Some("SomeDLL.Method".to_string())),
          (TokenType::Forward, Some("forward".to_string())),
       ]);
       // test pos

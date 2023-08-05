@@ -14,18 +14,26 @@ use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, 
 
 fn parse_expr<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError> {
     let parser = [
-        parse_terminal,
-        parse_bracket_closure
+        parse_logical_or,
     ];
     let result= alt_parse(&parser)(input)?;
     return Ok(result);
 }
 
+fn parse_literals<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+    let (next, ident_token) = alt_parse(&[
+        exp_token(TokenType::StringLiteral),
+        exp_token(TokenType::NumericLiteral),
+        exp_token(TokenType::BooleanTrue),
+        exp_token(TokenType::BooleanFalse)])(input)?;
+    return Ok((next, Box::new(AstTerminal{
+        token: ident_token
+    })))
+}
+
 fn parse_terminal<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
     let (next, ident_token) = alt_parse(&[
         exp_token(TokenType::Identifier),
-        exp_token(TokenType::StringConstant),
-        exp_token(TokenType::NumericConstant),
         exp_token(TokenType::TSelf),
         exp_token(TokenType::Result),])(input)?;
     return Ok((next, Box::new(AstTerminal{
@@ -37,8 +45,9 @@ fn parse_terminal<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNod
 fn parse_bracket_closure<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
     // should we make a separate node for this?
     let (next, obracket_token) = exp_token(TokenType::OBracket)(input)?;
-    let (next, expr_node) = parse_expr(next)?;
-    let (next, cbracket_token) = exp_token(TokenType::OBracket)(next)?;
+    let (next, mut expr_node) = parse_expr(next)?;
+    let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
+    expr_node.set_range(create_new_range(obracket_token.as_range(), cbracket_token.as_range()));
     return Ok((next,expr_node))
 }
 
@@ -56,19 +65,21 @@ fn parse_cast<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>),
     })));
 }
 
+fn parse_dot_ops<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let op_parser = exp_token(TokenType::Dot);
+    return parse_binary_ops(input, &op_parser, &parse_terminal);
+} 
+
 fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
     let parsers = [
-        parse_terminal,
+        parse_dot_ops,
         parse_bracket_closure,
+        parse_literals,
+        parse_cast
     ];
     let (next, node) = alt_parse(&parsers)(input)?;
     return Ok((next, node));
 }
-
-fn parse_dot_ops<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
-    let op_parser = exp_token(TokenType::Dot);
-    return parse_binary_ops(input, &op_parser, &parse_primary);
-} 
 
 fn parse_factors<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
     let op_token_parsers = [
@@ -77,7 +88,7 @@ fn parse_factors<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode
         exp_token(TokenType::Modulus)
     ];
     let op_parser = alt_parse(&op_token_parsers);
-    return parse_binary_ops(input, &op_parser, &parse_dot_ops);
+    return parse_binary_ops(input, &op_parser, &parse_primary);
 } 
 
 fn parse_terms<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
@@ -89,6 +100,62 @@ fn parse_terms<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>)
     let op_parser = alt_parse(&op_token_parsers);
     return parse_binary_ops(input, &op_parser, &parse_factors);
 } 
+
+fn parse_bit_ops_1<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let op_token_parsers = [
+        exp_token(TokenType::BAnd),
+    ];
+    let op_parser = alt_parse(&op_token_parsers);
+    return parse_binary_ops(input, &op_parser, &parse_terms);
+} 
+
+
+fn parse_bit_ops_2<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let op_token_parsers = [
+        exp_token(TokenType::BOr),
+        exp_token(TokenType::BXor),
+    ];
+    let op_parser = alt_parse(&op_token_parsers);
+    return parse_binary_ops(input, &op_parser, &parse_bit_ops_1);
+} 
+
+fn parse_shifts<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let op_token_parsers = [
+        exp_token(TokenType::LeftShift),
+        exp_token(TokenType::RightShift),
+    ];
+    let op_parser = alt_parse(&op_token_parsers);
+    return parse_binary_ops(input, &op_parser, &parse_bit_ops_2);
+} 
+
+fn parse_compare<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let op_token_parsers = [
+        exp_token(TokenType::Equals),
+        exp_token(TokenType::NotEquals),
+        exp_token(TokenType::LessThan),
+        exp_token(TokenType::LessThanOrEqual),
+        exp_token(TokenType::GreaterThan),
+        exp_token(TokenType::GreaterThanOrEqual),
+    ];
+    let op_parser = alt_parse(&op_token_parsers);
+    return parse_binary_ops(input, &op_parser, &parse_shifts);
+} 
+
+fn parse_logical_and<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let op_token_parsers = [
+        exp_token(TokenType::And),
+    ];
+    let op_parser = alt_parse(&op_token_parsers);
+    return parse_binary_ops(input, &op_parser, &parse_compare);
+}
+
+fn parse_logical_or<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let op_token_parsers = [
+        exp_token(TokenType::Or),
+    ];
+    let op_parser = alt_parse(&op_token_parsers);
+    return parse_binary_ops(input, &op_parser, &parse_logical_and);
+}
 
 fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
     todo!()
@@ -141,10 +208,32 @@ fn parse_binary_op<'a>(
 #[cfg(test)]
 mod test{
 
-    use crate::ast::{AstBinaryOp, AstCast};
-    use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief};
+    use std::ops::Deref;
+
+    use crate::ast::{AstBinaryOp, AstCast, AstTerminal};
+    use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or};
+
+
+    #[test]
+    fn test_parse_bracket_closure(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::OBracket, Some("(".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::Plus, Some("+".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),
+            (TokenType::CBracket, Some(")".to_string())),
+        ]);
+        let (next, node) = parse_bracket_closure(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        
+        let node = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
+        assert_eq!(node.left_node.get_identifier(), "First");
+        assert_eq!(node.op_token.value.as_ref().unwrap(), "+");
+        assert_eq!(node.right_node.get_identifier(), "Second");
+    }
 
     #[test]
     fn test_parse_cast(){
@@ -156,6 +245,7 @@ mod test{
         ]);
         let (next, node) = parse_cast(&input).unwrap();
         assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
         let node = node.as_any().downcast_ref::<AstCast>().unwrap();
         assert_eq!(node.type_node.get_identifier(), "CastType");
         assert_eq!(node.expr_node.get_identifier(), "Expression");
@@ -173,11 +263,20 @@ mod test{
         ]);
         let (next, node) = parse_dot_ops(&input).unwrap();
         assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
-        let inorder = inorder(bin_op);
-        for (i, node) in &mut inorder.into_iter().enumerate() {
-            assert_eq!(node.get_identifier(), input.get(i).unwrap().value.as_ref().unwrap().clone());
-        }
+        let dfs = dfs(bin_op);
+        // expect
+        //         .
+        //        / \
+        //       .   Third
+        //      / \
+        //   First Second
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
     }
 
     #[test]
@@ -192,11 +291,15 @@ mod test{
         ]);
         let (next, node) = parse_factors(&input).unwrap();
         assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
-        let inorder = inorder(bin_op);
-        for (i, node) in &mut inorder.into_iter().enumerate() {
-            assert_eq!(node.get_identifier(), input.get(i).unwrap().value.as_ref().unwrap().clone());
-        }
+        let dfs = dfs(bin_op);
+        // expect same tree struct as dot_ops
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().value.as_ref().unwrap().clone());
     }
 
     #[test]
@@ -211,10 +314,151 @@ mod test{
         ]);
         let (next, node) = parse_terms(&input).unwrap();
         assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
-        let inorder = inorder(bin_op);
-        for (i, node) in &mut inorder.into_iter().enumerate() {
-            assert_eq!(node.get_identifier(), input.get(i).unwrap().value.as_ref().unwrap().clone());
-        }
+        let dfs = dfs(bin_op);
+        // expect
+        //         +
+        //        /  \
+        //     First '/'
+        //           / \
+        //        Second Third
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
+    }
+
+    #[test]
+    fn test_parse_bit_ops(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::BOr, Some("bOr".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),
+            (TokenType::BAnd, Some("bAnd".to_string())),
+            (TokenType::Identifier, Some("Third".to_string())),
+            
+        ]);
+        let (next, node) = parse_bit_ops_2(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
+        let dfs = dfs(bin_op);
+        // expect
+        //         bOr
+        //        /  \
+        //     First bAnd
+        //           / \
+        //        Second Third
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
+    }
+
+    #[test]
+    fn test_parse_shifts(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::LeftShift, Some("<<".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),
+            (TokenType::RightShift, Some(">>".to_string())),
+            (TokenType::Identifier, Some("Third".to_string())),
+            
+        ]);
+        let (next, node) = parse_shifts(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
+        let dfs = dfs(bin_op);
+        // expect
+        //         >>
+        //        /  \
+        //      <<   Third
+        //     / \
+        //  First Second
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().value.as_ref().unwrap().clone());
+    }
+
+    #[test]
+    fn test_parse_compare(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::Equals, Some("=".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),
+            (TokenType::LessThanOrEqual, Some("<=".to_string())),
+            (TokenType::Identifier, Some("Third".to_string())),
+            
+        ]);
+        let (next, node) = parse_compare(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
+        let dfs = dfs(bin_op);
+        // expect
+        //         >>
+        //        /  \
+        //      <<   Third
+        //     / \
+        //  First Second
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().value.as_ref().unwrap().clone());
+    }
+
+    #[test]
+    fn test_parse_logical(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::Or, Some("or".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),
+            (TokenType::And, Some("and".to_string())),
+            (TokenType::Identifier, Some("Third".to_string())),
+            
+        ]);
+        let (next, node) = parse_logical_or(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
+        let dfs = dfs(bin_op);
+        // expect
+        //         or
+        //        /  \
+        //     First and
+        //           / \
+        //        Second Third
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
+    }
+
+
+    #[test]
+    fn test_parse_shifts_empty(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Identifier, Some("First".to_string())),
+        ]);
+        let (next, node) = parse_terms(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        let bin_op = node.as_any().downcast_ref::<AstTerminal>().unwrap();
+        let dfs = dfs(bin_op);
+        // expect
+        //         +
+        //        /  \
+        //     First '/'
+        //           / \
+        //        First Second
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
     }
 }
