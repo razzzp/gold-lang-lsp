@@ -1,7 +1,6 @@
+use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall}, utils::{create_new_range, IRange}};
 
-use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp}, utils::{create_new_range, IRange}};
-
-use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic};
+use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic, parse_separated_list, create_closure};
 
 /// expr = ident
 ///     | bin_op
@@ -31,16 +30,43 @@ fn parse_literals<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNod
     })))
 }
 
-fn parse_terminal<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+    let (next, ident_token) = exp_token(TokenType::Identifier)(input)?;
+    let (next, _) = exp_token(TokenType::OBracket)(next)?;
+    let (next, parameter_list) = parse_separated_list(next, parse_expr, TokenType::Comma)?;
+    let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
+    return Ok((next, Box::new(AstMethodCall{
+        raw_pos: ident_token.get_raw_pos(),
+        pos: ident_token.get_pos(),
+        range: create_new_range(ident_token.as_range(), cbracket_token.as_range()),
+        identifier: ident_token,
+        parameter_list,
+    })))
+}
+
+fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
     let (next, ident_token) = alt_parse(&[
         exp_token(TokenType::Identifier),
         exp_token(TokenType::TSelf),
-        exp_token(TokenType::Result),])(input)?;
+        exp_token(TokenType::Result),
+        ])(input)?;
     return Ok((next, Box::new(AstTerminal{
         token: ident_token
     })))
 }
 
+fn parse_dot_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+    let parsers = [
+        parse_method_call,
+        parse_dot_op_left,
+        ];
+    return alt_parse(&parsers)(input);
+}
+
+fn parse_dot_ops<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let op_parser = exp_token(TokenType::Dot);
+    return parse_binary_ops(input, &op_parser, &parse_dot_op);
+} 
 
 fn parse_bracket_closure<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
     // should we make a separate node for this?
@@ -64,11 +90,6 @@ fn parse_cast<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>),
         expr_node
     })));
 }
-
-fn parse_dot_ops<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
-    let op_parser = exp_token(TokenType::Dot);
-    return parse_binary_ops(input, &op_parser, &parse_terminal);
-} 
 
 fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
     let parsers = [
@@ -227,7 +248,7 @@ mod test{
     use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp};
     use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call};
 
 
     #[test]
@@ -286,11 +307,11 @@ mod test{
         //       .   Third
         //      / \
         //   First Second
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value());
     }
 
     #[test]
@@ -309,11 +330,11 @@ mod test{
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect same tree struct as dot_ops
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().get_value());
     }
 
     #[test]
@@ -337,11 +358,11 @@ mod test{
         //     First '/'
         //           / \
         //        Second Third
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().get_value());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value());
     }
 
     #[test]
@@ -365,11 +386,11 @@ mod test{
         //     First bAnd
         //           / \
         //        Second Third
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().get_value());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value());
     }
 
     #[test]
@@ -393,11 +414,11 @@ mod test{
         //      <<   Third
         //     / \
         //  First Second
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().get_value());
     }
 
     #[test]
@@ -421,11 +442,11 @@ mod test{
         //      <<   Third
         //     / \
         //  First Second
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().get_value());
     }
 
     #[test]
@@ -449,11 +470,11 @@ mod test{
         //     First and
         //           / \
         //        Second Third
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().value.as_ref().unwrap().clone());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().get_value());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value());
     }
 
     #[test]
@@ -488,6 +509,46 @@ mod test{
         assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstTerminal>().unwrap();
         let dfs = dfs(bin_op);
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
+    }
+
+    #[test]
+    fn test_parse_method_calls(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::Dot, Some(".".to_string())),
+            (TokenType::Identifier, Some("Method1".to_string())),
+            (TokenType::OBracket, Some("(".to_string())),
+            (TokenType::Identifier, Some("Param1".to_string())),
+            (TokenType::Comma, Some(",".to_string())),
+            (TokenType::Identifier, Some("Param1".to_string())),
+            (TokenType::CBracket, Some(")".to_string())),
+            (TokenType::Dot, Some(".".to_string())),
+            (TokenType::Identifier, Some("Method2".to_string())),
+            (TokenType::OBracket, Some("(".to_string())),
+            (TokenType::NumericLiteral, Some("1".to_string())),
+            (TokenType::Plus, Some("+".to_string())),
+            (TokenType::NumericLiteral, Some("2".to_string())),
+            (TokenType::CBracket, Some(")".to_string())),
+            
+        ]);
+        let (next, node) = parse_dot_ops(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
+        let dfs = dfs(bin_op);
+        dfs.iter().for_each(|n| {println!("{}",print_ast_brief(n.as_ast_node()))});
+        // 
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(6).unwrap().get_value());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value());
+
+        assert_eq!(dfs.get(5).unwrap().get_identifier(), input.get(11).unwrap().get_value());
+        assert_eq!(dfs.get(6).unwrap().get_identifier(), input.get(13).unwrap().get_value());
+        assert_eq!(dfs.get(7).unwrap().get_identifier(), input.get(12).unwrap().get_value());
+        assert_eq!(dfs.get(8).unwrap().get_identifier(), input.get(9).unwrap().get_value());
+        assert_eq!(dfs.get(9).unwrap().get_identifier(), input.get(8).unwrap().get_value());
     }
 }

@@ -1,9 +1,10 @@
 use std::any::Any;
 
 use crate::lexer::tokens::Token;
-use crate::utils::{Position, Range, IRange};
+use crate::utils::{Position, Range, IRange, DynamicChild};
 
 pub trait IAstNode: std::fmt::Debug + IRange {
+    /// returns node type, for display?
     fn get_type(&self) -> &'static str;
     fn get_raw_pos(&self) -> usize;
     fn get_pos(&self) -> Position;
@@ -12,6 +13,11 @@ pub trait IAstNode: std::fmt::Debug + IRange {
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>>{
         None
     }
+    /// gets children wrapped in DynamicChild object, to provide parent node
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>>{
+        None
+    }
+    /// main identifier of the node, if none exist, return the pos as string
     fn get_identifier(&self) -> String{
         todo!()
     }
@@ -311,6 +317,11 @@ impl IAstNode for AstTypeDeclaration {
         result.push(self.type_node.as_ref().as_ast_node());
         return Some(result);
     }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(DynamicChild::new(self.type_node.as_ref(), self));
+        return Some(result);
+    }
     fn get_identifier(&self) -> String {
         self.identifier.get_value()
     }
@@ -396,6 +407,11 @@ impl IAstNode for AstGlobalVariableDeclaration {
         result.push(self.type_node.as_ref().as_ast_node());
         return Some(result);
     }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(DynamicChild::new(self.type_node.as_ref(), self));
+        return Some(result);
+    }
     fn get_identifier(&self) -> String {
         self.identifier.get_value()
     }
@@ -442,6 +458,13 @@ impl IAstNode for AstProcedure {
         if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
         if self.modifiers.is_some() {result.push(self.modifiers.as_ref().unwrap().as_ast_node());}
         if self.body.is_some() {result.push(self.body.as_ref().unwrap().as_ast_node());}
+        return Some(result);
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        if self.parameter_list.is_some() {result.push(DynamicChild::new(self.parameter_list.as_ref().unwrap().as_ast_node(), self));}
+        if self.modifiers.is_some() {result.push(DynamicChild::new(self.modifiers.as_ref().unwrap().as_ast_node(), self));}
+        if self.body.is_some() {result.push(DynamicChild::new(self.body.as_ref().unwrap().as_ast_node(), self));}
         return Some(result);
     }
     fn get_identifier(&self) -> String {
@@ -492,6 +515,14 @@ impl IAstNode for AstFunction {
         if self.body.is_some() {result.push(self.body.as_ref().unwrap().as_ast_node());}
         return Some(result);
     }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        if self.parameter_list.is_some() {result.push(DynamicChild::new(self.parameter_list.as_ref().unwrap().as_ast_node(), self));}
+        result.push(DynamicChild::new(self.return_type.as_ref().as_ast_node(), self));
+        if self.modifiers.is_some() {result.push(DynamicChild::new(self.modifiers.as_ref().unwrap().as_ast_node(), self));}
+        if self.body.is_some() {result.push(DynamicChild::new(self.body.as_ref().unwrap().as_ast_node(), self));}
+        return Some(result);
+    }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
@@ -532,6 +563,11 @@ impl IAstNode for AstParameterDeclarationList {
     }
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
         return Some(self.parameter_list.iter().map(|node| {node.as_ref()}).collect());
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        return Some(self.parameter_list.iter().map(|node| {
+            DynamicChild::new(node.as_ref(), self)        
+        }).collect());
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
@@ -576,6 +612,11 @@ impl IAstNode for AstParameterDeclaration {
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         if self.type_node.is_some() {result.push(self.type_node.as_ref().unwrap().as_ref())}
+        return Some(result);
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        if self.type_node.is_some() {result.push(DynamicChild::new(self.type_node.as_ref().unwrap().as_ref(), self));}
         return Some(result);
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -662,6 +703,11 @@ impl IAstNode for AstMethodBody {
     }
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
         return Some(self.statements.iter().map(|node| {node.as_ref()}).collect());
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        return Some(self.statements.iter().map(|node| {
+            DynamicChild{data:node.as_ref(),parent:self} 
+        }).collect());
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
@@ -754,6 +800,13 @@ impl IAstNode for AstBinaryOp {
         result.push(self.right_node.as_ref());
         return Some(result);
     }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(DynamicChild::new(self.left_node.as_ref(), self));
+        result.push(DynamicChild::new(self.right_node.as_ref(),self));
+        return Some(result);
+    }
+        
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
@@ -798,6 +851,12 @@ impl IAstNode for AstCast {
         let mut result = Vec::new();
         result.push(self.type_node.as_ref());
         result.push(self.expr_node.as_ref());
+        return Some(result);
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(DynamicChild::new(self.type_node.as_ref(), self));
+        result.push(DynamicChild::new(self.expr_node.as_ref(),self));
         return Some(result);
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -848,10 +907,60 @@ impl IAstNode for AstUnaryOp {
         result.push(self.expr_node.as_ref());
         return Some(result);
     }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(DynamicChild::new(self.expr_node.as_ref(),self));
+        return Some(result);
+    }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
 }
 
+#[derive(Debug)]
+pub struct AstMethodCall {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub identifier: Token,
+    pub parameter_list: Vec<Box<dyn IAstNode>>
+}
+impl IRange for AstMethodCall {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstMethodCall {
+    fn get_type(&self) -> &'static str {
+        "Method Call"
+    }
 
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        return Some(self.parameter_list.iter().map(|node| {node.as_ref()}).collect());
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        return Some(self.parameter_list.iter().map(|node| {
+            DynamicChild::new(node.as_ref(), self)        
+        }).collect());
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        self.identifier.get_value()
+    }
+}
 

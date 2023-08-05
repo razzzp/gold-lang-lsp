@@ -35,6 +35,17 @@ impl Position{
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DynamicChild<'a, T: ?Sized + 'a>{
+    pub data: &'a T,
+    pub parent: &'a T,
+}
+impl<'a,T: ?Sized> DynamicChild<'a, T>{
+    pub fn new(data: &'a T, parent: &'a T) -> DynamicChild<'a,T> {
+        DynamicChild { data: data, parent: parent}
+    }
+}
+
 pub fn get_start_pos(item: &(dyn IRange)) -> Position {
     return item.get_range().start.clone();
 }
@@ -76,6 +87,7 @@ fn _print_ast_brief(result: &mut String, ast_node: &dyn IAstNode, indent_level: 
     }
 }
 
+
 pub fn inorder(ast_node: &dyn IAstNode) -> Vec<&dyn IAstNode>  {
     let mut result = Vec::new();
     _inorder(ast_node, &mut result);
@@ -104,10 +116,10 @@ fn _dfs<'a>(ast_node: &'a dyn IAstNode, result: &mut Vec<&'a dyn IAstNode>){
         Some(c) => c,
         None => {result.push(ast_node); return}
     };
-    _dfs(children.first().unwrap().as_ast_node(), result);
-    _dfs(children.last().unwrap().as_ast_node(), result);
+    children.iter().for_each(|n|{_dfs(n.as_ast_node(), result)});
     result.push(ast_node);
 }
+
 #[cfg(test)]
 pub mod test_utils{
     use crate::ast::IAstNode;

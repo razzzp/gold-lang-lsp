@@ -889,6 +889,13 @@ fn seq_parse<T>(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  T), 
    }
 }
 
+fn create_closure<T>(func : impl Fn(&[Token]) -> Result<(&[Token],  T), GoldParserError>)
+   -> impl Fn(&[Token]) -> Result<(&[Token],  T), GoldParserError> {
+   move |input: &[Token]| -> Result<(&[Token],  T), GoldParserError>{
+      func(input)
+   }
+}
+
 #[cfg(test)]
 mod test {
    use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic}, ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode, AstFunction}};
