@@ -467,6 +467,9 @@ mod test{
             (TokenType::CBracket, Some(")".to_string())),
         ]);
         let (next, node) = parse_unary_op(&input).unwrap();
+        print!("{:#?}", node.as_ref());
+        print!("{:#?}", input);
+        print!("{}",print_ast_brief_recursive(node.as_ref()));
         assert_eq!(next.len(), 0);
         assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
         let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();

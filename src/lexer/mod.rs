@@ -399,7 +399,7 @@ impl GoldLexer{
         };
         let end_pos = Position {
             line: start_pos.line,
-            character: start_pos.character + length
+            character: start_pos.character + length -1
         };
         return Range { start: start_pos, end: end_pos}
     }

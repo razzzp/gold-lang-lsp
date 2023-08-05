@@ -908,7 +908,7 @@ mod test {
             token_type: tok_type, 
             value: val.clone() 
          });
-         raw_pos+=5;
+         raw_pos+=val.as_ref().unwrap().len()+5;
       }  
       return result;
    }
@@ -940,10 +940,10 @@ mod test {
    #[test]
    fn test_parse_class_too_short(){
       let input = gen_list_of_tokens(&[
-         (TokenType::Class, None),
-         (TokenType::Identifier, Some(String::from("aTestClass"))),
-         (TokenType::OBracket, None),
-         (TokenType::Identifier, Some(String::from("aParentClass"))),
+         (TokenType::Class, Some("class".to_string())),
+         (TokenType::Identifier, Some("aTestClass".to_string())),
+         (TokenType::OBracket, Some("(".to_string())),
+         (TokenType::Identifier, Some("aParentClass".to_string())),
       ]);
       assert!(parse_class(&input).is_err());
    }
@@ -951,9 +951,9 @@ mod test {
    #[test]
    fn test_parse_class_wrong_token(){
       let input = gen_list_of_tokens(&[
-         (TokenType::Class, None),
+         (TokenType::Class, Some("class".to_string())),
          (TokenType::Plus, Some(String::from("aTestClass"))),
-         (TokenType::OBracket, None),
+         (TokenType::OBracket, Some("(".to_string())),
          (TokenType::Identifier, Some(String::from("aParentClass"))),
          ]);
          assert!(parse_class(&input).is_err());
@@ -975,13 +975,13 @@ mod test {
 
       // first uses
       let token = &uses_node.list_of_uses[0];
-      assert_eq!(token.raw_pos, 5);
+      assert_eq!(token.raw_pos, input.get(1).unwrap().get_raw_pos());
       assert_eq!(token.token_type, TokenType::Identifier);
       assert_eq!(token.value.as_ref().unwrap().as_str(), "aTestClass");
 
       // second uses
       let token = &uses_node.list_of_uses[1];
-      assert_eq!(token.raw_pos, 15);
+      assert_eq!(token.raw_pos, input.get(3).unwrap().get_raw_pos());
       assert_eq!(token.token_type, TokenType::Identifier);
       assert_eq!(token.value.as_ref().unwrap().as_str(), "aParentClass");
    }
@@ -989,11 +989,11 @@ mod test {
    #[test]
    fn test_parse_uses_trailing_comma(){
       let input = gen_list_of_tokens(&[
-         (TokenType::Uses, None),
+         (TokenType::Uses, Some("uses".to_string())),
          (TokenType::Identifier, Some(String::from("aTestClass"))),
-         (TokenType::Comma, None),
+         (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some(String::from("aParentClass"))),
-         (TokenType::Comma, None),
+         (TokenType::Comma, Some(",".to_string())),
          ]);
       assert!(parse_uses(&input).is_err());
    }

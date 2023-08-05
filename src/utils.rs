@@ -5,6 +5,7 @@ use std::fmt::Write;
 pub trait IRange {
     fn get_range(&self) -> Range;
     fn set_range(&mut self, new_range: Range){//TODO:implem for all classes
+        todo!()
     }
     fn as_range(&self) -> &dyn IRange;
 }
