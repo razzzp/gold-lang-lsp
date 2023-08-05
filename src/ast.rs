@@ -763,4 +763,50 @@ impl IAstNode for AstCast {
     }
 }
 
+#[derive(Debug)]
+pub struct AstUnaryOp {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub op_token: Token,
+    pub expr_node: Box<dyn IAstNode>
+}
+impl IRange for AstUnaryOp {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstUnaryOp {
+    fn get_type(&self) -> &'static str {
+        "Unary Op"
+    }
+
+    fn get_identifier(&self) -> String {
+        self.op_token.get_value()
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.expr_node.as_ref());
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+}
+
+
 

@@ -1,5 +1,5 @@
 
-use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast}, utils::{create_new_range, IRange}};
+use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp}, utils::{create_new_range, IRange}};
 
 use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic};
 
@@ -74,6 +74,7 @@ fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode
     let parsers = [
         parse_dot_ops,
         parse_bracket_closure,
+        parse_unary_op,
         parse_literals,
         parse_cast
     ];
@@ -158,7 +159,20 @@ fn parse_logical_or<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstN
 }
 
 fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
-    todo!()
+    let op_parsers = [
+        exp_token(TokenType::Not),
+        exp_token(TokenType::BNot),
+        exp_token(TokenType::AddressOf)
+    ];
+    let (next, op_token) = alt_parse(&op_parsers)(input)?;
+    let (next, expr_node) = parse_primary(next)?;
+    return Ok((next, Box::new(AstUnaryOp{
+        raw_pos: op_token.get_raw_pos(),
+        pos: op_token.get_pos(),
+        range: create_new_range(op_token.as_range(), expr_node.as_range()),
+        op_token,
+        expr_node
+    })))
 }
 
 fn parse_binary_ops<'a>(
@@ -210,10 +224,10 @@ mod test{
 
     use std::ops::Deref;
 
-    use crate::ast::{AstBinaryOp, AstCast, AstTerminal};
+    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp};
     use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op};
 
 
     #[test]
@@ -442,9 +456,27 @@ mod test{
         assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().value.as_ref().unwrap().clone());
     }
 
+    #[test]
+    fn test_parse_unary_op(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Not, Some("not".to_string())),
+            (TokenType::OBracket, Some("(".to_string())),
+            (TokenType::BNot, Some("bNot".to_string())),
+            (TokenType::AddressOf, Some("@".to_string())),
+            (TokenType::Identifier, Some("Expression".to_string())),
+            (TokenType::CBracket, Some(")".to_string())),
+        ]);
+        let (next, node) = parse_unary_op(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
+        assert_eq!(node.op_token.get_value(), "not");
+        assert_eq!(node.expr_node.get_identifier(), "bNot");
+    }
+
 
     #[test]
-    fn test_parse_shifts_empty(){
+    fn test_parse_logical_only_terminal(){
         let input = gen_list_of_tokens(&[
             (TokenType::Identifier, Some("First".to_string())),
         ]);
@@ -453,12 +485,6 @@ mod test{
         assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstTerminal>().unwrap();
         let dfs = dfs(bin_op);
-        // expect
-        //         +
-        //        /  \
-        //     First '/'
-        //           / \
-        //        First Second
         assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().value.as_ref().unwrap().clone());
     }
 }

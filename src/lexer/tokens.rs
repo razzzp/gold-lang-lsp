@@ -207,3 +207,18 @@ impl IRange for Token {
     }
 }
 
+impl Token{
+    pub fn get_raw_pos(&self) -> usize{
+        self.raw_pos
+    }
+    pub fn get_pos(&self) -> Position{
+        self.pos.clone()
+    }
+    pub fn get_value(&self) -> String {
+        match &self.value {
+            Some(s) => s.clone(),
+            None => "".to_string()
+        }
+     }
+}
+
