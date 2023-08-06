@@ -196,9 +196,29 @@ fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNod
     })))
 }
 
-// fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
-    
-// }
+fn parse_assignment<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let (next, left_node) = parse_dot_ops(input)?;
+    let op_parsers = [
+        exp_token(TokenType::Equals),
+        exp_token(TokenType::DecrementAssign),
+        exp_token(TokenType::IncrementAssign),
+        exp_token(TokenType::DeepAssign)
+    ];
+    let (next, op_token) = alt_parse(&op_parsers)(next)?;
+    let (next, right_node) = parse_expr(next)?;
+    return Ok((next, Box::new(AstBinaryOp{
+        raw_pos: left_node.get_raw_pos(),
+        pos: left_node.get_pos(),
+        range: create_new_range(left_node.as_range(), right_node.as_range()),
+        op_token,
+        left_node,
+        right_node,
+    })));
+}
+
+fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    todo!()
+}
 
 fn parse_binary_ops<'a>(
     input: &'a[Token],

@@ -964,3 +964,132 @@ impl IAstNode for AstMethodCall {
     }
 }
 
+#[derive(Debug)]
+pub struct AstConditionalBlock {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub condition: Box<dyn IAstNode>,
+    pub statements: Vec<Box<dyn IAstNode>>,
+}
+impl IRange for AstConditionalBlock {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstConditionalBlock {
+    fn get_type(&self) -> &'static str {
+        "Conditional Block"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.condition.as_ast_node());
+        result.extend(self.statements.iter().map(|n| {
+            n.as_ast_node()
+        }));
+        return Some(result);
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(DynamicChild::new(self.condition.as_ast_node(), Some(self)));
+        result.extend(self.statements.iter().map(|n| {
+            DynamicChild::new(n.as_ast_node(), Some(self))
+        }));
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        self.pos.to_string()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstIfBlock {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub if_block: Box<AstConditionalBlock>,
+    pub else_if_blocks: Option<Vec<Box<AstConditionalBlock>>>,
+    pub else_block: Option<Box<AstConditionalBlock>>,
+    pub end_token: Token
+}
+impl IRange for AstIfBlock {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstIfBlock {
+    fn get_type(&self) -> &'static str {
+        "If Block"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.if_block.as_ast_node());
+        match self.else_if_blocks.as_ref() {
+            Some(else_if_block) =>{
+                result.extend(else_if_block.iter().map(|n| {
+                    n.as_ast_node()
+                }))
+            }
+            _=> ()
+        }
+        match self.else_block.as_ref(){
+            Some(n) => {result.push(n.as_ast_node())}
+            _=> ()
+        }
+        return Some(result);
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(DynamicChild::new(self.if_block.as_ast_node(), Some(self)));
+        match self.else_if_blocks.as_ref() {
+            Some(else_if_block) =>{
+                result.extend(else_if_block.iter().map(|n| {
+                    DynamicChild::new(n.as_ast_node(), Some(self))
+                }))
+            }
+            _=> ()
+        }
+        match self.else_block.as_ref(){
+            Some(n) => {result.push(DynamicChild::new(n.as_ast_node(), Some(self)))}
+            _=> ()
+        }
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        self.pos.to_string()
+    }
+}
