@@ -393,13 +393,13 @@ fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
    end = if modifier_node.is_some() {get_end_pos(modifier_node.as_ref().unwrap())} else {end};
    // if proc is not forward and not external, parse body
    let mut method_body = None;
-   if modifier_node.is_none() || modifier_node.is_some() && has_method_body(&modifier_node.as_ref().unwrap()) {
+   if has_method_body(&modifier_node) {
       (next , method_body) = match parse_method_body(next, TokenType::EndProc){
          Ok((n, node)) => (n, Some(node)),
          Err(_) => (next, None)
       }
    }
-   end = if method_body.is_some() {get_end_pos(&method_body.as_ref().unwrap().end_token)} else {end};
+   end = if method_body.is_some() && method_body.as_ref().unwrap().end_token.is_some() {get_end_pos(method_body.as_ref().unwrap().end_token.as_ref().unwrap())} else {end};
 
    return Ok((next, Box::new(AstProcedure{
       raw_pos: first_tokens[0].raw_pos,
@@ -450,13 +450,13 @@ fn parse_function_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
    end = if modifier_node.is_some() {get_end_pos(modifier_node.as_ref().unwrap())} else {end};
    // if func is not forward and not external, parse body
    let mut method_body = None;
-   if modifier_node.is_none() || modifier_node.is_some() && has_method_body(&modifier_node.as_ref().unwrap()) {
+   if has_method_body(&modifier_node) {
       (next , method_body) = match parse_method_body(next, TokenType::EndFunc){
          Ok((n, node)) => (n, Some(node)),
          Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: ", e))
       }
    }
-   end = if method_body.is_some() {get_end_pos(&method_body.as_ref().unwrap().end_token)} else {end};
+   end = if method_body.is_some() && method_body.as_ref().unwrap().end_token.is_some() {get_end_pos(method_body.as_ref().unwrap().end_token.as_ref().unwrap())} else {end};
 
    return Ok((next, Box::new(AstFunction{
       raw_pos: first_tokens[0].raw_pos,
@@ -470,8 +470,10 @@ fn parse_function_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
    })))
 }
 
-fn has_method_body(modifier_node: &AstMethodModifiers) -> bool {
-   return !modifier_node.is_forward && modifier_node.external_dll_name.is_none()
+fn has_method_body(modifier_node: &Option<AstMethodModifiers>) -> bool {
+   if modifier_node.is_none() {return true}
+   let node_ref = modifier_node.as_ref().unwrap();
+   return !node_ref.is_forward && node_ref.external_dll_name.is_none()
 }
 
 fn parse_parameter_declaration_list<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Option<AstParameterDeclarationList>), GoldParserError<'a>>{
@@ -698,28 +700,13 @@ fn parse_method_modifiers_<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opt
 fn parse_method_body<'a>(input : &'a [Token], end_token_type : TokenType) -> Result<(&'a [Token], AstMethodBody), GoldParserError<'a>>{
 
    if input.len() == 0 {
-      return Err(GoldParserError { input: input, msg: format!("expected method body: found end fo stream") })
+      return Err(GoldParserError { input: input, msg: format!("expected method body: found end of stream") })
    }
    // TODO complete implem
-   let mut body_tokens = Vec::<Token>::new();
+   let (next, body_tokens, end_method_token) = take_until([end_token_type, TokenType::End].as_ref())(input)?;
    let mut statements = Vec::<Box<dyn IAstNode>>::new();
-   let mut it = input.iter();
-
-   let mut next = it.next();
-   let mut end_method_token : Option<Token> = None;
-   while next.is_some() {
-      let next_token = next.unwrap();
-      if next_token.token_type == end_token_type || next_token.token_type == TokenType::End {
-         end_method_token = Some(next_token.clone()); 
-         break;
-      } else  {
-         body_tokens.push(next_token.clone())
-      }
-      next = it.next()
-   }
-
    if end_method_token.is_none() {
-      return Err(GoldParserError { input: it.as_slice(), msg: format!("{:?} not found",end_token_type)});
+      return Err(GoldParserError { input: next, msg: format!("{:?} not found",end_token_type)});
    }
    
    let raw_pos = match body_tokens.first(){
@@ -732,12 +719,12 @@ fn parse_method_body<'a>(input : &'a [Token], end_token_type : TokenType) -> Res
    };
    // range is until the endProc
    let range = Range{start: pos.clone(), end: end_method_token.as_ref().unwrap().pos.clone()};
-   return Ok((it.as_slice(), AstMethodBody{
+   return Ok((next, AstMethodBody{
       raw_pos,
       pos,
       range,
       statements,
-      end_token: end_method_token.unwrap(),
+      end_token: end_method_token
    }))
 }
 
@@ -829,6 +816,28 @@ fn opt_token(token_type: TokenType)
    }
 }
 
+fn take_until(token_types: &[TokenType])
+   -> impl Fn(&[Token]) -> Result<(&[Token],  &[Token], Option<Token>), GoldParserError> + '_
+{
+   move |input: &[Token]| -> Result<(&[Token],  &[Token], Option<Token>), GoldParserError> {
+      let mut it = input.iter();
+      let mut count: usize = 0;
+
+      let mut next = it.next();
+      let mut end_method_token : Option<Token> = None;
+      while next.is_some() {
+         let next_token = next.unwrap();
+         count += 1;
+         if token_types.iter().any(|token_type| {next_token.token_type == token_type.clone()}) {
+            end_method_token = Some(next_token.clone()); 
+            break
+         }
+         next = it.next()
+      }
+      return Ok((it.as_slice(), &input[0..count], end_method_token));
+   }
+}
+
 /// Wraps the parser so that it doesn't throw error
 fn opt_parse<T>(parser : impl Fn(&[Token]) -> Result<(&[Token],  T), GoldParserError>) 
    -> impl Fn(&[Token]) -> Result<(&[Token],  Option<T>), GoldParserError> 
@@ -847,8 +856,8 @@ fn opt_parse<T>(parser : impl Fn(&[Token]) -> Result<(&[Token],  T), GoldParserE
 /// Parser returns the first successful parse.
 /// If unable to parse, will return the error of the parser which was able
 /// to parse the most
-fn alt_parse<T>(list_of_parsers : &[impl Fn(&[Token]) -> Result<(&[Token],  T), GoldParserError>])
-   -> impl Fn(&[Token]) -> Result<(&[Token],  T), GoldParserError> + '_
+fn alt_parse<'a, T>(list_of_parsers : &'a[impl Fn(&[Token]) -> Result<(&[Token],  T), GoldParserError>])
+   -> impl Fn(&[Token]) -> Result<(&[Token],  T), GoldParserError> + 'a
 {
    move |input: &[Token]| -> Result<(&[Token],  T), GoldParserError> {
       let mut most_matched: Option<GoldParserError> = None;

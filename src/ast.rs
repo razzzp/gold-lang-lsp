@@ -173,10 +173,22 @@ impl IAstNode for AstTypeBasic {
 }
 
 #[derive(Debug)]
-pub struct AstEmpty {}
+pub struct AstEmpty {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+}
+impl AstEmpty{
+    pub fn new(raw_pos:usize, pos: Position, range: Range)-> Box<dyn IAstNode>{
+        Box::new(AstEmpty{raw_pos,pos,range})
+    }
+    pub fn default()-> Box<dyn IAstNode>{
+        Box::new(AstEmpty{raw_pos:0,pos:Position::default(),range:Range::default()})
+    }
+}
 impl IRange for AstEmpty {
     fn get_range(&self) -> Range {
-        todo!()
+        Range::default()
     }
     fn as_range(&self) -> &dyn IRange {
         self
@@ -194,7 +206,7 @@ impl IAstNode for AstEmpty {
     }
 
     fn get_pos(&self) -> Position {
-        todo!()
+        Position::default()
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
@@ -676,7 +688,7 @@ pub struct AstMethodBody {
     pub pos: Position,
     pub range: Range,
     pub statements: Vec<Box<dyn IAstNode>>,
-    pub end_token: Token,
+    pub end_token: Option<Token>,
 }
 impl IRange for AstMethodBody {
     fn get_range(&self) -> Range {
@@ -1027,7 +1039,15 @@ pub struct AstIfBlock {
     pub if_block: Box<AstConditionalBlock>,
     pub else_if_blocks: Option<Vec<Box<AstConditionalBlock>>>,
     pub else_block: Option<Box<AstConditionalBlock>>,
-    pub end_token: Token
+    pub end_token: Option<Token>
+}
+impl AstIfBlock {
+    pub fn add_else_if_block(&mut self, block: Box<AstConditionalBlock>){
+        if self.else_if_blocks.is_none() {
+            self.else_if_blocks = Some(Vec::new());
+        }
+        self.else_if_blocks.as_mut().unwrap().push(block)
+    }
 }
 impl IRange for AstIfBlock {
     fn get_range(&self) -> Range {

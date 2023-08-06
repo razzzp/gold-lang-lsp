@@ -1,5 +1,5 @@
 use crate::ast::IAstNode;
-use std::{fmt::Write, collections::LinkedList};
+use std::{fmt::Write, collections::LinkedList, ops::{DerefMut, Deref}};
 
 
 pub trait IRange {
@@ -45,6 +45,14 @@ impl<'a,T: ?Sized> DynamicChild<'a, T>{
         DynamicChild { data: data, parent: parent}
     }
 }
+impl<'a, T> Deref for DynamicChild<'a, T> {
+    type Target = T;
+    
+    fn deref(& self) -> &Self::Target {
+        self.data
+    }
+}
+
 
 pub fn get_start_pos(item: &(dyn IRange)) -> Position {
     return item.get_range().start.clone();
