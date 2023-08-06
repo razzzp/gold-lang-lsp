@@ -196,6 +196,10 @@ fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNod
     })))
 }
 
+// fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    
+// }
+
 fn parse_binary_ops<'a>(
     input: &'a[Token],
     op_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Token), GoldParserError>,
@@ -245,7 +249,7 @@ mod test{
 
     use std::ops::Deref;
 
-    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp};
+    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode};
     use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
     use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call};
@@ -510,6 +514,28 @@ mod test{
         let bin_op = node.as_any().downcast_ref::<AstTerminal>().unwrap();
         let dfs = dfs(bin_op);
         assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
+    }
+
+    #[test]
+    fn test_parse_method_call(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Identifier, Some("Method".to_string())),
+            (TokenType::OBracket, Some("(".to_string())),
+            (TokenType::Identifier, Some("Param1".to_string())),
+            (TokenType::Comma, Some(",".to_string())),
+            (TokenType::Identifier, Some("Param2".to_string())),
+            (TokenType::Comma, Some(",".to_string())),
+            (TokenType::Identifier, Some("Val1".to_string())),
+            (TokenType::Multiply, Some("*".to_string())),
+            (TokenType::Identifier, Some("Val2".to_string())),
+            (TokenType::CBracket, Some(")".to_string())),
+        ]);
+        let (next, node) = parse_method_call(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        let node = node.as_any().downcast_ref::<AstMethodCall>().unwrap();
+        assert_eq!(node.get_identifier(), input.get(0).unwrap().get_value());
+        assert_eq!(node.parameter_list.len(), 3);
     }
 
     #[test]

@@ -1,5 +1,5 @@
 use crate::ast::IAstNode;
-use std::fmt::Write;
+use std::{fmt::Write, collections::LinkedList};
 
 
 pub trait IRange {
@@ -38,10 +38,10 @@ impl Position{
 #[derive(Debug, Clone)]
 pub struct DynamicChild<'a, T: ?Sized + 'a>{
     pub data: &'a T,
-    pub parent: &'a T,
+    pub parent: Option<&'a T>,
 }
 impl<'a,T: ?Sized> DynamicChild<'a, T>{
-    pub fn new(data: &'a T, parent: &'a T) -> DynamicChild<'a,T> {
+    pub fn new(data: &'a T, parent: Option<&'a T>) -> DynamicChild<'a,T> {
         DynamicChild { data: data, parent: parent}
     }
 }
@@ -119,6 +119,24 @@ fn _dfs<'a>(ast_node: &'a dyn IAstNode, result: &mut Vec<&'a dyn IAstNode>){
     children.iter().for_each(|n|{_dfs(n.as_ast_node(), result)});
     result.push(ast_node);
 }
+
+pub fn bfs(ast_node: &dyn IAstNode) -> Vec<DynamicChild<dyn IAstNode>> {
+    let mut result = Vec::new();
+    let mut queue = LinkedList::new();
+    queue.push_back(DynamicChild::new(ast_node, None));
+    while !queue.is_empty(){
+        let cur = queue.pop_front().unwrap();
+        match cur.data.get_children_dynamic(){
+            Some(children) => {
+                queue.extend(children.into_iter());
+            },
+            None => ()
+        }
+        result.push(cur);
+    }
+    return result;
+}
+
 
 #[cfg(test)]
 pub mod test_utils{
