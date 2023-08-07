@@ -15,6 +15,15 @@ pub struct Range {
     pub start: Position,
     pub end: Position
 }
+impl IRange for Range{
+    fn get_range(&self) -> Range {
+        self.clone()
+    }
+
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
 impl Range{
     pub fn as_lsp_type_range(&self) -> lsp_types::Range{
         lsp_types::Range {start: self.start.as_lsp_type_pos(), end: self.end.as_lsp_type_pos()}
@@ -62,12 +71,26 @@ pub fn get_end_pos(item: &(dyn IRange)) -> Position {
     return item.get_range().end.clone();
 }
 
-pub fn create_new_range<T: IRange + ?Sized>(first_item: &T, second_item: &T) -> Range{
+pub fn create_new_range_from_irange<T: IRange + ?Sized>(first_item: &T, second_item: &T) -> Range{
     return Range{
         start: first_item.get_range().start.clone(),
         end: second_item.get_range().end.clone()
     }
 }
+
+pub fn create_new_range(first_item: Range, second_item: Range) -> Range{
+    return Range{
+        start: first_item.start.clone(),
+        end: second_item.end.clone()
+    }
+}
+
+// pub fn create_new_range<T: Range>(first_item: &T, second_item: &T) -> Range{
+//     return Range{
+//         start: first_item.get_range().start.clone(),
+//         end: second_item.get_range().end.clone()
+//     }
+// }
 
 pub fn print_ast_brief(ast_node: &dyn IAstNode) -> String{
     return format!("[{}:{}]", ast_node.get_type(), ast_node.get_identifier())

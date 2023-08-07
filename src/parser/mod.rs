@@ -1,6 +1,6 @@
 
 use crate::lexer::tokens::{Token, TokenType};
-use crate::utils::{Range, get_end_pos, create_new_range};
+use crate::utils::{Range, get_end_pos, create_new_range_from_irange};
 use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction};
 
 use self::utils::{prepend_msg_to_error};
@@ -45,7 +45,7 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
             let first_error_token = next.first();
             let last_error_token = if e.input.last().is_some(){e.input.first().unwrap()} else {input.last().unwrap()};
             let doc_error = GoldDocumentError {
-               range: create_new_range(first_error_token.unwrap(), last_error_token),
+               range: create_new_range_from_irange(first_error_token.unwrap(), last_error_token),
                msg: e.msg
             };
             // move one 
@@ -102,7 +102,7 @@ fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNod
    return Ok((next, Box::new(AstClass{
       raw_pos: class_token.raw_pos,
       pos: class_token.pos.clone(),
-      range: create_new_range(&class_token, &end_token),
+      range: create_new_range_from_irange(&class_token, &end_token),
       name: class_name_token.value.unwrap().to_owned(),
       parent_class: parent_class_name.value.unwrap().to_owned()
    })));
@@ -153,7 +153,7 @@ fn parse_constant_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
          pos: const_token.pos.clone(),
          identifier: ident_token,
          value: value_token.clone(),
-         range: create_new_range(&const_token, &value_token),
+         range: create_new_range_from_irange(&const_token, &value_token),
          is_multi_lang : if multilang_token.is_some() {true} else {false} 
       })
    ))
@@ -266,7 +266,7 @@ fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAs
    return Ok((next, Box::new(AstTypeEnum{
       raw_pos: obracket_token.raw_pos,
       pos: obracket_token.pos.clone(),
-      range: create_new_range(&obracket_token, &cbracket_token),
+      range: create_new_range_from_irange(&obracket_token, &cbracket_token),
       variants: tokens
    })));
 }
@@ -834,6 +834,7 @@ fn take_until(token_types: &[TokenType])
          }
          next = it.next()
       }
+      count = if count == 0 {count} else {count-1};
       return Ok((it.as_slice(), &input[0..count], end_method_token));
    }
 }
@@ -908,7 +909,7 @@ fn create_closure<T>(func : impl Fn(&[Token]) -> Result<(&[Token],  T), GoldPars
 #[cfg(test)]
 mod test {
    use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic}, ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode, AstFunction}};
-   use crate::utils::{Position,Range, create_new_range, test_utils::cast_and_unwrap};
+   use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type};
 
    pub fn gen_list_of_tokens(list : &[(TokenType, Option<String>)]) -> Vec<Token> {
@@ -932,7 +933,7 @@ mod test {
    fn check_node_pos_and_range(node: &impl IAstNode,input: &Vec<Token>){
       assert_eq!(node.get_raw_pos(), input.first().unwrap().raw_pos);
       assert_eq!(node.get_pos(), input.first().unwrap().pos);
-      assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+      assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
    }
 
    #[test]

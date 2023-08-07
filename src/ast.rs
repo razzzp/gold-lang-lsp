@@ -1037,8 +1037,8 @@ pub struct AstIfBlock {
     pub pos: Position,
     pub range: Range,
     pub if_block: Box<AstConditionalBlock>,
+    // else block also goes here, with conditional node being an empty node
     pub else_if_blocks: Option<Vec<Box<AstConditionalBlock>>>,
-    pub else_block: Option<Box<AstConditionalBlock>>,
     pub end_token: Option<Token>
 }
 impl AstIfBlock {
@@ -1052,6 +1052,9 @@ impl AstIfBlock {
 impl IRange for AstIfBlock {
     fn get_range(&self) -> Range {
         self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
     }
     fn as_range(&self) -> &dyn IRange {
         self
@@ -1083,10 +1086,6 @@ impl IAstNode for AstIfBlock {
             }
             _=> ()
         }
-        match self.else_block.as_ref(){
-            Some(n) => {result.push(n.as_ast_node())}
-            _=> ()
-        }
         return Some(result);
     }
     fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
@@ -1098,10 +1097,6 @@ impl IAstNode for AstIfBlock {
                     DynamicChild::new(n.as_ast_node(), Some(self))
                 }))
             }
-            _=> ()
-        }
-        match self.else_block.as_ref(){
-            Some(n) => {result.push(DynamicChild::new(n.as_ast_node(), Some(self)))}
             _=> ()
         }
         return Some(result);

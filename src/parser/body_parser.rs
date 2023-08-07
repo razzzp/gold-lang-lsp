@@ -1,6 +1,6 @@
 use nom::error;
 
-use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty}, utils::{create_new_range, IRange}, parser::take_until};
+use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty}, utils::{create_new_range_from_irange, IRange}, parser::take_until};
 
 use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic, parse_separated_list, create_closure};
 
@@ -44,7 +44,7 @@ fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
     return Ok((next, Box::new(AstMethodCall{
         raw_pos: ident_token.get_raw_pos(),
         pos: ident_token.get_pos(),
-        range: create_new_range(ident_token.as_range(), cbracket_token.as_range()),
+        range: create_new_range_from_irange(ident_token.as_range(), cbracket_token.as_range()),
         identifier: ident_token,
         parameter_list,
     })))
@@ -79,7 +79,7 @@ fn parse_bracket_closure<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn 
     let (next, obracket_token) = exp_token(TokenType::OBracket)(input)?;
     let (next, mut expr_node) = parse_expr(next)?;
     let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
-    expr_node.set_range(create_new_range(obracket_token.as_range(), cbracket_token.as_range()));
+    expr_node.set_range(create_new_range_from_irange(obracket_token.as_range(), cbracket_token.as_range()));
     return Ok((next,expr_node))
 }
 
@@ -91,7 +91,7 @@ fn parse_cast<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>),
     return Ok((next, Box::new(AstCast{
         raw_pos: type_node.get_raw_pos(),
         pos: type_node.get_pos(),
-        range: create_new_range(type_node.as_range(), cbracket_token.as_range()),
+        range: create_new_range_from_irange(type_node.as_range(), cbracket_token.as_range()),
         type_node,
         expr_node
     })));
@@ -120,7 +120,7 @@ fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNod
     return Ok((next, Box::new(AstUnaryOp{
         raw_pos: op_token.get_raw_pos(),
         pos: op_token.get_pos(),
-        range: create_new_range(op_token.as_range(), expr_node.as_range()),
+        range: create_new_range_from_irange(op_token.as_range(), expr_node.as_range()),
         op_token,
         expr_node
     })))
@@ -225,7 +225,7 @@ fn parse_assignment<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstN
     return Ok((next, Box::new(AstBinaryOp{
         raw_pos: left_node.get_raw_pos(),
         pos: left_node.get_pos(),
-        range: create_new_range(left_node.as_range(), right_node.as_range()),
+        range: create_new_range_from_irange(left_node.as_range(), right_node.as_range()),
         op_token,
         left_node,
         right_node,
@@ -234,7 +234,6 @@ fn parse_assignment<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstN
 
 fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode + 'static>, Vec<GoldParserError>)), GoldParserError>{
     let (next, if_token) = exp_token(TokenType::If)(input)?;
-    let (next, if_cond_node) = parse_expr(next)?;
     
     let stop_tokens = [
         TokenType::ElseIf,
@@ -243,7 +242,8 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
         TokenType::End
     ];
     // parse main if block
-    let (mut next, if_block_tokens, end_token) = take_until(&stop_tokens)(next)?;
+    let (mut next, if_block_tokens, mut end_token) = take_until(&stop_tokens)(next)?;
+    let (if_block_tokens, if_cond_node) = parse_expr(if_block_tokens)?;
     let mut result: AstIfBlock;
     let mut errors: Vec<GoldParserError> = Vec::new();
     match parse_block(&if_block_tokens) {
@@ -255,29 +255,29 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
             result=  AstIfBlock{
                 raw_pos: if_token.get_raw_pos(),
                 pos: if_token.get_pos(),
-                range: create_new_range(if_token.as_range(), if_cond_node.as_range()),
+                range: create_new_range_from_irange(if_token.as_range(), if_cond_node.as_range()),
                 if_block: Box::new(AstConditionalBlock{
-                    raw_pos: if_cond_node.get_raw_pos(),
-                    pos: if_cond_node.get_pos(),
-                    range: create_new_range(if_cond_node.as_range(), end_node.as_range()),
+                    raw_pos: if_token.get_raw_pos(),
+                    pos: if_token.get_pos(),
+                    range: create_new_range_from_irange(if_token.as_range(), end_node.as_range()),
                     condition: if_cond_node,
                     statements: nodes
                 }),
                 else_if_blocks: None,
-                else_block: None,
                 end_token: None
             };
             errors.extend(errs.into_iter());
         },
         Err(e) => return Err(e)
     }
-    next = loop {
+    // parse next else if/else block
+    (next, end_token) = loop {
         let mut cur_next=next;
         let mut cur_end_token= end_token.clone();
         let mut cur_next_inner;
         match cur_end_token.clone() {
             Some(t) => {
-                if t.token_type == TokenType::End || t.token_type == TokenType::EndIf {break cur_next} 
+                if t.token_type == TokenType::End || t.token_type == TokenType::EndIf {break (cur_next, cur_end_token)} 
                 
                 // next blocks
                 let mut cur_block_tokens;
@@ -300,7 +300,7 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
                         result.add_else_if_block(Box::new(AstConditionalBlock{
                             raw_pos: t.get_raw_pos(),
                             pos: t.get_pos(),
-                            range: create_new_range(t.as_range(), end_node.as_range()),
+                            range: create_new_range_from_irange(t.as_range(), end_node.as_range()),
                             condition: cur_cond_node,
                             statements: nodes
                         }));
@@ -310,9 +310,14 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
                 }
                 cur_next= cur_next_inner;
             },
-            None => break cur_next
+            None => break (cur_next, cur_end_token)
         }
     };
+    // set final range of if block
+    match end_token{
+        Some(t) => result.set_range(create_new_range_from_irange(&if_token.get_range(), &t.get_range())),
+        _ => ()
+    }
     return Ok((next,(Box::new(result), errors)));
 }
 
@@ -406,7 +411,7 @@ fn parse_binary_op<'a>(
     return Ok((next, Box::new(AstBinaryOp{
         raw_pos: left_node.get_raw_pos(),
         pos: left_node.get_pos(),
-        range: create_new_range(left_node.as_range(), right_node.as_range()),
+        range: create_new_range_from_irange(left_node.as_range(), right_node.as_range()),
         op_token,
         left_node,
         right_node,
@@ -418,10 +423,10 @@ mod test{
 
     use std::ops::Deref;
 
-    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode};
-    use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range, bfs};
+    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock};
+    use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range_from_irange, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block};
 
 
     #[test]
@@ -435,7 +440,7 @@ mod test{
         ]);
         let (next, node) = parse_bracket_closure(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         
         let node = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         assert_eq!(node.left_node.get_identifier(), "First");
@@ -453,7 +458,7 @@ mod test{
         ]);
         let (next, node) = parse_cast(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let node = node.as_any().downcast_ref::<AstCast>().unwrap();
         assert_eq!(node.type_node.get_identifier(), "CastType");
         assert_eq!(node.expr_node.get_identifier(), "Expression");
@@ -471,7 +476,7 @@ mod test{
         ]);
         let (next, node) = parse_dot_ops(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect
@@ -499,7 +504,7 @@ mod test{
         ]);
         let (next, node) = parse_factors(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect same tree struct as dot_ops
@@ -522,7 +527,7 @@ mod test{
         ]);
         let (next, node) = parse_terms(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect
@@ -550,7 +555,7 @@ mod test{
         ]);
         let (next, node) = parse_bit_ops_2(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect
@@ -578,7 +583,7 @@ mod test{
         ]);
         let (next, node) = parse_shifts(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect
@@ -606,7 +611,7 @@ mod test{
         ]);
         let (next, node) = parse_compare(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect
@@ -634,7 +639,7 @@ mod test{
         ]);
         let (next, node) = parse_logical_or(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect
@@ -665,7 +670,7 @@ mod test{
         // print!("{:#?}", input);
         // print!("{}",print_ast_brief_recursive(node.as_ref()));
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
         assert_eq!(node.op_token.get_value(), "not");
         assert_eq!(node.expr_node.get_identifier(), "bNot");
@@ -679,7 +684,7 @@ mod test{
         ]);
         let (next, node) = parse_terms(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstTerminal>().unwrap();
         let dfs = dfs(bin_op);
         assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
@@ -701,7 +706,7 @@ mod test{
         ]);
         let (next, node) = parse_method_call(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let node = node.as_any().downcast_ref::<AstMethodCall>().unwrap();
         assert_eq!(node.get_identifier(), input.get(0).unwrap().get_value());
         assert_eq!(node.parameter_list.len(), 3);
@@ -729,7 +734,7 @@ mod test{
         ]);
         let (next, node) = parse_dot_ops(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         dfs.iter().for_each(|n| {println!("{}",print_ast_brief(n.as_ast_node()))});
@@ -759,7 +764,7 @@ mod test{
         ]);
         let (next, node) = parse_assignment(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range(input.first().unwrap(), input.last().unwrap()));
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let bfs = bfs(bin_op);
         // expect
@@ -776,5 +781,71 @@ mod test{
         assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(4).unwrap().get_value());
         assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(0).unwrap().get_value());
         assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(2).unwrap().get_value());
+    }
+
+    #[test]
+    fn test_if_only(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::If, Some("if".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::Equals, Some("=".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),
+            (TokenType::Identifier, Some("Third".to_string())),
+            (TokenType::Equals, Some("=".to_string())),
+            (TokenType::Identifier, Some("Fourth".to_string())),
+            (TokenType::Plus, Some("+".to_string())),
+            (TokenType::Identifier, Some("Fifth".to_string())),
+            (TokenType::EndIf, Some("endif".to_string())),
+            
+        ]);
+        let (next, (node, errors)) = parse_if_block(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(errors.len(), 0);
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        let bin_op = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
+        let bfs = bfs(bin_op);
+        // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+        // expect
+        //              if
+        //              |
+        //            cond if
+        //         /           \
+        //      =(eq)      statements
+        //      /   \           |
+        //    first second     ...
+        // bfs.iter().for_each(|n|{
+        //     println!("{}", print_ast_brief(n.data))
+        // });
+        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().get_pos().to_string());
+        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(0).unwrap().get_pos().to_string());
+        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(5).unwrap().get_value());
+        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(bfs.get(5).unwrap().data.get_identifier(), input.get(3).unwrap().get_value());
+        assert_eq!(bfs.get(6).unwrap().data.get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(bfs.get(7).unwrap().data.get_identifier(), input.get(7).unwrap().get_value());
+        assert_eq!(bfs.get(8).unwrap().data.get_identifier(), input.get(6).unwrap().get_value());
+        assert_eq!(bfs.get(9).unwrap().data.get_identifier(), input.get(8).unwrap().get_value());
+    }
+
+    #[test]
+    fn test_if_else(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::If, Some("if".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),
+            (TokenType::Else, Some("else".to_string())),
+            (TokenType::Identifier, Some("Third".to_string())),
+            (TokenType::EndIf, Some("endif".to_string())),
+            
+        ]);
+        let (next, (node, errors)) = parse_if_block(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(errors.len(), 0);
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        let bin_op = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
+        assert_eq!(bin_op.if_block.get_children().unwrap().len(), 1);
+        assert_eq!(bin_op.else_if_blocks.as_ref().unwrap().len(), 1);
+        assert_eq!(bin_op.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 1);
     }
 }
