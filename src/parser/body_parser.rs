@@ -271,10 +271,10 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
         Err(e) => return Err(e)
     }
     // parse next else if/else block
+    let mut cur_end_token= end_token.clone();
+    let mut cur_next=next;
+    let mut cur_next_inner;
     (next, end_token) = loop {
-        let mut cur_next=next;
-        let mut cur_end_token= end_token.clone();
-        let mut cur_next_inner;
         match cur_end_token.clone() {
             Some(t) => {
                 if t.token_type == TokenType::End || t.token_type == TokenType::EndIf {break (cur_next, cur_end_token)} 
@@ -802,8 +802,8 @@ mod test{
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
         assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
-        let bin_op = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
-        let bfs = bfs(bin_op);
+        let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
+        let bfs = bfs(if_node);
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
         // expect
         //              if
@@ -843,9 +843,87 @@ mod test{
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
         assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
-        let bin_op = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
-        assert_eq!(bin_op.if_block.get_children().unwrap().len(), 1);
-        assert_eq!(bin_op.else_if_blocks.as_ref().unwrap().len(), 1);
-        assert_eq!(bin_op.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 1);
+        // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+
+        let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
+        assert_eq!(if_node.if_block.get_children().unwrap().len(), 2);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().len(), 1);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_if_elseif_else(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::If, Some("if".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),
+            (TokenType::ElseIf, Some("elseif".to_string())),
+            (TokenType::Identifier, Some("Third".to_string())),
+            (TokenType::Identifier, Some("Fourth".to_string())),
+            (TokenType::Else, Some("else".to_string())),
+            (TokenType::Identifier, Some("Fifth".to_string())),
+            (TokenType::EndIf, Some("endif".to_string())),
+            
+        ]);
+        let (next, (node, errors)) = parse_if_block(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(errors.len(), 0);
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+
+        let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
+        assert_eq!(if_node.if_block.get_children().unwrap().len(), 2);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().len(), 2);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 2);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(1).unwrap().get_children().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_if_elseif_else_empty(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::If, Some("if".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::ElseIf, Some("elseif".to_string())),
+            (TokenType::Identifier, Some("Third".to_string())),
+            (TokenType::Else, Some("else".to_string())),
+            (TokenType::EndIf, Some("endif".to_string())),
+            
+        ]);
+        let (next, (node, errors)) = parse_if_block(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(errors.len(), 0);
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+
+        let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
+        assert_eq!(if_node.if_block.get_children().unwrap().len(), 1);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().len(), 2);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 1);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(1).unwrap().get_children().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_if_nested(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::If, Some("if".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::ElseIf, Some("if".to_string())),
+            (TokenType::Identifier, Some("Third".to_string())),
+            (TokenType::EndIf, Some("endif".to_string())),
+            (TokenType::EndIf, Some("endif".to_string())),
+            
+        ]);
+        let (next, (node, errors)) = parse_if_block(&input).unwrap();
+        println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+        
+        assert_eq!(next.len(), 0);
+        assert_eq!(errors.len(), 0);
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        
+        let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
+        assert_eq!(if_node.if_block.get_children().unwrap().len(), 1);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().len(), 2);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 1);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(1).unwrap().get_children().unwrap().len(), 1);
     }
 }

@@ -211,6 +211,9 @@ impl IAstNode for AstEmpty {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
+    fn get_identifier(&self) -> String {
+        "empty_node".to_string()
+    }
 }
 
 #[derive(Debug)]
