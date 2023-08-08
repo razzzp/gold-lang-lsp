@@ -179,11 +179,11 @@ pub struct AstEmpty {
     pub range: Range,
 }
 impl AstEmpty{
-    pub fn new(raw_pos:usize, pos: Position, range: Range)-> Box<dyn IAstNode>{
-        Box::new(AstEmpty{raw_pos,pos,range})
+    pub fn new(raw_pos:usize, pos: Position, range: Range)-> AstEmpty{
+        AstEmpty{raw_pos,pos,range}
     }
-    pub fn default()-> Box<dyn IAstNode>{
-        Box::new(AstEmpty{raw_pos:0,pos:Position::default(),range:Range::default()})
+    pub fn default()-> AstEmpty{
+        AstEmpty{raw_pos:0,pos:Position::default(),range:Range::default()}
     }
 }
 impl IRange for AstEmpty {
@@ -743,6 +743,9 @@ impl IRange for AstComment {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
     fn as_range(&self) -> &dyn IRange {
         self
     }
@@ -838,6 +841,9 @@ pub struct AstCast {
 impl IRange for AstCast {
     fn get_range(&self) -> Range {
         self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
     }
     fn as_range(&self) -> &dyn IRange {
         self
@@ -944,6 +950,9 @@ impl IRange for AstMethodCall {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
     fn as_range(&self) -> &dyn IRange {
         self
     }
@@ -995,6 +1004,9 @@ impl AstConditionalBlock{
 impl IRange for AstConditionalBlock {
     fn get_range(&self) -> Range {
         self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
     }
     fn as_range(&self) -> &dyn IRange {
         self
