@@ -321,6 +321,64 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
     return Ok((next,(Box::new(result), errors)));
 }
 
+fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode + 'static>, Vec<GoldParserError>)), GoldParserError>{
+    let (next, if_token) = exp_token(TokenType::If)(input)?;
+    
+    let stop_tokens = [
+        exp_token(TokenType::ElseIf),
+        exp_token(TokenType::Else),
+        exp_token(TokenType::EndIf), 
+        exp_token(TokenType::End)
+    ];
+    // parse main if block
+    // parse if condition
+    let (next, if_cond_node) = parse_expr(next)?;
+    
+    let mut result: AstIfBlock = AstIfBlock{
+        raw_pos: if_token.get_raw_pos(),
+        pos: if_token.get_pos(),
+        range: create_new_range_from_irange(if_token.as_range(), if_cond_node.as_range()),
+        if_block: Box::new(AstConditionalBlock{
+            raw_pos: if_token.get_raw_pos(),
+            pos: if_token.get_pos(),
+            range: create_new_range_from_irange(if_token.as_range(), if_token.as_range()),
+            condition: if_cond_node,
+            statements: Vec::new()
+        }),
+        else_if_blocks: None,
+        end_token: None
+    };
+    let mut errors: Vec<GoldParserError> = Vec::new();
+    let mut cur_cond_block = &result.if_block;
+    // parse statements until it reaches the stop tokens
+    loop {
+        let next = match alt_parse(&stop_tokens)(input) {
+            Ok((next, t)) => {
+                if t.token_type == TokenType::EndIf {
+                    break;
+                } else {
+                    let (next, cur_cond_node) = match t.token_type{
+                        TokenType::ElseIf => {
+                            parse_expr(next)?;
+                        },
+                        TokenType::Else => {
+                            (next, Box::new(AstEmpty::new(t.get_raw_pos(),t.get_pos(), t.get_range())))
+                        }
+                    }
+                    // create new block to append to
+                    result.add_else_if_block(Box::new(AstConditionalBlock { 
+                        raw_pos: t.get_raw_pos(), 
+                        pos: t.get_pos(),
+                        range: t.get_range(), 
+                        condition: , statements: () }))
+                }
+            }
+            Err(e) => e.input
+        };
+    }
+    return Ok((next,(Box::new(result), errors)));
+}
+
 fn parse_statement<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
     // try match block statements first
     let last_error;

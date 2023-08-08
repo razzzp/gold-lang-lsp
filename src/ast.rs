@@ -987,6 +987,11 @@ pub struct AstConditionalBlock {
     pub condition: Box<dyn IAstNode>,
     pub statements: Vec<Box<dyn IAstNode>>,
 }
+impl AstConditionalBlock{
+    pub fn append_node(&mut self, node: Box<dyn IAstNode>) {
+        self.statements.push(node);
+    }
+}
 impl IRange for AstConditionalBlock {
     fn get_range(&self) -> Range {
         self.range.clone()
