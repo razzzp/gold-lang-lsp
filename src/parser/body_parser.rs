@@ -324,7 +324,7 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
     return Ok((next,(Box::new(result), errors)));
 }
 
-fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode + 'static>, Vec<GoldParserError>)), GoldParserError>{
+fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
     let (next, if_token) = exp_token(TokenType::If)(input)?;
     
     let stop_tokens = [
@@ -410,6 +410,10 @@ fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
     
 }
 
+fn parse_for_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
+    todo!()
+}
+
 fn update_cond_block_range(cond_block: &mut AstConditionalBlock){
     let end_node = if cond_block.statements.len() > 0 {
         // get last statement node, if present
@@ -429,7 +433,7 @@ fn parse_statement<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstN
     //     Ok(r) => return Ok(r),
     //     Err(e) => {last_error = e}
     // };
-    match parse_if_block(input) {
+    match parse_if_block_v2(input) {
         Ok(r) => return Ok(r),
         Err(e) => {last_error = e}
     };
@@ -448,6 +452,7 @@ fn parse_statement<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstN
     };
 }
 
+#[deprecated]
 fn parse_block<'a>(input :&'a[Token]) -> Result<(Vec<Box<dyn IAstNode>>, Vec<GoldParserError>), GoldParserError>{
     let mut result = Vec::<Box<dyn IAstNode>>::new();
     let mut errors = Vec::<GoldParserError>::new();
