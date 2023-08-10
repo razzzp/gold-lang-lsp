@@ -410,6 +410,36 @@ fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
     
 }
 
+fn parse_until<'a>(
+    input: &'a[Token],
+    stop_parser: impl Fn(&[Token]) -> Result<(&[Token],  Token), GoldParserError>,
+    parser: impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), GoldParserError>
+) -> Result<(&'a [Token], (Vec<Box<dyn IAstNode>>, Vec<GoldParserError>, Option<Token>)), GoldParserError>{
+
+    let mut result: Vec<Box<dyn IAstNode>> = Vec::new();
+    let mut errors: Vec<GoldParserError> = Vec::new();
+    let mut next = input;
+    loop {
+        if next.len() == 0 {break}
+        // check if it sees a delimiting token
+        next = match stop_parser(next) {
+            Ok((next, t)) => {            
+                return Ok((next, (result, errors, Some(t))));
+            },
+            Err(_) => {
+                // parse statements and adds to current block
+                let new_statement_node; let errs;
+                (next, (new_statement_node, errs)) = parse_statement(next)?;
+                result.push(new_statement_node);
+                errors.extend(errs.into_iter());
+                next
+            }
+        };
+    };
+    // end token not found
+    return Err(GoldParserError { input: next, msg: "end token not found".to_string() });
+}
+
 fn parse_for_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
     todo!()
 }
