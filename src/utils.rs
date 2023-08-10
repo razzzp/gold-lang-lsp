@@ -1,4 +1,4 @@
-use crate::ast::IAstNode;
+use crate::{ast::IAstNode, lexer::tokens::Token};
 use std::{fmt::Write, collections::LinkedList, ops::{DerefMut, Deref}};
 
 
@@ -82,6 +82,19 @@ pub fn create_new_range(first_item: Range, second_item: Range) -> Range{
     return Range{
         start: first_item.start.clone(),
         end: second_item.end.clone()
+    }
+}
+
+
+pub fn create_new_range_from_token_slices(first_slice: &[Token], second_slice: &[Token]) -> Range{
+    let first_next = first_slice.iter().next();
+    let second_next = second_slice.iter().next();
+    if first_next.is_none(){
+        return Range::default()
+    } else {
+        let first_next = first_next.unwrap();
+        let second_next = second_next.unwrap_or(first_next);
+        return create_new_range(first_next.get_range(), second_next.get_range());
     }
 }
 
