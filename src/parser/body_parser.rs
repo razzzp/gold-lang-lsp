@@ -1,8 +1,8 @@
 use nom::error;
 
-use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
+use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
 
-use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic, parse_separated_list, create_closure, GoldDocumentError, parse_comment};
+use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic, parse_separated_list, create_closure, GoldDocumentError, parse_comment, opt_parse};
 
 /// expr = ident
 ///     | bin_op
@@ -511,10 +511,44 @@ fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
     }
 }
 
+// fn parse_for_block_condition<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
+// }
 
+fn parse_for_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
+    let (next, for_token) = exp_token(TokenType::For)(input)?;
+    let (next, var_token) = exp_token(TokenType::Identifier)(next)?;
+    let (next, eq_token) = exp_token(TokenType::Equals)(next)?;
 
-fn parse_for_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
-    todo!()
+    let range_op_tokens = [exp_token(TokenType::To), exp_token(TokenType::DownTo)];
+    let range_op_parsers = alt_parse(&range_op_tokens);
+    let (next, range_node) = parse_binary_ops(next, &range_op_parsers, &parse_expr)?;
+    let (mut next, step_token) = opt_parse(exp_token(TokenType::Step))(next)?;
+
+    let mut step_expr: Option<Box<dyn IAstNode>>= None;
+    if step_token.is_some(){
+        (next, step_expr) = opt_parse(parse_expr)(next)?;
+    }
+    
+    let stop_tokens = [exp_token(TokenType::EndFor), exp_token(TokenType::End)];
+    let stop_parser = alt_parse(&stop_tokens);
+    let (next, statement_nodes, errors, end_token) = parse_until(next, &stop_parser, &parse_statement_v2);
+    let end_pos_token = match &end_token {
+        Some(t) => t.clone(),
+        _ => for_token.clone()
+    };
+    return Ok((
+        next, 
+        (Box::new(AstForBlock{
+            raw_pos: for_token.get_raw_pos(),
+            pos: for_token.get_pos(),
+            range: create_new_range(for_token.get_range(), end_pos_token.get_range()),
+            counter_token: var_token,
+            range_node,
+            step_node: step_expr,
+            statements: Some(statement_nodes),
+            end_token
+        }),
+        errors)));
 }
 
 fn update_cond_block_range(cond_block: &mut AstConditionalBlock){
@@ -559,14 +593,17 @@ fn parse_statement<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstN
 
 pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
     // try match block statements first
-    let last_error;
+    let mut last_error;
     // TODO can't use alt_parse, why?
     // match alt_parse([parse_if_block].as_ref())(input) {
     //     Ok(r) => return Ok(r),
     //     Err(e) => {last_error = e}
     // };
-    let errors = Vec::<GoldDocumentError>::new();
     match parse_if_block_v3(input) {
+        Ok(r) => return Ok(r),
+        Err(e) => {last_error = e}
+    };
+    match parse_for_block(input) {
         Ok(r) => return Ok(r),
         Err(e) => {last_error = e}
     };
@@ -731,10 +768,10 @@ mod test{
 
     use std::ops::Deref;
 
-    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock};
+    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock};
     use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range_from_irange, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2, parse_if_block_v3};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2, parse_if_block_v3, parse_for_block};
 
 
     #[test]
@@ -1248,5 +1285,143 @@ mod test{
         let nested_if = nested_if.as_any().downcast_ref::<AstIfBlock>().unwrap();
         assert_eq!(nested_if.if_block.get_children().unwrap().len(), 3);
 
+    }
+
+    #[test]
+    fn test_for_block_empty(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::For, Some("for".to_string())),
+            (TokenType::Identifier, Some("Counter".to_string())),
+            (TokenType::Equals, Some("=".to_string())),
+            (TokenType::NumericLiteral, Some("1".to_string())),
+            (TokenType::To, Some("to".to_string())),
+            (TokenType::NumericLiteral, Some("30".to_string())),
+            (TokenType::Step, Some("step".to_string())),
+            (TokenType::NumericLiteral, Some("2".to_string())),
+            (TokenType::EndFor, Some("endfor".to_string())),
+            
+        ]);
+        let (next, (node, errors)) = parse_for_block(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(errors.len(), 0);
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        let for_node = node.as_any().downcast_ref::<AstForBlock>().unwrap();
+        // check counter var
+        assert_eq!(for_node.counter_token, input.get(1).unwrap().clone());
+        assert_eq!(for_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
+        let bfs = bfs(for_node);
+        // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+        // expect
+        //                  for (counter_token)
+        //              /           |            \
+        //    range(to/downton)    step          statements
+        //         /   \            |              |
+        //       1      30      expr_node      ... 
+   
+        // bfs.iter().for_each(|n|{
+        //     println!("{}", print_ast_brief(n.data))
+        // });
+        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().get_pos().to_string());
+        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(7).unwrap().get_value());
+        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(3).unwrap().get_value());
+        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(5).unwrap().get_value());
+        
+    }
+
+    #[test]
+    fn test_for_block_with_statements(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::For, Some("for".to_string())),
+            (TokenType::Identifier, Some("Counter".to_string())),
+            (TokenType::Equals, Some("=".to_string())),
+            (TokenType::NumericLiteral, Some("1".to_string())),
+            (TokenType::To, Some("to".to_string())),
+            (TokenType::NumericLiteral, Some("30".to_string())),
+            (TokenType::Step, Some("step".to_string())),
+            (TokenType::NumericLiteral, Some("2".to_string())),
+            (TokenType::Identifier, Some("Temp1".to_string())),
+            (TokenType::Equals, Some("=".to_string())),
+            (TokenType::Identifier, Some("Temp2".to_string())),
+            (TokenType::Plus, Some("+".to_string())),
+            (TokenType::Identifier, Some("Temp3".to_string())),
+            (TokenType::EndFor, Some("endfor".to_string())),     
+        ]);
+        let (next, (node, errors)) = parse_for_block(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(errors.len(), 0);
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        let for_node = node.as_any().downcast_ref::<AstForBlock>().unwrap();
+        // check counter var
+        assert_eq!(for_node.counter_token, input.get(1).unwrap().clone());
+        assert_eq!(for_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
+        let bfs = bfs(for_node);
+        // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+        // expect
+        //                  for (counter_token)
+        //              /           |            \
+        //    range(to/downton)    step          statements
+        //         /   \            |              |
+        //       1      30      expr_node        ... 
+        // bfs.iter().for_each(|n|{
+        //     println!("{}", print_ast_brief(n.data))
+        // });
+        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().get_pos().to_string());
+        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(7).unwrap().get_value());
+        // body here
+        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(9).unwrap().get_value());
+        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(3).unwrap().get_value());
+        assert_eq!(bfs.get(5).unwrap().data.get_identifier(), input.get(5).unwrap().get_value());
+        
+    }
+
+    #[test]
+    fn test_for_block_nested(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::For, Some("for".to_string())),
+            (TokenType::Identifier, Some("Counter".to_string())),
+            (TokenType::Equals, Some("=".to_string())),
+            (TokenType::NumericLiteral, Some("1".to_string())),
+            (TokenType::To, Some("to".to_string())),
+            (TokenType::NumericLiteral, Some("30".to_string())),
+            (TokenType::Step, Some("step".to_string())),
+            (TokenType::NumericLiteral, Some("2".to_string())),
+            (TokenType::For, Some("for".to_string())),
+            (TokenType::Identifier, Some("Counter".to_string())),
+            (TokenType::Equals, Some("=".to_string())),
+            (TokenType::Identifier, Some("Temp2".to_string())),
+            (TokenType::DownTo, Some("downto".to_string())),
+            (TokenType::Identifier, Some("Temp3".to_string())),
+            (TokenType::EndFor, Some("endfor".to_string())),
+            (TokenType::EndFor, Some("endfor".to_string())),
+        ]);
+        let (next, (node, errors)) = parse_for_block(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(errors.len(), 0);
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        let for_node = node.as_any().downcast_ref::<AstForBlock>().unwrap();
+        // check counter var
+        assert_eq!(for_node.counter_token, input.get(1).unwrap().clone());
+        assert_eq!(for_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
+        let bfs = bfs(for_node);
+        // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+        // expect
+        //                  for (counter_token)
+        //              /           |            \
+        //    range(to/downton)    step          statements
+        //         /   \            |              |
+        //       1      30      expr_node        ... 
+        // bfs.iter().for_each(|n|{
+        //     println!("{}", print_ast_brief(n.data))
+        // });
+        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
+        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(7).unwrap().get_value());
+        // body here, check that it is a for node
+        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(8).unwrap().to_string_val_and_pos());
+        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(3).unwrap().get_value());
+        assert_eq!(bfs.get(5).unwrap().data.get_identifier(), input.get(5).unwrap().get_value());
+        
     }
 }

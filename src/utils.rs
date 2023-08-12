@@ -42,6 +42,9 @@ impl Position{
     pub fn to_string(&self) -> String {
         format!("{:?}", self)
     }
+    pub fn to_string_brief(&self) -> String {
+        format!("(l:{},c:{})", self.line, self.character)
+    }
 }
 
 #[derive(Debug, Clone)]

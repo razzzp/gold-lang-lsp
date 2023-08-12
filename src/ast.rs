@@ -1048,7 +1048,7 @@ impl IAstNode for AstConditionalBlock {
         self
     }
     fn get_identifier(&self) -> String {
-        self.pos.to_string()
+        format!("cond_block{}",self.get_pos().to_string_brief())
     }
 }
 
@@ -1126,6 +1126,88 @@ impl IAstNode for AstIfBlock {
         self
     }
     fn get_identifier(&self) -> String {
-        self.pos.to_string()
+        format!("if{}",self.get_pos().to_string_brief())
+    }
+}
+
+#[derive(Debug)]
+pub struct AstForBlock {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub counter_token: Token,
+    pub range_node: Box<dyn IAstNode>,
+    pub step_node: Option<Box<dyn IAstNode>>,
+    pub statements: Option<Vec<Box<dyn IAstNode>>>,
+    pub end_token: Option<Token>
+}
+impl AstForBlock {
+    
+}
+impl IRange for AstForBlock {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstForBlock {
+    fn get_type(&self) -> &'static str {
+        "For Block"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.range_node.as_ast_node());
+        match &self.step_node {
+            Some(n)=> {result.push(n.as_ast_node())}
+            _ => ()
+        };
+        match self.statements.as_ref() {
+            Some(statements) =>{
+                result.extend(statements.iter().map(|n| {
+                    n.as_ast_node()
+                }))
+            }
+            _=> ()
+        }
+        return Some(result);
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(DynamicChild::new(self.range_node.as_ast_node(), Some(self)));
+        match &self.step_node {
+            Some(n)=> {result.push(DynamicChild::new(n.as_ast_node(),Some(self)))}
+            _ => ()
+        };
+        match self.statements.as_ref() {
+            Some(statements) =>{
+                result.extend(statements.iter().map(|n| {
+                    DynamicChild::new(n.as_ast_node(), Some(self))
+                }))
+            }
+            _=> ()
+        }
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        format!("for{}",self.get_pos().to_string_brief())
     }
 }

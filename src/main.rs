@@ -183,6 +183,10 @@ endproc
 func FirstFunc return SomeType
     ; method body
     ; bla bla
+    if LeftExpr = RightExpr
+        if True
+        endif
+    endif
 endfunc
         ");
         let tokens = lexer.lex(&input).0;
@@ -208,7 +212,9 @@ endfunc
         let uses_ident = &uses.list_of_uses[1];
         assert_eq!(uses_ident.value.as_ref().unwrap().as_str(), "aSecondClass");
 
-        // println!("{:#?}", nodes);
+        for node in nodes{
+            println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+        }  
     }
 
     #[test]

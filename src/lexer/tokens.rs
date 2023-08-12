@@ -189,7 +189,7 @@ pub enum TokenType {
     BooleanFalse
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,PartialEq)]
 pub struct Token {
     pub raw_pos: usize,
     pub pos: Position,
@@ -219,6 +219,9 @@ impl Token{
             Some(s) => s.clone(),
             None => "".to_string()
         }
-     }
+    }
+    pub fn to_string_val_and_pos(&self) -> String{
+        format!("{}{}", self.get_value(), self.get_pos().to_string_brief())
+    }
 }
 
