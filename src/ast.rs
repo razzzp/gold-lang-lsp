@@ -993,7 +993,7 @@ pub struct AstConditionalBlock {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub condition: Box<dyn IAstNode>,
+    pub condition: Option<Box<dyn IAstNode>>,
     pub statements: Vec<Box<dyn IAstNode>>,
 }
 impl AstConditionalBlock{
@@ -1029,7 +1029,7 @@ impl IAstNode for AstConditionalBlock {
     }
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
-        result.push(self.condition.as_ast_node());
+        if self.condition.is_some() {result.push(self.condition.as_ref().unwrap().as_ast_node());}
         result.extend(self.statements.iter().map(|n| {
             n.as_ast_node()
         }));
@@ -1037,7 +1037,7 @@ impl IAstNode for AstConditionalBlock {
     }
     fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
         let mut result = Vec::new();
-        result.push(DynamicChild::new(self.condition.as_ast_node(), Some(self)));
+        if self.condition.is_some() {result.push(DynamicChild::new(self.condition.as_ref().unwrap().as_ast_node(), Some(self)));}
         result.extend(self.statements.iter().map(|n| {
             DynamicChild::new(n.as_ast_node(), Some(self))
         }));

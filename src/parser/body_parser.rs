@@ -261,7 +261,7 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
                     raw_pos: if_token.get_raw_pos(),
                     pos: if_token.get_pos(),
                     range: create_new_range_from_irange(if_token.as_range(), end_node.as_range()),
-                    condition: if_cond_node,
+                    condition: Some(if_cond_node),
                     statements: nodes
                 }),
                 else_if_blocks: None,
@@ -304,7 +304,7 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
                             raw_pos: t.get_raw_pos(),
                             pos: t.get_pos(),
                             range: create_new_range_from_irange(t.as_range(), end_node.as_range()),
-                            condition: cur_cond_node,
+                            condition: Some(cur_cond_node),
                             statements: nodes
                         }));
                         errors.extend(errs.into_iter());
@@ -343,7 +343,7 @@ fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
             raw_pos: if_token.get_raw_pos(),
             pos: if_token.get_pos(),
             range: create_new_range_from_irange(if_token.as_range(), if_token.as_range()),
-            condition: if_cond_node,
+            condition: Some(if_cond_node),
             statements: Vec::new()
         }),
         else_if_blocks: None,
@@ -383,7 +383,9 @@ fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
                     raw_pos: t.get_raw_pos(), 
                     pos: t.get_pos(),
                     range: t.get_range(), 
-                    condition: cur_cond_node, statements: Vec::new() }));
+                    condition: Some(cur_cond_node), 
+                    statements: Vec::new() 
+                }));
                 cur_cond_block = result.else_if_blocks.as_mut().unwrap().last_mut().unwrap();
                 next
             },
@@ -412,53 +414,67 @@ fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
 
 fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
     let (next, if_token) = exp_token(TokenType::If)(input)?;
-    
+
     let stop_tokens = [
         exp_token(TokenType::ElseIf),
         exp_token(TokenType::Else),
         exp_token(TokenType::EndIf), 
         exp_token(TokenType::End)
     ];
+    let stop_parser = alt_parse(stop_tokens.as_ref());
+
+    // parse first if conditional node
     let (next, if_cond_node) = parse_expr(next)?;
     // initialize the if node
     let mut result: AstIfBlock = AstIfBlock{
         raw_pos: if_token.get_raw_pos(),
         pos: if_token.get_pos(),
-        range: create_new_range_from_irange(if_token.as_range(), if_cond_node.as_range()),
+        range: create_new_range(if_token.get_range(), if_cond_node.get_range()),
         if_block: Box::new(AstConditionalBlock{
             raw_pos: if_token.get_raw_pos(),
             pos: if_token.get_pos(),
-            range: create_new_range_from_irange(if_token.as_range(), if_token.as_range()),
-            condition: if_cond_node,
+            range: create_new_range(if_token.get_range(), if_token.get_range()),
+            condition: Some(if_cond_node),
             statements: Vec::new()
         }),
         else_if_blocks: None,
         end_token: None
     };
-    let mut errors: Vec<GoldParserError> = Vec::new();
+    let mut errors: Vec<GoldDocumentError> = Vec::new();
     let mut cur_cond_block = result.if_block.as_mut();
     let mut next = next;
     // parse statements until it reaches the stop tokens
     let (next, end_token)  = loop {
         if next.len() == 0 {break (next, None);}
-        // check if it sees a delimiting token
-        next = match alt_parse(&stop_tokens)(next) {
-            Ok((next, t)) => {            
+        
+        let nodes; let errors_until; let end_token;
+        // parse statements until it sees an end token
+        (next, nodes, errors_until, end_token) = parse_until(next, &stop_parser, parse_statement_v2);
+        // update cur block
+        cur_cond_block.statements.extend(nodes.into_iter());
+        errors.extend(errors_until.into_iter());
+
+        // decide what to do based on the end token found
+        next = match end_token {
+            Some(t) => {            
                 let (next, cur_cond_node) = match t.token_type{
                     TokenType::EndIf | TokenType::End => {
                         // if endif finished parsing, break
                         update_cond_block_range(cur_cond_block);
+                        // break out of loop
                         break (next, Some(t));
                     },
                     // else create new block and continue parsing
                     TokenType::ElseIf => {
                         update_cond_block_range(cur_cond_block);
-                        parse_expr(next)?
+                        match parse_expr(next) {
+                            Ok((n, node)) => (n, Some(node)),
+                            Err(e) => return Err(e)
+                        }
                     },
                     TokenType::Else => {
                         update_cond_block_range(cur_cond_block);
-                        let tmp : Box<dyn IAstNode> = Box::new(AstEmpty::new(t.get_raw_pos(),t.get_pos(), t.get_range()));
-                        (next, tmp)
+                        (next, None)
                     },
                     _ => {
                         return Err(GoldParserError { input: next, msg: "error while parsing if, something went wrong".to_string() })
@@ -469,16 +485,15 @@ fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
                     raw_pos: t.get_raw_pos(), 
                     pos: t.get_pos(),
                     range: t.get_range(), 
-                    condition: cur_cond_node, statements: Vec::new() }));
+                    condition: cur_cond_node, 
+                    statements: Vec::new() 
+                }));
                 cur_cond_block = result.else_if_blocks.as_mut().unwrap().last_mut().unwrap();
                 next
             },
-            Err(_) => {
-                // parse statements and adds to current block
-                let new_statement_node; let errs;
-                (next, (new_statement_node, errs)) = parse_statement(next)?;
-                errors.extend(errs.into_iter());
-                cur_cond_block.append_node(new_statement_node);
+            None => {
+                // add error: no end token found
+                errors.push(GoldDocumentError { range: if_token.get_range(), msg: "no end token found".to_string()});
                 next
             }
         };
@@ -490,10 +505,9 @@ fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
             return Ok((next,(Box::new(result), errors)));
         },
         None => {
-            return Err(GoldParserError { input: next, msg: "unclosed if block".to_string() })
+            return Ok((next,(Box::new(result), errors)));
         }
     }
-    
 }
 
 
@@ -508,7 +522,8 @@ fn update_cond_block_range(cond_block: &mut AstConditionalBlock){
         cond_block.statements.last().unwrap().as_ast_node()
     } else {
         // else use the condition node
-        cond_block.condition.as_ref()
+        if cond_block.condition.is_some() {cond_block.condition.as_ref().unwrap().as_ast_node()}
+        else {cond_block.as_ast_node()}
     };
     cond_block.set_range(create_new_range(cond_block.get_range(), end_node.get_range()))
 }
@@ -596,8 +611,8 @@ fn parse_block<'a>(input :&'a[Token]) -> Result<(Vec<Box<dyn IAstNode>>, Vec<Gol
 fn parse_until<'a>(
     input: &'a[Token],
     stop_parser: impl Fn(&[Token]) -> Result<(&[Token],  Token), GoldParserError>,
-    parser: impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), GoldParserError>
-) -> (&'a [Token], (Vec<Box<dyn IAstNode>>, Vec<GoldDocumentError>, Option<Token>)){
+    parser: impl Fn(&[Token]) -> Result<(&[Token],  (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>
+) -> (&'a [Token], Vec<Box<dyn IAstNode>>, Vec<GoldDocumentError>, Option<Token>){
 
     let mut result: Vec<Box<dyn IAstNode>> = Vec::new();
     let mut errors: Vec<GoldDocumentError> = Vec::new();
@@ -607,7 +622,7 @@ fn parse_until<'a>(
         // check if it sees a delimiting token
         next = match stop_parser(next) {
             Ok((next, t)) => {            
-                return (next, (result, errors, Some(t)));
+                return (next, result, errors, Some(t));
             },
             Err(_) => {
                 // parse statements and adds to current block
@@ -630,7 +645,7 @@ fn parse_until<'a>(
         };
     };
     // end token not found
-    return (next, (result, errors, None));
+    return (next, result, errors, None);
 }
 
 fn parse_binary_ops<'a>(
@@ -685,7 +700,7 @@ mod test{
     use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock};
     use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range_from_irange, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2, parse_if_block_v3};
 
 
     #[test]
@@ -1057,7 +1072,7 @@ mod test{
             (TokenType::EndIf, Some("endif".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_if_block_v2(&input).unwrap();
+        let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
         assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
@@ -1098,7 +1113,7 @@ mod test{
             (TokenType::EndIf, Some("endif".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_if_block_v2(&input).unwrap();
+        let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
         assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
@@ -1107,7 +1122,7 @@ mod test{
         let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
         assert_eq!(if_node.if_block.get_children().unwrap().len(), 2);
         assert_eq!(if_node.else_if_blocks.as_ref().unwrap().len(), 1);
-        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 2);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 1);
     }
 
     #[test]
@@ -1124,7 +1139,7 @@ mod test{
             (TokenType::EndIf, Some("endif".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_if_block_v2(&input).unwrap();
+        let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
         assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
@@ -1134,7 +1149,7 @@ mod test{
         assert_eq!(if_node.if_block.get_children().unwrap().len(), 2);
         assert_eq!(if_node.else_if_blocks.as_ref().unwrap().len(), 2);
         assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 2);
-        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(1).unwrap().get_children().unwrap().len(), 2);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(1).unwrap().get_children().unwrap().len(), 1);
     }
 
     #[test]
@@ -1148,7 +1163,7 @@ mod test{
             (TokenType::EndIf, Some("endif".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_if_block_v2(&input).unwrap();
+        let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
         assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
@@ -1158,7 +1173,7 @@ mod test{
         assert_eq!(if_node.if_block.get_children().unwrap().len(), 1);
         assert_eq!(if_node.else_if_blocks.as_ref().unwrap().len(), 2);
         assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 1);
-        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(1).unwrap().get_children().unwrap().len(), 1);
+        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(1).unwrap().get_children().unwrap().len(), 0);
     }
 
     #[test]
@@ -1184,7 +1199,7 @@ mod test{
             (TokenType::EndIf, Some("endif".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_if_block_v2(&input).unwrap();
+        let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
         println!("{}", print_ast_brief_recursive(node.as_ast_node()));
         
         assert_eq!(next.len(), 0);
