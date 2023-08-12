@@ -2,7 +2,7 @@ use nom::error;
 
 use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
 
-use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic, parse_separated_list, create_closure, GoldDocumentError};
+use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic, parse_separated_list, create_closure, GoldDocumentError, parse_comment};
 
 /// expr = ident
 ///     | bin_op
@@ -324,6 +324,7 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
     return Ok((next,(Box::new(result), errors)));
 }
 
+#[deprecated]
 fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
     let (next, if_token) = exp_token(TokenType::If)(input)?;
     
@@ -528,6 +529,7 @@ fn update_cond_block_range(cond_block: &mut AstConditionalBlock){
     cond_block.set_range(create_new_range(cond_block.get_range(), end_node.get_range()))
 }
 
+#[deprecated]
 fn parse_statement<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
     // try match block statements first
     let last_error;
@@ -555,7 +557,7 @@ fn parse_statement<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstN
     };
 }
 
-fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
+pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
     // try match block statements first
     let last_error;
     // TODO can't use alt_parse, why?
@@ -570,6 +572,7 @@ fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IA
     };
     
     match alt_parse([
+        parse_comment,
         parse_assignment,
         parse_expr,
     ].as_ref())(input) {
@@ -608,7 +611,7 @@ fn parse_block<'a>(input :&'a[Token]) -> Result<(Vec<Box<dyn IAstNode>>, Vec<Gol
     return Ok((result, errors));
 }
 
-fn parse_until<'a>(
+pub fn parse_until<'a>(
     input: &'a[Token],
     stop_parser: impl Fn(&[Token]) -> Result<(&[Token],  Token), GoldParserError>,
     parser: impl Fn(&[Token]) -> Result<(&[Token],  (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>
@@ -626,7 +629,7 @@ fn parse_until<'a>(
             },
             Err(_) => {
                 // parse statements and adds to current block
-                let new_next = match parse_statement_v2(next){
+                let new_next = match parser(next){
                     Ok((next, (new_statement_node, errs)))=> {
                         result.push(new_statement_node);
                         errors.extend(errs.into_iter());
@@ -646,6 +649,37 @@ fn parse_until<'a>(
     };
     // end token not found
     return (next, result, errors, None);
+}
+
+pub fn parse_repeat<'a>(
+    input: &'a[Token],
+    parser: impl Fn(&[Token]) -> Result<(&[Token],  (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>
+) -> (&'a [Token], Vec<Box<dyn IAstNode>>, Vec<GoldDocumentError>){
+
+    let mut result: Vec<Box<dyn IAstNode>> = Vec::new();
+    let mut errors: Vec<GoldDocumentError> = Vec::new();
+    let mut next = input;
+    loop {
+        if next.len() == 0 {break}
+        // check if it sees a delimiting token
+        // parse statements and adds to current block
+        next = match parser(next){
+            Ok((next, (new_statement_node, errs)))=> {
+                result.push(new_statement_node);
+                errors.extend(errs.into_iter());
+                next
+            },
+            Err(e) => {
+                let mut new_it = e.input.iter();
+                // if iterator has not been moved, move by one, to prevent
+                //  infinite loop
+                if e.input.len() == next.len() {new_it.next();}
+                new_it.as_slice()
+            }
+        };          
+    };
+    // end token not found
+    return (next, result, errors);
 }
 
 fn parse_binary_ops<'a>(

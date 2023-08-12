@@ -440,7 +440,8 @@ pub struct AstProcedure {
     pub identifier: Token,
     pub parameter_list: Option<AstParameterDeclarationList>,
     pub modifiers: Option<AstMethodModifiers>,
-    pub body: Option<AstMethodBody>
+    pub body: Option<AstMethodBody>,
+    pub end_token: Option<Token>,
 }
 impl IRange for AstProcedure {
     fn get_range(&self) -> Range {
@@ -497,7 +498,8 @@ pub struct AstFunction {
     pub parameter_list: Option<AstParameterDeclarationList>,
     pub return_type: Box<dyn IAstNode>,
     pub modifiers: Option<AstMethodModifiers>,
-    pub body: Option<AstMethodBody>
+    pub body: Option<AstMethodBody>,
+    pub end_token: Option<Token>,
 }
 impl IRange for AstFunction {
     fn get_range(&self) -> Range {
@@ -691,7 +693,6 @@ pub struct AstMethodBody {
     pub pos: Position,
     pub range: Range,
     pub statements: Vec<Box<dyn IAstNode>>,
-    pub end_token: Option<Token>,
 }
 impl IRange for AstMethodBody {
     fn get_range(&self) -> Range {

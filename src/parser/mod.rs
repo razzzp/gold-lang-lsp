@@ -1,8 +1,9 @@
 
 use crate::lexer::tokens::{Token, TokenType};
-use crate::utils::{Range, get_end_pos, create_new_range_from_irange};
+use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange};
 use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction};
 
+use self::body_parser::{parse_repeat, parse_statement_v2};
 use self::utils::{prepend_msg_to_error};
 
 pub mod utils;
@@ -28,6 +29,8 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
       parse_type_declaration,
       parse_constant_declaration,
       parse_global_variable_declaration,
+   ];
+   let block_parsers = [
       parse_procedure_declaration,
       parse_function_declaration
    ];
@@ -38,6 +41,15 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
    }
    let mut next = input;
    while next.len() > 0 {
+      match alt_parse(&block_parsers)(next){
+         Ok((r,(node,errs)))=> {
+            result.push(node); 
+            errors.extend(errs.into_iter());
+            next = r;
+            continue
+         },
+         Err(e)=> next = e.input
+      };
       next = match alt_parse(&parsers)(next){
          Ok((r,n))=> {result.push(n); r},
          Err(e)=> {
@@ -369,7 +381,7 @@ fn parse_global_variable_declaration<'a>(input : &'a [Token]) -> Result<(&'a [To
 }
 
 
-fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError<'a>>{
    // parse proc [ident]
    let (next, first_tokens) = match seq_parse(&[
       exp_token(TokenType::Proc),
@@ -391,29 +403,53 @@ fn parse_procedure_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
       Err(e) => return Err(prepend_msg_to_error("Failed to parse proc decl: ", e))
    };
    end = if modifier_node.is_some() {get_end_pos(modifier_node.as_ref().unwrap())} else {end};
-   // if proc is not forward and not external, parse body
-   let mut method_body = None;
-   if has_method_body(&modifier_node) {
-      (next , method_body) = match parse_method_body(next, TokenType::EndProc){
-         Ok((n, node)) => (n, Some(node)),
-         Err(_) => (next, None)
-      }
-   }
-   end = if method_body.is_some() && method_body.as_ref().unwrap().end_token.is_some() {get_end_pos(method_body.as_ref().unwrap().end_token.as_ref().unwrap())} else {end};
 
-   return Ok((next, Box::new(AstProcedure{
+   let mut errors = Vec::<GoldDocumentError>::new();
+   // if proc is not forward and not external, parse body
+   let mut method_body: Option<AstMethodBody> = None;
+   let mut end_method_token = None;
+   if has_method_body(&modifier_node) {
+      let body_tokens; 
+      (next, body_tokens, end_method_token) = take_until([TokenType::EndProc, TokenType::End].as_ref())(next)?;
+      match parse_method_body(body_tokens){
+         Ok((_, (mut node, errs))) => {
+            if node.is_none() {
+               node = Some(AstMethodBody{
+                  raw_pos: first_tokens.get(0).unwrap().get_raw_pos(),
+                  pos: first_tokens.get(0).unwrap().get_pos(),
+                  range: first_tokens.get(0).unwrap().get_range(),
+                  statements: Vec::new()
+               });
+            }
+            method_body = node;
+            errors.extend(errs.into_iter());
+         },
+         // TODO improve structure for error handling
+         Err(_) => ()
+      }
+      if end_method_token.is_none(){
+      errors.push(GoldDocumentError { 
+         range: first_tokens.get(0).unwrap().get_range(), 
+         msg: "proc end token not found".to_string() }
+      )
+   }
+   }
+   end = if end_method_token.is_some() {end_method_token.as_ref().unwrap().get_range().end} else {end};
+
+   return Ok((next, (Box::new(AstProcedure{
       raw_pos: first_tokens[0].raw_pos,
       pos: first_tokens[0].pos.clone(),
       range: Range { start: first_tokens[0].pos.clone(), end: end},
       identifier: first_tokens[1].clone(),
       parameter_list: param_nodes,
       modifiers: modifier_node,
-      body: method_body
-   })))
+      body: method_body,
+      end_token: end_method_token
+   }),errors)))
 }
 
 
-fn parse_function_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+fn parse_function_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError<'a>>{
    // parse func [ident]
    let (next, first_tokens) = match seq_parse(&[
       exp_token(TokenType::Func),
@@ -448,17 +484,40 @@ fn parse_function_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
       Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: ", e))
    };
    end = if modifier_node.is_some() {get_end_pos(modifier_node.as_ref().unwrap())} else {end};
-   // if func is not forward and not external, parse body
-   let mut method_body = None;
+
+   let mut errors = Vec::<GoldDocumentError>::new();
+   // if proc is not forward and not external, parse body
+   let mut method_body: Option<AstMethodBody> = None;
+   let mut end_method_token = None;
    if has_method_body(&modifier_node) {
-      (next , method_body) = match parse_method_body(next, TokenType::EndFunc){
-         Ok((n, node)) => (n, Some(node)),
-         Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: ", e))
+      let body_tokens; 
+      (next, body_tokens, end_method_token) = take_until([TokenType::EndFunc, TokenType::End].as_ref())(next)?;
+      match parse_method_body(body_tokens){
+         Ok((_, (mut node, errs))) => {
+            if node.is_none() {
+               node = Some(AstMethodBody{
+                  raw_pos: first_tokens.get(0).unwrap().get_raw_pos(),
+                  pos: first_tokens.get(0).unwrap().get_pos(),
+                  range: first_tokens.get(0).unwrap().get_range(),
+                  statements: Vec::new()
+               });
+            }
+            method_body = node;
+            errors.extend(errs.into_iter());
+         },
+         // TODO improve structure for error handling
+         Err(_) => ()
+      }
+      if end_method_token.is_none(){
+         errors.push(GoldDocumentError { 
+            range: first_tokens.get(0).unwrap().get_range(), 
+            msg: "proc end token not found".to_string() }
+         )
       }
    }
-   end = if method_body.is_some() && method_body.as_ref().unwrap().end_token.is_some() {get_end_pos(method_body.as_ref().unwrap().end_token.as_ref().unwrap())} else {end};
-
-   return Ok((next, Box::new(AstFunction{
+   end = if end_method_token.is_some() {end_method_token.as_ref().unwrap().get_range().end} else {end};
+   
+   return Ok((next, (Box::new(AstFunction{
       raw_pos: first_tokens[0].raw_pos,
       pos: first_tokens[0].pos.clone(),
       range: Range { start: first_tokens[0].pos.clone(), end: end},
@@ -466,8 +525,9 @@ fn parse_function_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  
       parameter_list: param_nodes,
       return_type: return_type_node,
       modifiers: modifier_node,
-      body: method_body
-   })))
+      body: method_body,
+      end_token: end_method_token
+   }),errors)))
 }
 
 fn has_method_body(modifier_node: &Option<AstMethodModifiers>) -> bool {
@@ -697,35 +757,25 @@ fn parse_method_modifiers_<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opt
    todo!()
 } 
 
-fn parse_method_body<'a>(input : &'a [Token], end_token_type : TokenType) -> Result<(&'a [Token], AstMethodBody), GoldParserError<'a>>{
+fn parse_method_body<'a>(input : &'a [Token]) -> Result<(&'a [Token], (Option<AstMethodBody>, Vec<GoldDocumentError>)), GoldParserError<'a>>{
 
    if input.len() == 0 {
-      return Err(GoldParserError { input: input, msg: format!("expected method body: found end of stream") })
+      return Ok((input, (None, Vec::new())))
    }
-   // TODO complete implem
-   let (next, body_tokens, end_method_token) = take_until([end_token_type, TokenType::End].as_ref())(input)?;
-   let mut statements = Vec::<Box<dyn IAstNode>>::new();
-   if end_method_token.is_none() {
-      return Err(GoldParserError { input: next, msg: format!("{:?} not found",end_token_type)});
-   }
+
+   let (next, statements, errors) = parse_repeat(input, parse_statement_v2);
    
-   let raw_pos = match body_tokens.first(){
-      Some(t) => t.raw_pos,
-      _ => input.first().unwrap().raw_pos
-   };
-   let pos = match body_tokens.first(){
-      Some(t) => t.pos.clone(),
-      _ => input.first().unwrap().pos.clone()
-   };
+   let raw_pos = input.first().unwrap().get_raw_pos();
+   let start_pos = input.first().unwrap().get_pos();
+   let end_pos = input.last().unwrap().get_pos();
    // range is until the endProc
-   let range = Range{start: pos.clone(), end: end_method_token.as_ref().unwrap().pos.clone()};
-   return Ok((next, AstMethodBody{
+   let range = Range{start: start_pos.clone(), end: end_pos};
+   return Ok((next, (Some(AstMethodBody{
       raw_pos,
-      pos,
+      pos: start_pos,
       range,
       statements,
-      end_token: end_method_token
-   }))
+   }), errors)))
 }
 
 fn parse_separated_list<'a>(
@@ -1219,10 +1269,11 @@ mod test {
          (TokenType::Forward, Some("forward".to_string())),
       ]);
       let next : &[Token] = &input;
-      let (_, node) = parse_procedure_declaration(next).unwrap();
+      let (_, (node, errors)) = parse_procedure_declaration(next).unwrap();
       let downcasted = cast_and_unwrap::<AstProcedure>(&node);
       check_node_pos_and_range(downcasted, &input);
       assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "FirstMethod");
+      assert_eq!(errors.len(), 0);
 
       // test params
       let params = downcasted.parameter_list.as_ref().unwrap();
@@ -1270,10 +1321,11 @@ mod test {
 
       ]);
       let next : &[Token] = &input;
-      let (_, node) = parse_function_declaration(next).unwrap();
+      let (_, (node, errors)) = parse_function_declaration(next).unwrap();
       let downcasted = cast_and_unwrap::<AstFunction>(&node);
       check_node_pos_and_range(downcasted, &input);
       assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "FirstMethod");
+      assert_eq!(errors.len(), 0);
 
       // test params
       let params = downcasted.parameter_list.as_ref().unwrap();

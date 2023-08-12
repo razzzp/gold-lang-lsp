@@ -219,16 +219,16 @@ endfunc
             Ok(_)=>(),
             Err(msg) => panic!("{msg}")
         };
-        println!("{file_contents}");
+        // println!("{file_contents}");
         let mut lexer = GoldLexer::new();
         let tokens = lexer.lex(&file_contents).0;
-        println!("{:#?}", tokens);
+        // println!("{:#?}", tokens);
         let ast = parse_gold(&tokens);
-        println!("{:#?}", ast.0.0);
+        // println!("{:#?}", ast.0.0);
         for node in ast.0.1{
-            println!("{}",print_ast_brief_recursive(node.as_ref()));
+            // println!("{}",print_ast_brief_recursive(node.as_ref()));
         }
-        println!("{:#?}", ast.1.len());
+        // println!("{:#?}", ast.1.len());
     }
 
     #[test]

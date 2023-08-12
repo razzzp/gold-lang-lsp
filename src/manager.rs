@@ -230,6 +230,6 @@ mod test{
     fn test_gold_document_manager(){
         let mut doc_manager = GoldDocumentManager::new();
         let doc = doc_manager.get_document("test/aTestClass.god").unwrap();
-        println!("{:#?}",doc);
+        // println!("{:#?}",doc);
     }
 }
