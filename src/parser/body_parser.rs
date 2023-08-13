@@ -1,6 +1,6 @@
 use nom::error;
 
-use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
+use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
 
 use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic, parse_separated_list, create_closure, GoldDocumentError, parse_comment, opt_parse};
 
@@ -181,6 +181,7 @@ fn parse_compare<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode
         exp_token(TokenType::LessThanOrEqual),
         exp_token(TokenType::GreaterThan),
         exp_token(TokenType::GreaterThanOrEqual),
+        exp_token(TokenType::In)
     ];
     let op_parser = alt_parse(&op_token_parsers);
     return parse_binary_ops(input, &op_parser, &parse_shifts);
@@ -551,6 +552,55 @@ fn parse_for_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstN
         errors)));
 }
 
+fn parse_foreach_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
+    let (next, foreach_token) = exp_token(TokenType::ForEach)(input)?;
+    let in_op_parser = exp_token(TokenType::In);
+    let (next, in_expr_node) = parse_binary_ops(next, &in_op_parser, &parse_expr)?;
+    
+    let stop_tokens = [exp_token(TokenType::EndFor), exp_token(TokenType::End)];
+    let stop_parser = alt_parse(&stop_tokens);
+    let (next, statement_nodes, errors, end_token) = parse_until(next, &stop_parser, &parse_statement_v2);
+    let end_pos_token = match &end_token {
+        Some(t) => t.clone(),
+        _ => foreach_token.clone()
+    };
+    return Ok((
+        next, 
+        (Box::new(AstForEachBlock{
+            raw_pos: foreach_token.get_raw_pos(),
+            pos: foreach_token.get_pos(),
+            range: create_new_range(foreach_token.get_range(), end_pos_token.get_range()),
+            in_expr_node,
+            statements: Some(statement_nodes),
+            end_token
+        }),
+        errors)));
+}
+
+fn parse_while_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
+    let (next, while_token) = exp_token(TokenType::While)(input)?;
+    let (next, cond_node) = parse_expr(next)?;
+    
+    let stop_tokens = [exp_token(TokenType::EndWhile), exp_token(TokenType::End)];
+    let stop_parser = alt_parse(&stop_tokens);
+    let (next, statement_nodes, errors, end_token) = parse_until(next, &stop_parser, &parse_statement_v2);
+    let end_pos_token = match &end_token {
+        Some(t) => t.clone(),
+        _ => while_token.clone()
+    };
+    return Ok((
+        next, 
+        (Box::new(AstWhileBlock{
+            raw_pos: while_token.get_raw_pos(),
+            pos: while_token.get_pos(),
+            range: create_new_range(while_token.get_range(), end_pos_token.get_range()),
+            cond_node: cond_node,
+            statements: Some(statement_nodes),
+            end_token
+        }),
+        errors)));
+}
+
 fn update_cond_block_range(cond_block: &mut AstConditionalBlock){
     let end_node = if cond_block.statements.len() > 0 {
         // get last statement node, if present
@@ -768,10 +818,10 @@ mod test{
 
     use std::ops::Deref;
 
-    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock};
+    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock};
     use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range_from_irange, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2, parse_if_block_v3, parse_for_block};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block};
 
 
     #[test]
@@ -1423,5 +1473,71 @@ mod test{
         assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(3).unwrap().get_value());
         assert_eq!(bfs.get(5).unwrap().data.get_identifier(), input.get(5).unwrap().get_value());
         
+    }
+
+    #[test]
+    fn test_foreach_block_with_statements(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::ForEach, Some("foreach".to_string())),
+            (TokenType::Identifier, Some("LoopVar".to_string())),
+            (TokenType::In, Some("in".to_string())),
+            (TokenType::Identifier, Some("List".to_string())),
+            (TokenType::Identifier, Some("Temp1".to_string())),
+            (TokenType::Equals, Some("=".to_string())),
+            (TokenType::Identifier, Some("Temp2".to_string())),
+            (TokenType::Plus, Some("+".to_string())),
+            (TokenType::Identifier, Some("Temp3".to_string())),
+            (TokenType::EndFor, Some("endfor".to_string())),     
+        ]);
+        let (next, (node, errors)) = parse_foreach_block(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(errors.len(), 0);
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        let foreach_node = node.as_any().downcast_ref::<AstForEachBlock>().unwrap();
+        // check counter var
+        assert_eq!(foreach_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
+        assert_eq!(foreach_node.in_expr_node.get_identifier(), format!("in{}",input.get(1).unwrap().get_pos().to_string_brief()));
+        assert_eq!(foreach_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
+        assert_eq!(foreach_node.statements.as_ref().unwrap().first().unwrap().get_identifier(), format!("={}", input.get(4).unwrap().get_pos().to_string_brief()));
+        // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+        // expect
+        //                foreach 
+        //              /           \
+        //    in_expr_node       statements
+        //         /     \             |
+        //       left    right        ... 
+        // bfs.iter().for_each(|n|{
+        //     println!("{}", print_ast_brief(n.data))
+        // });      
+    }
+
+    #[test]
+    fn test_while_block_with_statements(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::While, Some("while".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::LessThan, Some("<".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),
+            (TokenType::Identifier, Some("Temp1".to_string())),
+            (TokenType::Equals, Some("=".to_string())),
+            (TokenType::Identifier, Some("Temp2".to_string())),
+            (TokenType::Plus, Some("+".to_string())),
+            (TokenType::Identifier, Some("Temp3".to_string())),
+            (TokenType::EndWhile, Some("endwhile".to_string())),     
+        ]);
+        let (next, (node, errors)) = parse_while_block(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(errors.len(), 0);
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        let foreach_node = node.as_any().downcast_ref::<AstWhileBlock>().unwrap();
+        // check counter var
+        assert_eq!(foreach_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
+        assert_eq!(foreach_node.cond_node.get_identifier(), format!("<{}",input.get(1).unwrap().get_pos().to_string_brief()));
+        assert_eq!(foreach_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
+        assert_eq!(foreach_node.statements.as_ref().unwrap().first().unwrap().get_identifier(), format!("={}", input.get(4).unwrap().get_pos().to_string_brief()));
+        // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+        // bfs.iter().for_each(|n|{
+        //     println!("{}", print_ast_brief(n.data))
+        // });      
     }
 }

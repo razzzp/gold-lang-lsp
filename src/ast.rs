@@ -800,7 +800,7 @@ impl IAstNode for AstBinaryOp {
     }
 
     fn get_identifier(&self) -> String {
-        self.op_token.value.as_ref().unwrap().to_string()
+        format!("{}{}",self.op_token.get_value(), self.get_pos().to_string_brief())
     }
 
     fn get_raw_pos(&self) -> usize {
@@ -1209,5 +1209,149 @@ impl IAstNode for AstForBlock {
     }
     fn get_identifier(&self) -> String {
         format!("for{}",self.get_pos().to_string_brief())
+    }
+}
+
+#[derive(Debug)]
+pub struct AstForEachBlock {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub in_expr_node: Box<dyn IAstNode>,
+    pub statements: Option<Vec<Box<dyn IAstNode>>>,
+    pub end_token: Option<Token>
+}
+impl AstForEachBlock {
+    
+}
+impl IRange for AstForEachBlock {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstForEachBlock {
+    fn get_type(&self) -> &'static str {
+        "Foreach Block"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.in_expr_node.as_ast_node());
+        match self.statements.as_ref() {
+            Some(statements) =>{
+                result.extend(statements.iter().map(|n| {
+                    n.as_ast_node()
+                }))
+            }
+            _=> ()
+        }
+        return Some(result);
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(DynamicChild::new(self.in_expr_node.as_ast_node(), Some(self)));
+        match self.statements.as_ref() {
+            Some(statements) =>{
+                result.extend(statements.iter().map(|n| {
+                    DynamicChild::new(n.as_ast_node(), Some(self))
+                }))
+            }
+            _=> ()
+        }
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        format!("foreach{}",self.get_pos().to_string_brief())
+    }
+}
+
+#[derive(Debug)]
+pub struct AstWhileBlock {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub cond_node: Box<dyn IAstNode>,
+    pub statements: Option<Vec<Box<dyn IAstNode>>>,
+    pub end_token: Option<Token>
+}
+impl AstWhileBlock {
+    
+}
+impl IRange for AstWhileBlock {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstWhileBlock {
+    fn get_type(&self) -> &'static str {
+        "While Block"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.cond_node.as_ast_node());
+        match self.statements.as_ref() {
+            Some(statements) =>{
+                result.extend(statements.iter().map(|n| {
+                    n.as_ast_node()
+                }))
+            }
+            _=> ()
+        }
+        return Some(result);
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(DynamicChild::new(self.cond_node.as_ast_node(), Some(self)));
+        match self.statements.as_ref() {
+            Some(statements) =>{
+                result.extend(statements.iter().map(|n| {
+                    DynamicChild::new(n.as_ast_node(), Some(self))
+                }))
+            }
+            _=> ()
+        }
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        format!("while{}",self.get_pos().to_string_brief())
     }
 }
