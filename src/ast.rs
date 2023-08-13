@@ -1392,7 +1392,7 @@ impl IRange for AstWhileBlock {
 }
 impl IAstNode for AstWhileBlock {
     fn get_type(&self) -> &'static str {
-        "While Block"
+        "Loop Block"
     }
 
     fn get_raw_pos(&self) -> usize {
@@ -1423,5 +1423,67 @@ impl IAstNode for AstWhileBlock {
     }
     fn to_string_type(&self) -> String {
         "while".to_string()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstLoopBlock {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub statements: Vec<Box<dyn IAstNode>>,
+    pub end_token: Option<Token>
+}
+impl AstLoopBlock {
+    
+}
+impl IRange for AstLoopBlock {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstLoopBlock {
+    fn get_type(&self) -> &'static str {
+        "While Block"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.extend(self.statements.iter().map(|n| {
+            n.as_ast_node()
+        }));
+        return Some(result);
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.extend(self.statements.iter().map(|n| {
+            DynamicChild::new(n.as_ast_node(), Some(self))
+        }));
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        String::new()
+    }
+    fn to_string_type(&self) -> String {
+        "loop".to_string()
     }
 }

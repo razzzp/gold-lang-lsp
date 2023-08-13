@@ -1,6 +1,6 @@
 use nom::error;
 
-use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
+use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
 
 use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic, parse_separated_list, create_closure, GoldDocumentError, parse_comment, opt_parse};
 
@@ -612,6 +612,29 @@ fn parse_while_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
         errors)));
 }
 
+fn parse_loop_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
+    let (next, loop_token) = exp_token(TokenType::Loop)(input)?;
+    
+    let stop_tokens = [exp_token(TokenType::EndLoop), exp_token(TokenType::End)];
+    let stop_parser = alt_parse(&stop_tokens);
+    let (next, statement_nodes, errors, end_token) = parse_until(next, &stop_parser, &parse_statement_v2);
+    let end_pos_token = match &end_token {
+        Some(t) => t.clone(),
+        _ => loop_token.clone()
+    };
+    let result = AstLoopBlock{
+        raw_pos: loop_token.get_raw_pos(),
+        pos: loop_token.get_pos(),
+        range: create_new_range(loop_token.get_range(), end_pos_token.get_range()),
+        statements: statement_nodes,
+        end_token
+    };
+    return Ok((
+        next, 
+        (Box::new(result),
+        errors)));
+}
+
 fn update_cond_block_range(cond_block: &mut AstConditionalBlock){
     let end_node = if cond_block.statements.len() > 0 {
         // get last statement node, if present
@@ -662,11 +685,19 @@ pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dy
     // };
     match parse_if_block_v3(input) {
         Ok(r) => return Ok(r),
-        Err(e) => {last_error = e}
+        Err(e) => {last_error=e}
     };
     match parse_for_block(input) {
         Ok(r) => return Ok(r),
-        Err(e) => {last_error = e}
+        Err(e) => {if last_error.input.len() > e.input.len() {last_error=e}}
+    };
+    match parse_foreach_block(input) {
+        Ok(r) => return Ok(r),
+        Err(e) => {if last_error.input.len() > e.input.len() {last_error=e}}
+    };
+    match parse_while_block(input) {
+        Ok(r) => return Ok(r),
+        Err(e) => {if last_error.input.len() > e.input.len() {last_error=e}}
     };
     
     match alt_parse([
@@ -829,10 +860,10 @@ mod test{
 
     use std::ops::Deref;
 
-    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock};
+    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock};
     use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range_from_irange, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block, parse_loop_block};
 
 
     #[test]
@@ -1543,6 +1574,33 @@ mod test{
         // check counter var
         assert_eq!(while_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
         assert_eq!(while_node.cond_block.get_identifier(), format!("cond_block:{}",input.get(1).unwrap().get_pos().to_string_brief()));
+        assert_eq!(while_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
+        // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+        // bfs.iter().for_each(|n|{
+        //     println!("{}", print_ast_brief(n.data))
+        // });      
+    }
+
+    #[test]
+    fn test_loop_block_with_statements(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Loop, Some("loop".to_string())),
+            (TokenType::Identifier, Some("Temp1".to_string())),
+            (TokenType::Equals, Some("=".to_string())),
+            (TokenType::Identifier, Some("Temp2".to_string())),
+            (TokenType::Plus, Some("+".to_string())),
+            (TokenType::Identifier, Some("Temp3".to_string())),
+            (TokenType::EndLoop, Some("endloop".to_string())),     
+        ]);
+        let (next, (node, errors)) = parse_loop_block(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(errors.len(), 0);
+        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        let while_node = node.as_any().downcast_ref::<AstLoopBlock>().unwrap();
+        // check counter var
+        assert_eq!(while_node.to_string_type_pos(), input.get(0).unwrap().to_string_val_and_pos());
+        assert_eq!(while_node.get_children().unwrap().len(), 1);
+        assert_eq!(while_node.get_children().unwrap().first().unwrap().get_identifier(), "=".to_string());
         assert_eq!(while_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
         // bfs.iter().for_each(|n|{
