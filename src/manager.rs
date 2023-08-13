@@ -49,7 +49,10 @@ impl GoldDocumentManager{
     pub fn get_document(&mut self, uri: &str) -> Result<Rc<GoldDocument>, GoldDocumentManagerError>{
         let doc =  self.document_map.get(uri);
         if doc.is_some() {
-            return Ok(doc.unwrap().clone());
+            // TODO check whether document has changed
+            let new_doc = self.parse_document(uri)?;
+            self.document_map.insert(uri.to_string(), Rc::new(new_doc));
+            return Ok(self.document_map.get(uri).unwrap().clone());
         } else {
             let new_doc = self.parse_document(uri)?;
             self.document_map.insert(uri.to_string(), Rc::new(new_doc));
