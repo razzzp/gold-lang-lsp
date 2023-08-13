@@ -21,6 +21,22 @@ pub struct GoldDocumentError{
    pub msg: String
 }
 
+impl IRange for GoldDocumentError{
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+
+impl GoldDocumentError {
+   pub fn get_msg(&self) -> String{
+      self.msg.clone()
+   }
+}
+
 pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNode>>), Vec<GoldDocumentError>) {
    let parsers = [
       parse_comment,

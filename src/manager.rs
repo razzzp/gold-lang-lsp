@@ -1,7 +1,7 @@
 use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc::Rc, alloc::GlobalAlloc};
 
 use lsp_server::ErrorCode;
-use lsp_types::{DocumentSymbol, SymbolKind};
+use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport};
 
 use crate::{ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{GoldDocumentError, parse_gold}, lexer::GoldLexer, utils::IRange};
 
@@ -13,11 +13,15 @@ use crate::{ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstG
 pub struct GoldDocument{
     symbols: Vec<DocumentSymbol>,
     ast_nodes: Vec<Box<dyn IAstNode>>,
-    errors: Vec<GoldDocumentError>
+    errors: Vec<GoldDocumentError>,
+    diagnostic_report: RelatedFullDocumentDiagnosticReport
 }
 impl GoldDocument{
     pub fn get_symbols(&self)-> Vec<DocumentSymbol>{
         self.symbols.iter().map(|s| s.clone()).collect()
+    }
+    pub fn get_diagnostic_report(&self)-> RelatedFullDocumentDiagnosticReport{
+        self.diagnostic_report.clone()
     }
 }
 
@@ -46,7 +50,6 @@ impl GoldDocumentManager{
         let doc =  self.document_map.get(uri);
         if doc.is_some() {
             return Ok(doc.unwrap().clone());
-
         } else {
             let new_doc = self.parse_document(uri)?;
             self.document_map.insert(uri.to_string(), Rc::new(new_doc));
@@ -72,8 +75,14 @@ impl GoldDocumentManager{
         // parse
         let (ast_nodes, doc_errors) = parse_gold(&tokens);
         let symbols = self.generate_document_symbols(ast_nodes.1.as_ref())?;
+        let diagnostic_report = self.generate_document_diagnostic_report(&doc_errors)?;
 
-        return Ok(GoldDocument { symbols: symbols, ast_nodes: ast_nodes.1, errors: doc_errors })
+        return Ok(GoldDocument { 
+            symbols: symbols, 
+            ast_nodes: ast_nodes.1, 
+            errors: doc_errors,
+            diagnostic_report
+        })
     }
 
     fn generate_document_symbols(&self, ast_nodes: &Vec<Box<dyn IAstNode>>) -> Result<Vec<DocumentSymbol>, GoldDocumentManagerError>{
@@ -90,6 +99,32 @@ impl GoldDocumentManager{
         }
         if class_symbol.is_some(){result.push(class_symbol.unwrap())}
         return Ok(result);
+    }
+
+    fn generate_document_diagnostic_report(&self, gold_doc_errors: &Vec<GoldDocumentError>)
+    -> Result<RelatedFullDocumentDiagnosticReport, GoldDocumentManagerError>{
+        let diagnostics = self.generate_diagnostics(gold_doc_errors);
+        return Ok(RelatedFullDocumentDiagnosticReport{
+            related_documents: None,
+            full_document_diagnostic_report: FullDocumentDiagnosticReport{
+                result_id: None,
+                items: diagnostics,
+            },
+        })
+    }
+
+    fn generate_diagnostics(&self, gold_doc_errors: &Vec<GoldDocumentError>) -> Vec<Diagnostic>{
+        gold_doc_errors.iter()
+            .map(|gold_error| {
+                Diagnostic::new(
+                    gold_error.get_range().as_lsp_type_range(),
+                    Some(DiagnosticSeverity::ERROR), 
+                    None, 
+                    Some("gold".to_string()), 
+                    gold_error.get_msg(), 
+                    None, 
+                    None)
+            }).collect()
     }
 
     fn generate_symbol_for_node(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{

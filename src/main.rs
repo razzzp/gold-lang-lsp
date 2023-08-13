@@ -5,8 +5,8 @@ use crate::manager::GoldDocumentManager;
 use crate::{lexer::GoldLexer, parser::parse_gold};
 use std::error::Error;
 
-use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbol, SymbolKind, Range, Url};
-use lsp_types::request::DocumentSymbolRequest;
+use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbol, SymbolKind, Range, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport};
+use lsp_types::request::{DocumentSymbolRequest, DocumentDiagnosticRequest};
 use lsp_types::{
     request::GotoDefinition, GotoDefinitionResponse, InitializeParams, ServerCapabilities,
 };
@@ -44,9 +44,9 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
     let server_capabilities = serde_json::to_value(&ServerCapabilities {
         document_symbol_provider: Some(OneOf::Left(true)),
+        diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions::default())),
         ..Default::default()
-    })
-    .unwrap();
+    }).unwrap();
     let initialization_params = connection.initialize(server_capabilities)?;
     main_loop(connection, initialization_params)?;
     io_threads.join()?;
@@ -73,29 +73,23 @@ fn main_loop(
                     return Ok(());
                 }
                 eprintln!("got request: {req:?}");
-                match cast::<DocumentSymbolRequest>(req) {
+                let req = match cast::<DocumentSymbolRequest>(req) {
                     Ok((id, params)) => {
-                        eprintln!("got Document Symbol request #{id}: {params:?}");
-
-                        let req_doc_path = match convert_uri_to_file_path_str(&params.text_document.uri){
-                            Ok(r) => r,
-                            _ => {
-                                send_error(&connection, id, ErrorCode::InvalidRequest as i32, "invalid uri".to_string())?;
-                                continue;
-                            }
-                        };
-                        let doc = match doc_manager.get_document(req_doc_path.as_str()){
-                            Ok(d) => d,
-                            Err(e) =>{
-                                send_error(&connection, id, e.error_code as i32, e.msg)?;
-                                continue;
-                            }
-                        };
-                        let symbols = doc.get_symbols();
-                        let result = Some(DocumentSymbolResponse::Nested(symbols));
-                        let result = serde_json::to_value(&result).unwrap();
-                        let resp = Response { id, result: Some(result), error: None };
-                        connection.sender.send(Message::Response(resp))?;
+                        match handle_document_symbol_request(&mut doc_manager, id.clone(), params){
+                            Ok(resp) => connection.sender.send(resp)?,
+                            Err(e) => send_error(&connection, id, e.0, e.1)?
+                        }
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+                match cast::<DocumentDiagnosticRequest>(req) {
+                    Ok((id, params)) => {
+                        match handle_document_diagnostics_request(&mut doc_manager, id.clone(), params){
+                            Ok(resp) => connection.sender.send(resp)?,
+                            Err(e) => send_error(&connection, id, e.0, e.1)?
+                        }
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
@@ -112,6 +106,60 @@ fn main_loop(
         }
     }
     Ok(())
+}
+
+fn handle_document_symbol_request(
+    doc_manager: &mut GoldDocumentManager, 
+    id: RequestId, 
+    params: DocumentSymbolParams)
+    -> Result<Message, (i32, String)>
+{
+    eprintln!("got Document Symbol request #{id}: {params:?}");
+
+    let req_doc_path = match convert_uri_to_file_path_str(&params.text_document.uri){
+        Ok(r) => r,
+        _ => {
+            return Err((ErrorCode::InvalidRequest as i32, "invalid uri".to_string()));
+        }
+    };
+    let doc = match doc_manager.get_document(req_doc_path.as_str()){
+        Ok(d) => d,
+        Err(e) =>{
+            return Err((e.error_code as i32, e.msg));
+        }
+    };
+    let symbols = doc.get_symbols();
+    let result = Some(DocumentSymbolResponse::Nested(symbols));
+    let result = serde_json::to_value(&result).unwrap();
+    let resp = Response { id, result: Some(result), error: None };
+    return Ok(Message::Response(resp));
+}
+
+fn handle_document_diagnostics_request(
+    doc_manager: &mut GoldDocumentManager, 
+    id: RequestId, 
+    params: DocumentDiagnosticParams)
+    -> Result<Message, (i32, String)>
+{
+    eprintln!("got Document Diagnostics request #{id}: {params:?}");
+
+    let req_doc_path = match convert_uri_to_file_path_str(&params.text_document.uri){
+        Ok(r) => r,
+        _ => {
+            return Err((ErrorCode::InvalidRequest as i32, "invalid uri".to_string()));
+        }
+    };
+    let doc = match doc_manager.get_document(req_doc_path.as_str()){
+        Ok(d) => d,
+        Err(e) =>{
+            return Err((e.error_code as i32, e.msg));
+        }
+    };
+    let diag_report = doc.get_diagnostic_report();
+    let result = DocumentDiagnosticReport::Full(diag_report);
+    let result = serde_json::to_value(&result).unwrap();
+    let resp = Response { id, result: Some(result), error: None };
+    return Ok(Message::Response(resp));
 }
 
 fn cast<R>(req: Request) -> Result<(RequestId, R::Params), ExtractError<Request>>

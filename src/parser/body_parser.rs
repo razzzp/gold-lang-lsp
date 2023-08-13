@@ -699,6 +699,10 @@ pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dy
         Ok(r) => return Ok(r),
         Err(e) => {if last_error.input.len() > e.input.len() {last_error=e}}
     };
+    match parse_loop_block(input) {
+        Ok(r) => return Ok(r),
+        Err(e) => {if last_error.input.len() > e.input.len() {last_error=e}}
+    };
     
     match alt_parse([
         parse_comment,
