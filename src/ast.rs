@@ -1289,8 +1289,7 @@ pub struct AstWhileBlock {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub cond_node: Box<dyn IAstNode>,
-    pub statements: Option<Vec<Box<dyn IAstNode>>>,
+    pub cond_block: Box<AstConditionalBlock>,
     pub end_token: Option<Token>
 }
 impl AstWhileBlock {
@@ -1324,28 +1323,12 @@ impl IAstNode for AstWhileBlock {
     }
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
-        result.push(self.cond_node.as_ast_node());
-        match self.statements.as_ref() {
-            Some(statements) =>{
-                result.extend(statements.iter().map(|n| {
-                    n.as_ast_node()
-                }))
-            }
-            _=> ()
-        }
+        result.push(self.cond_block.as_ast_node());
         return Some(result);
     }
     fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
         let mut result = Vec::new();
-        result.push(DynamicChild::new(self.cond_node.as_ast_node(), Some(self)));
-        match self.statements.as_ref() {
-            Some(statements) =>{
-                result.extend(statements.iter().map(|n| {
-                    DynamicChild::new(n.as_ast_node(), Some(self))
-                }))
-            }
-            _=> ()
-        }
+        result.push(DynamicChild::new(self.cond_block.as_ast_node(), Some(self)));
         return Some(result);
     }
     fn as_ast_node(&self) -> &dyn IAstNode{

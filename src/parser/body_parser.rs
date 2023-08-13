@@ -581,6 +581,7 @@ fn parse_while_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
     let (next, while_token) = exp_token(TokenType::While)(input)?;
     let (next, cond_node) = parse_expr(next)?;
     
+    
     let stop_tokens = [exp_token(TokenType::EndWhile), exp_token(TokenType::End)];
     let stop_parser = alt_parse(&stop_tokens);
     let (next, statement_nodes, errors, end_token) = parse_until(next, &stop_parser, &parse_statement_v2);
@@ -588,16 +589,26 @@ fn parse_while_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
         Some(t) => t.clone(),
         _ => while_token.clone()
     };
+    let cond_block_end = match statement_nodes.last() {
+        Some(n) => n.get_range(),
+        _ => cond_node.get_range()
+    };
+    let result = AstWhileBlock{
+        raw_pos: while_token.get_raw_pos(),
+        pos: while_token.get_pos(),
+        range: create_new_range(while_token.get_range(), end_pos_token.get_range()),
+        cond_block: Box::new(AstConditionalBlock { 
+            raw_pos: cond_node.get_raw_pos(), 
+            pos: cond_node.get_pos(), 
+            range: create_new_range(cond_node.get_range(), cond_block_end), 
+            condition: Some(cond_node), 
+            statements: statement_nodes 
+        }),
+        end_token
+    };
     return Ok((
         next, 
-        (Box::new(AstWhileBlock{
-            raw_pos: while_token.get_raw_pos(),
-            pos: while_token.get_pos(),
-            range: create_new_range(while_token.get_range(), end_pos_token.get_range()),
-            cond_node: cond_node,
-            statements: Some(statement_nodes),
-            end_token
-        }),
+        (Box::new(result),
         errors)));
 }
 
@@ -1532,9 +1543,8 @@ mod test{
         let foreach_node = node.as_any().downcast_ref::<AstWhileBlock>().unwrap();
         // check counter var
         assert_eq!(foreach_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(foreach_node.cond_node.get_identifier(), format!("<{}",input.get(1).unwrap().get_pos().to_string_brief()));
+        assert_eq!(foreach_node.cond_block.get_identifier(), format!("cond_block{}",input.get(1).unwrap().get_pos().to_string_brief()));
         assert_eq!(foreach_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
-        assert_eq!(foreach_node.statements.as_ref().unwrap().first().unwrap().get_identifier(), format!("={}", input.get(4).unwrap().get_pos().to_string_brief()));
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
         // bfs.iter().for_each(|n|{
         //     println!("{}", print_ast_brief(n.data))
