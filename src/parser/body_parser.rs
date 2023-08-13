@@ -1540,11 +1540,11 @@ mod test{
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
         assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
-        let foreach_node = node.as_any().downcast_ref::<AstWhileBlock>().unwrap();
+        let while_node = node.as_any().downcast_ref::<AstWhileBlock>().unwrap();
         // check counter var
-        assert_eq!(foreach_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(foreach_node.cond_block.get_identifier(), format!("cond_block{}",input.get(1).unwrap().get_pos().to_string_brief()));
-        assert_eq!(foreach_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
+        assert_eq!(while_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
+        assert_eq!(while_node.cond_block.get_identifier(), format!("cond_block{}",input.get(1).unwrap().get_pos().to_string_brief()));
+        assert_eq!(while_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
         // bfs.iter().for_each(|n|{
         //     println!("{}", print_ast_brief(n.data))
