@@ -21,6 +21,15 @@ pub trait IAstNode: std::fmt::Debug + IRange {
     fn get_identifier(&self) -> String{
         todo!()
     }
+    fn to_string_type_pos(&self) -> String {
+        format!("{}:{}", self.to_string_type(), self.get_pos().to_string_brief())
+    }
+    fn to_string_ident_pos(&self) -> String {
+        format!("{}:{}", self.get_identifier(), self.get_pos().to_string_brief())
+    }
+    fn to_string_type(&self) -> String {
+        todo!()
+    }
     fn as_ast_node(&self) -> &dyn IAstNode;
     // fn get_token(&self) -> Token;
     // fn eval() -> ();
@@ -60,6 +69,9 @@ impl IAstNode for AstTerminal {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
+    fn to_string_type(&self) -> String {
+        "terminal".to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -98,6 +110,9 @@ impl IAstNode for AstClass {
     fn get_identifier(&self) -> String {
         self.name.clone()
     }
+    fn to_string_type(&self) -> String {
+        "class".to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -134,6 +149,9 @@ impl IAstNode for AstUses {
     fn get_identifier(&self) -> String {
         self.pos.to_string()
     }
+    fn to_string_type(&self) -> String {
+        "uses".to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -169,6 +187,9 @@ impl IAstNode for AstTypeBasic {
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
+    }
+    fn to_string_type(&self) -> String {
+        "type_basic".to_string()
     }
 }
 
@@ -214,6 +235,9 @@ impl IAstNode for AstEmpty {
     fn get_identifier(&self) -> String {
         "empty_node".to_string()
     }
+    fn to_string_type(&self) -> String {
+        "empty".to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -251,6 +275,9 @@ impl IAstNode for AstTypeEnum {
     }
     fn get_identifier(&self) -> String {
         self.pos.to_string()
+    }
+    fn to_string_type(&self) -> String {
+        "type_enum".to_string()
     }
 }
 
@@ -290,6 +317,9 @@ impl IAstNode for AstTypeReference {
     }
     fn get_identifier(&self) -> String {
         self.ref_type.get_value()
+    }
+    fn to_string_type(&self) -> String {
+        "type_ref".to_string()
     }
 }
 
@@ -340,6 +370,9 @@ impl IAstNode for AstTypeDeclaration {
     fn get_identifier(&self) -> String {
         self.identifier.get_value()
     }
+    fn to_string_type(&self) -> String {
+        "type_decl".to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -379,6 +412,9 @@ impl IAstNode for AstConstantDeclaration {
     }
     fn get_identifier(&self) -> String {
         self.identifier.get_value()
+    }
+    fn to_string_type(&self) -> String {
+        "const_decl".to_string()
     }
 }
 
@@ -429,6 +465,9 @@ impl IAstNode for AstGlobalVariableDeclaration {
     }
     fn get_identifier(&self) -> String {
         self.identifier.get_value()
+    }
+    fn to_string_type(&self) -> String {
+        "gvar_decl".to_string()
     }
 }
 
@@ -485,6 +524,9 @@ impl IAstNode for AstProcedure {
     }
     fn get_identifier(&self) -> String {
         self.identifier.get_value()
+    }
+    fn to_string_type(&self) -> String {
+        "proc_decl".to_string()
     }
 }
 
@@ -546,6 +588,9 @@ impl IAstNode for AstFunction {
     fn get_identifier(&self) -> String {
         self.identifier.get_value()
     }
+    fn to_string_type(&self) -> String {
+        "fun_decl".to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -591,6 +636,9 @@ impl IAstNode for AstParameterDeclarationList {
     }
     fn get_identifier(&self) -> String {
         self.pos.to_string()
+    }
+    fn to_string_type(&self) -> String {
+        "param_decls".to_string()
     }
 }
 
@@ -642,6 +690,9 @@ impl IAstNode for AstParameterDeclaration {
     fn get_identifier(&self) -> String {
         self.identifier.get_value()
     }
+    fn to_string_type(&self) -> String {
+        "param_decl".to_string()
+    }
 }
 
 #[derive(Debug,Default)]
@@ -684,6 +735,9 @@ impl IAstNode for AstMethodModifiers {
     }
     fn get_identifier(&self) -> String {
         self.pos.to_string()
+    }
+    fn to_string_type(&self) -> String {
+        "method_mod".to_string()
     }
 }
 
@@ -731,6 +785,9 @@ impl IAstNode for AstMethodBody {
     fn get_identifier(&self) -> String {
         self.pos.to_string()
     }
+    fn to_string_type(&self) -> String {
+        "method_body".to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -772,6 +829,9 @@ impl IAstNode for AstComment {
     fn get_identifier(&self) -> String {
         self.pos.to_string()
     }
+    fn to_string_type(&self) -> String {
+        "comment".to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -800,7 +860,7 @@ impl IAstNode for AstBinaryOp {
     }
 
     fn get_identifier(&self) -> String {
-        format!("{}{}",self.op_token.get_value(), self.get_pos().to_string_brief())
+        self.op_token.get_value()
     }
 
     fn get_raw_pos(&self) -> usize {
@@ -828,6 +888,9 @@ impl IAstNode for AstBinaryOp {
         
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
+    }
+    fn to_string_type(&self) -> String {
+        "bin_op".to_string()
     }
 }
 
@@ -884,6 +947,9 @@ impl IAstNode for AstCast {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
+    fn to_string_type(&self) -> String {
+        "cast".to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -937,6 +1003,9 @@ impl IAstNode for AstUnaryOp {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
+    fn to_string_type(&self) -> String {
+        "unary_op".to_string()
+    }
 }
 
 #[derive(Debug)]
@@ -986,6 +1055,9 @@ impl IAstNode for AstMethodCall {
     }
     fn get_identifier(&self) -> String {
         self.identifier.get_value()
+    }
+    fn to_string_type(&self) -> String {
+        "method_call".to_string()
     }
 }
 
@@ -1048,7 +1120,10 @@ impl IAstNode for AstConditionalBlock {
         self
     }
     fn get_identifier(&self) -> String {
-        format!("cond_block{}",self.get_pos().to_string_brief())
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "cond_block".to_string()
     }
 }
 
@@ -1126,7 +1201,10 @@ impl IAstNode for AstIfBlock {
         self
     }
     fn get_identifier(&self) -> String {
-        format!("if{}",self.get_pos().to_string_brief())
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "if".to_string()
     }
 }
 
@@ -1208,7 +1286,10 @@ impl IAstNode for AstForBlock {
         self
     }
     fn get_identifier(&self) -> String {
-        format!("for{}",self.get_pos().to_string_brief())
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "for".to_string()
     }
 }
 
@@ -1280,7 +1361,10 @@ impl IAstNode for AstForEachBlock {
         self
     }
     fn get_identifier(&self) -> String {
-        format!("foreach{}",self.get_pos().to_string_brief())
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "foreach".to_string()
     }
 }
 
@@ -1335,6 +1419,9 @@ impl IAstNode for AstWhileBlock {
         self
     }
     fn get_identifier(&self) -> String {
-        format!("while{}",self.get_pos().to_string_brief())
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "while".to_string()
     }
 }

@@ -1222,8 +1222,7 @@ mod test{
         // bfs.iter().for_each(|n|{
         //     println!("{}", print_ast_brief(n.data))
         // });
-        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().get_pos().to_string());
-        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(0).unwrap().get_pos().to_string());
+        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
         assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(2).unwrap().get_value());
         assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(5).unwrap().get_value());
         assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(1).unwrap().get_value());
@@ -1382,7 +1381,7 @@ mod test{
         // bfs.iter().for_each(|n|{
         //     println!("{}", print_ast_brief(n.data))
         // });
-        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().get_pos().to_string());
+        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
         assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(4).unwrap().get_value());
         assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(7).unwrap().get_value());
         assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(3).unwrap().get_value());
@@ -1427,7 +1426,7 @@ mod test{
         // bfs.iter().for_each(|n|{
         //     println!("{}", print_ast_brief(n.data))
         // });
-        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().get_pos().to_string());
+        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
         assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(4).unwrap().get_value());
         assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(7).unwrap().get_value());
         // body here
@@ -1507,9 +1506,9 @@ mod test{
         let foreach_node = node.as_any().downcast_ref::<AstForEachBlock>().unwrap();
         // check counter var
         assert_eq!(foreach_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(foreach_node.in_expr_node.get_identifier(), format!("in{}",input.get(1).unwrap().get_pos().to_string_brief()));
+        assert_eq!(foreach_node.in_expr_node.to_string_ident_pos(), format!("in:{}", input.get(1).unwrap().get_pos().to_string_brief()));
         assert_eq!(foreach_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
-        assert_eq!(foreach_node.statements.as_ref().unwrap().first().unwrap().get_identifier(), format!("={}", input.get(4).unwrap().get_pos().to_string_brief()));
+        assert_eq!(foreach_node.statements.as_ref().unwrap().first().unwrap().to_string_ident_pos(), format!("=:{}", input.get(4).unwrap().get_pos().to_string_brief()));
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
         // expect
         //                foreach 
@@ -1543,7 +1542,7 @@ mod test{
         let while_node = node.as_any().downcast_ref::<AstWhileBlock>().unwrap();
         // check counter var
         assert_eq!(while_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(while_node.cond_block.get_identifier(), format!("cond_block{}",input.get(1).unwrap().get_pos().to_string_brief()));
+        assert_eq!(while_node.cond_block.get_identifier(), format!("cond_block:{}",input.get(1).unwrap().get_pos().to_string_brief()));
         assert_eq!(while_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
         // bfs.iter().for_each(|n|{

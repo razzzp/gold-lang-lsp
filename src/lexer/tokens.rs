@@ -221,7 +221,7 @@ impl Token{
         }
     }
     pub fn to_string_val_and_pos(&self) -> String{
-        format!("{}{}", self.get_value(), self.get_pos().to_string_brief())
+        format!("{}:{}", self.get_value(), self.get_pos().to_string_brief())
     }
 }
 
