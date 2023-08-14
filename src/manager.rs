@@ -27,7 +27,8 @@ impl GoldDocument{
 
 #[derive(Debug)]
 pub struct GoldDocumentManager{
-    document_map: HashMap<String, Rc<GoldDocument>>,
+    documents_map: HashMap<String, Rc<GoldDocument>>,
+    open_documents_map: HashMap<String, Rc<GoldDocument>>
 }
 
 #[derive(Debug)]
@@ -39,30 +40,36 @@ pub struct GoldDocumentManagerError{
 impl GoldDocumentManager{
     pub fn new() -> GoldDocumentManager{
         GoldDocumentManager{
-            document_map: HashMap::<>::new()
+            documents_map: HashMap::new(),
+            open_documents_map: HashMap::new()
         }
     }
 
     /// gets parsed document from map, 
     ///  or parses it and adds to map if
     ///  not yet parsed
-    pub fn get_document(&mut self, uri: &str) -> Result<Rc<GoldDocument>, GoldDocumentManagerError>{
-        let doc =  self.document_map.get(uri);
+    pub fn get_document(&mut self, file_path: &str) -> Result<Rc<GoldDocument>, GoldDocumentManagerError>{
+        let doc =  self.documents_map.get(file_path);
         if doc.is_some() {
             // TODO check whether document has changed
-            let new_doc = self.parse_document(uri)?;
-            self.document_map.insert(uri.to_string(), Rc::new(new_doc));
-            return Ok(self.document_map.get(uri).unwrap().clone());
+            return Ok(doc.unwrap().clone());
         } else {
-            let new_doc = self.parse_document(uri)?;
-            self.document_map.insert(uri.to_string(), Rc::new(new_doc));
-            Ok(self.document_map.get(uri).unwrap().clone())
+            let new_doc = self.parse_document(file_path)?;
+            self.documents_map.insert(file_path.to_string(), Rc::new(new_doc));
+            Ok(self.documents_map.get(file_path).unwrap().clone())
         }
     }
 
-    fn parse_document(&self, uri: &str) -> Result<GoldDocument, GoldDocumentManagerError>{
+    pub fn get_open_document(&mut self, file_path: &str, full_file_content: &String) ->Result<Rc<GoldDocument>, GoldDocumentManagerError>{
+        // TODO check version 
+        let new_doc = self.parse_file(full_file_content)?;
+        self.open_documents_map.insert(file_path.to_string(), Rc::new(new_doc));
+        Ok(self.open_documents_map.get(file_path).unwrap().clone())
+    }
+
+    fn parse_document(&self, file_path: &str) -> Result<GoldDocument, GoldDocumentManagerError>{
         // open file
-        let mut file = match File::open(uri){
+        let mut file = match File::open(file_path){
             Ok(f) => f,
             Err(e) => return Err(GoldDocumentManagerError{msg:e.to_string(), error_code: ErrorCode::InternalError})
         };
@@ -71,10 +78,13 @@ impl GoldDocumentManager{
             Ok(s)=> (),
             Err(e) => return Err(GoldDocumentManagerError{msg:e.to_string(), error_code: ErrorCode::InternalError})
         };
+        return self.parse_file(&contents)
+    }
 
+    fn parse_file(&self, full_file_content: &String) -> Result<GoldDocument, GoldDocumentManagerError> {
         // lexing
         let mut lexer = GoldLexer::new();
-        let (tokens, lexer_errors) = lexer.lex(&contents);
+        let (tokens, lexer_errors) = lexer.lex(&full_file_content);
         // parse
         let (ast_nodes, doc_errors) = parse_gold(&tokens);
         let symbols = self.generate_document_symbols(ast_nodes.1.as_ref())?;

@@ -57,6 +57,7 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
    }
    let mut next = input;
    while next.len() > 0 {
+      let mut most_matched: Option<GoldParserError> = None;
       match alt_parse(&block_parsers)(next){
          Ok((r,(node,errs)))=> {
             result.push(node); 
@@ -64,20 +65,40 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
             next = r;
             continue
          },
-         Err(e)=> next = e.input
+         Err(e)=> {
+            // update most matched
+            if most_matched.is_some(){
+               if most_matched.as_ref().unwrap().input.len() > e.input.len() {
+                  most_matched = Some(e);
+               } 
+            } else {
+               most_matched = Some(e);
+            }
+         }
       };
       next = match alt_parse(&parsers)(next){
          Ok((r,n))=> {result.push(n); r},
          Err(e)=> {
-            let mut iter = e.input.iter();
+            // update most matched
+            if most_matched.is_some(){
+               if most_matched.as_ref().unwrap().input.len() > e.input.len() {
+                  most_matched = Some(e);
+               } 
+            } else {
+               most_matched = Some(e);
+            }
+            let most_matched = most_matched.unwrap();
+            let mut iter = most_matched.input.iter();
             let first_error_token = next.first();
-            let last_error_token = if e.input.last().is_some(){e.input.first().unwrap()} else {input.last().unwrap()};
+            let last_error_token = if most_matched.input.first().is_some(){most_matched.input.first().unwrap()} else {input.last().unwrap()};
             let doc_error = GoldDocumentError {
                range: create_new_range_from_irange(first_error_token.unwrap(), last_error_token),
-               msg: e.msg
+               msg: most_matched.msg
             };
-            // move one 
-            iter.next();
+            // move one to prevent infinite loop
+            if most_matched.input.len() == input.len(){
+               iter.next();
+            }
             errors.push(doc_error);
             // set next as the input of the most matched error
             iter.as_slice()
@@ -934,10 +955,12 @@ fn alt_parse<'a, T>(list_of_parsers : &'a[impl Fn(&[Token]) -> Result<(&[Token],
             Ok(r) => return Ok(r),
             Err(e) => {
                // update most matched
-               if most_matched.is_some() && most_matched.as_ref().unwrap().input.len() > e.input.len() {
-                  most_matched = Some(e);
+               if most_matched.is_some(){
+                  if most_matched.as_ref().unwrap().input.len() > e.input.len() {
+                     most_matched = Some(e);
+                  } 
                } else {
-                   most_matched = Some(e);
+                  most_matched = Some(e);
                }
             }
          }
