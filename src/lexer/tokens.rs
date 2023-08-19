@@ -202,6 +202,9 @@ impl IRange for Token {
     fn get_range(&self) -> Range{
         self.range.clone()
     }
+    fn set_range(&mut self, new_range: Range) {
+        self.range = new_range
+    }
     fn as_range(&self) -> &dyn IRange {
         self
     }

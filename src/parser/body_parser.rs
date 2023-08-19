@@ -79,6 +79,7 @@ fn parse_bracket_closure<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn 
     let (next, obracket_token) = exp_token(TokenType::OBracket)(input)?;
     let (next, mut expr_node) = parse_expr(next)?;
     let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
+    // TODO need to fix other pos also
     expr_node.set_range(create_new_range_from_irange(obracket_token.as_range(), cbracket_token.as_range()));
     return Ok((next,expr_node))
 }
@@ -807,6 +808,11 @@ pub fn parse_until<'a>(
                         next
                     },
                     Err(e) => {
+                        let error_at = match e.input.first() {
+                            Some(t) => t.get_range(),
+                            None => Default::default(),
+                        };
+                        errors.push(GoldDocumentError { range: error_at, msg: "unexpected token".to_string() });
                         let mut new_it = e.input.iter();
                         // if iterator has not been moved, move by one, to prevent
                         //  infinite loop
@@ -832,7 +838,6 @@ pub fn parse_repeat<'a>(
     let mut next = input;
     loop {
         if next.len() == 0 {break}
-        // check if it sees a delimiting token
         // parse statements and adds to current block
         next = match parser(next){
             Ok((next, (new_statement_node, errs)))=> {
@@ -841,6 +846,11 @@ pub fn parse_repeat<'a>(
                 next
             },
             Err(e) => {
+                let error_at = match e.input.first() {
+                    Some(t) => t.get_range(),
+                    None => Default::default(),
+                };
+                errors.push(GoldDocumentError { range: error_at, msg: "unexpected token".to_string() });
                 let mut new_it = e.input.iter();
                 // if iterator has not been moved, move by one, to prevent
                 //  infinite loop

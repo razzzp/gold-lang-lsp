@@ -1,12 +1,12 @@
 use std::net::ToSocketAddrs;
 use std::{io::Read, fs::File};
 
-use crate::manager::GoldDocumentManager;
+use crate::manager::GoldProjectManager;
 use crate::{lexer::GoldLexer, parser::parse_gold};
 use std::error::Error;
 
-use lsp_types::notification::{DidChangeTextDocument, PublishDiagnostics};
-use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbol, SymbolKind, Range, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, lsp_notification};
+use lsp_types::notification::{DidChangeTextDocument, PublishDiagnostics, DidSaveTextDocument};
+use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbol, SymbolKind, Range, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, lsp_notification, DidSaveTextDocumentParams};
 use lsp_types::request::{DocumentSymbolRequest, DocumentDiagnosticRequest};
 use lsp_types::{
     request::GotoDefinition, GotoDefinitionResponse, InitializeParams, ServerCapabilities,
@@ -64,7 +64,7 @@ fn main_loop(
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let _params: InitializeParams = serde_json::from_value(params).unwrap();
     
-    let mut doc_manager = GoldDocumentManager::new();
+    let mut doc_manager = GoldProjectManager::new();
 
     eprintln!("starting example main loop");
     for msg in &connection.receiver {
@@ -105,9 +105,24 @@ fn main_loop(
             }
             Message::Notification(not) => {
                 eprintln!("got notification: {not:?}");
-                match cast_not::<DidChangeTextDocument>(not) {
+                let not = match cast_not::<DidChangeTextDocument>(not) {
                     Ok(params) => {
                         match handle_did_change_notification(&mut doc_manager, params){
+                            Ok(msgs) => {
+                                for msg in msgs {
+                                    connection.sender.send(msg)?;
+                                }
+                            },
+                            Err(e) => eprintln!("error: code({}) {}", e.0, e.1)
+                        }
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+                match cast_not::<DidSaveTextDocument>(not) {
+                    Ok(params) => {
+                        match handle_did_save_notification(&mut doc_manager, params){
                             Ok(msgs) => {
                                 for msg in msgs {
                                     connection.sender.send(msg)?;
@@ -127,20 +142,13 @@ fn main_loop(
 }
 
 fn handle_document_symbol_request(
-    doc_manager: &mut GoldDocumentManager, 
+    doc_manager: &mut GoldProjectManager, 
     id: RequestId, 
     params: DocumentSymbolParams)
     -> Result<Message, (i32, String)>
 {
     eprintln!("got Document Symbol request #{id}: {params:?}");
-
-    let file_path = match convert_uri_to_file_path_str(&params.text_document.uri){
-        Ok(r) => r,
-        _ => {
-            return Err((ErrorCode::InvalidRequest as i32, "invalid uri".to_string()));
-        }
-    };
-    let doc = match doc_manager.get_document(file_path.as_str()){
+    let doc = match doc_manager.get_parsed_document(&params.text_document.uri) {
         Ok(d) => d,
         Err(e) =>{
             return Err((e.error_code as i32, e.msg));
@@ -154,20 +162,13 @@ fn handle_document_symbol_request(
 }
 
 fn handle_document_diagnostics_request(
-    doc_manager: &mut GoldDocumentManager, 
+    doc_manager: &mut GoldProjectManager, 
     id: RequestId, 
     params: DocumentDiagnosticParams)
     -> Result<Message, (i32, String)>
 {
     eprintln!("got Document Diagnostics request #{id}: {params:?}");
-
-    let file_path = match convert_uri_to_file_path_str(&params.text_document.uri){
-        Ok(r) => r,
-        _ => {
-            return Err((ErrorCode::InvalidRequest as i32, "invalid uri".to_string()));
-        }
-    };
-    let doc = match doc_manager.get_document(file_path.as_str()){
+    let doc = match doc_manager.get_parsed_document(&params.text_document.uri) {
         Ok(d) => d,
         Err(e) =>{
             return Err((e.error_code as i32, e.msg));
@@ -181,7 +182,7 @@ fn handle_document_diagnostics_request(
 }
 
 fn handle_did_change_notification(
-    doc_manager: &mut GoldDocumentManager, 
+    doc_manager: &mut GoldProjectManager, 
     params: DidChangeTextDocumentParams)
     -> Result<Vec<Message>, (i32, String)>
 {
@@ -196,13 +197,7 @@ fn handle_did_change_notification(
         },
         None=> return Err((ErrorCode::InvalidParams as i32, "Incremental did change event not supported".to_string()))
     };
-    let file_path = match convert_uri_to_file_path_str(&params.text_document.uri){
-        Ok(r) => r,
-        _ => {
-            return Err((ErrorCode::InvalidRequest as i32, "invalid uri".to_string()));
-        }
-    };
-    let doc = match doc_manager.get_open_document(file_path.as_str(), full_file_content){
+    let doc = match doc_manager.notify_document_changed(&params.text_document.uri, full_file_content){
         Ok(d) => d,
         Err(e) =>{
             return Err((e.error_code as i32, e.msg));
@@ -213,6 +208,35 @@ fn handle_did_change_notification(
         params.text_document.uri, 
         diag_report.full_document_diagnostic_report.items.clone(), 
         Some(params.text_document.version));
+    let params_serialized = serde_json::to_value(&pub_diag_params).unwrap();
+    let publish_diag = Notification{
+        method: "textDocument/publishDiagnostics".to_string(),
+        params: params_serialized
+    };
+    let mut result = Vec::<Message>::new();
+    result.push(Message::Notification(publish_diag));
+    return Ok(result)
+}
+
+fn handle_did_save_notification(
+    doc_manager: &mut GoldProjectManager, 
+    params: DidSaveTextDocumentParams)
+    -> Result<Vec<Message>, (i32, String)>
+{
+    eprintln!("got Did Change notification {params:?}");
+    // get full file content
+    let doc = match doc_manager.notify_document_saved(&params.text_document.uri){
+        Ok(d) => d,
+        Err(e) =>{
+            return Err((e.error_code as i32, e.msg));
+        }
+    };
+    let diag_report = doc.get_diagnostic_report();
+    let pub_diag_params = PublishDiagnosticsParams::new(
+        params.text_document.uri, 
+        diag_report.full_document_diagnostic_report.items.clone(), 
+        None
+    );
     let params_serialized = serde_json::to_value(&pub_diag_params).unwrap();
     let publish_diag = Notification{
         method: "textDocument/publishDiagnostics".to_string(),
@@ -349,7 +373,7 @@ endfunc
         let ast = parse_gold(&tokens);
         // println!("{:#?}", ast.0.0);
         for node in ast.0.1{
-            // println!("{}",print_ast_brief_recursive(node.as_ref()));
+            println!("{}",print_ast_brief_recursive(node.as_ref()));
         }
         // println!("{:#?}", ast.1.len());
     }

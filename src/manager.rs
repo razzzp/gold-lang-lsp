@@ -1,7 +1,7 @@
-use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc::Rc, alloc::GlobalAlloc};
+use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc::Rc, alloc::GlobalAlloc, sync::{Arc, Mutex}};
 
 use lsp_server::ErrorCode;
-use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport};
+use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
 use crate::{ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{GoldDocumentError, parse_gold}, lexer::GoldLexer, utils::IRange};
 
@@ -25,63 +25,135 @@ impl GoldDocument{
     }
 }
 
-#[derive(Debug)]
-pub struct GoldDocumentManager{
-    documents_map: HashMap<String, Rc<GoldDocument>>,
-    open_documents_map: HashMap<String, Rc<GoldDocument>>
+#[derive(Debug, Default)]
+pub struct GoldDocumentInfo{
+    uri: String,
+    file_path: String,
+    saved: Option<Arc<GoldDocument>>, 
+    opened: Option<Arc<GoldDocument>>
+}
+impl GoldDocumentInfo{
+    pub fn get_saved_document(&self) -> Option<Arc<GoldDocument>> {
+        if let Some(doc) = &self.saved {
+            return Some(doc.clone())
+        } else {
+            return None
+        }
+    }
+
+    pub fn get_opened_document(&self) -> Option<Arc<GoldDocument>> {
+        if let Some(doc) = &self.opened {
+            return Some(doc.clone())
+        } else {
+            return None
+        }
+    }
 }
 
 #[derive(Debug)]
-pub struct GoldDocumentManagerError{
+pub struct GoldProjectManager{
+    documents_map: HashMap<String, Rc<GoldDocument>>,
+    open_documents_map: HashMap<String, Rc<GoldDocument>>,
+    documents: HashMap<String, Arc<Mutex<GoldDocumentInfo>>>
+}
+
+#[derive(Debug)]
+pub struct GoldProjectManagerError{
     pub msg: String,
     pub error_code: ErrorCode,
 }
 
-impl GoldDocumentManager{
-    pub fn new() -> GoldDocumentManager{
-        GoldDocumentManager{
+impl GoldProjectManager{
+    pub fn new() -> GoldProjectManager{
+        GoldProjectManager{
             documents_map: HashMap::new(),
-            open_documents_map: HashMap::new()
+            open_documents_map: HashMap::new(),
+            documents: HashMap::new(),
         }
     }
 
-    /// gets parsed document from map, 
-    ///  or parses it and adds to map if
-    ///  not yet parsed
-    pub fn get_document(&mut self, file_path: &str) -> Result<Rc<GoldDocument>, GoldDocumentManagerError>{
-        let doc =  self.documents_map.get(file_path);
-        if doc.is_some() {
-            // TODO check whether document has changed
-            return Ok(doc.unwrap().clone());
+    pub fn get_document_info(&mut self, uri: &Url) -> Result<Arc<Mutex<GoldDocumentInfo>>, GoldProjectManagerError>{
+        let uri_string = uri.to_string();
+        let doc_info =  self.documents.get(&uri_string);
+        if doc_info.is_some() {
+            return Ok(doc_info.unwrap().clone());
         } else {
-            let new_doc = self.parse_document(file_path)?;
-            self.documents_map.insert(file_path.to_string(), Rc::new(new_doc));
-            Ok(self.documents_map.get(file_path).unwrap().clone())
+            let file_path = match uri.to_file_path() {
+                Ok(fp) => {
+                    let fp = match fp.as_path().to_str() {
+                        Some(s) => s.to_string(),
+                        _ => return Err(GoldProjectManagerError{
+                                msg: format!("cannot convert uri to file path:{}", uri),
+                                error_code: ErrorCode::InvalidRequest,
+                            })
+                    };
+                    fp
+                },
+                Err(_) => return Err(GoldProjectManagerError{
+                        msg: format!("cannot convert uri to file path:{}", uri),
+                        error_code: ErrorCode::InvalidRequest,
+                    })
+            };
+            let new_doc_info = GoldDocumentInfo{
+                uri: uri.to_string(),
+                file_path: file_path,
+                ..Default::default()
+            };
+            self.documents.insert(uri_string.clone(), Arc::new(Mutex::new(new_doc_info)));
+            Ok(self.documents.get(&uri_string).unwrap().clone())     
         }
     }
 
-    pub fn get_open_document(&mut self, file_path: &str, full_file_content: &String) ->Result<Rc<GoldDocument>, GoldDocumentManagerError>{
-        // TODO check version 
-        let new_doc = self.parse_file(full_file_content)?;
-        self.open_documents_map.insert(file_path.to_string(), Rc::new(new_doc));
-        Ok(self.open_documents_map.get(file_path).unwrap().clone())
+    pub fn get_parsed_document(&mut self, uri: &Url) -> Result<Arc<GoldDocument>, GoldProjectManagerError>{
+        let doc_info = self.get_document_info(uri)?;
+        // TODO check document still valid
+        // check opened document
+        if doc_info.lock().unwrap().get_opened_document().is_some() {
+            return Ok(doc_info.lock().unwrap().get_opened_document().unwrap());
+        }
+        // check last saved doc
+        if doc_info.lock().unwrap().get_saved_document().is_some() {
+            return Ok(doc_info.lock().unwrap().get_saved_document().unwrap());
+        } else {
+            // if none, read from file
+            let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
+            doc_info.lock().unwrap().saved = Some(Arc::new(new_doc));
+            return Ok(doc_info.lock().unwrap().get_saved_document().unwrap());
+        }
     }
 
-    fn parse_document(&self, file_path: &str) -> Result<GoldDocument, GoldDocumentManagerError>{
+    pub fn notify_document_saved(&mut self, uri: &Url) -> Result<Arc<GoldDocument>, GoldProjectManagerError>{
+        let doc_info = self.get_document_info(uri)?;
+        // TODO check document still valid
+        let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
+        doc_info.lock().unwrap().saved = Some(Arc::new(new_doc));
+        doc_info.lock().unwrap().opened = None;
+        return Ok(doc_info.lock().unwrap().saved.as_ref().unwrap().clone());
+    }
+
+    pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String) -> Result<Arc<GoldDocument>, GoldProjectManagerError>{
+        let doc_info = self.get_document_info(uri)?;
+        // TODO check document still valid
+        let new_doc = self.parse_content(full_file_content)?;
+        doc_info.lock().unwrap().opened = Some(Arc::new(new_doc));
+        return Ok(doc_info.lock().unwrap().opened.as_ref().unwrap().clone());
+    }
+
+    fn parse_document(&self, file_path: &str) -> Result<GoldDocument, GoldProjectManagerError>{
         // open file
         let mut file = match File::open(file_path){
             Ok(f) => f,
-            Err(e) => return Err(GoldDocumentManagerError{msg:e.to_string(), error_code: ErrorCode::InternalError})
+            Err(e) => return Err(GoldProjectManagerError{msg:e.to_string(), error_code: ErrorCode::InternalError})
         };
         let mut contents = String::new();
         match file.read_to_string(&mut contents){
             Ok(s)=> (),
-            Err(e) => return Err(GoldDocumentManagerError{msg:e.to_string(), error_code: ErrorCode::InternalError})
+            Err(e) => return Err(GoldProjectManagerError{msg:e.to_string(), error_code: ErrorCode::InternalError})
         };
-        return self.parse_file(&contents)
+        return self.parse_content(&contents)
     }
 
-    fn parse_file(&self, full_file_content: &String) -> Result<GoldDocument, GoldDocumentManagerError> {
+    fn parse_content(&self, full_file_content: &String) -> Result<GoldDocument, GoldProjectManagerError> {
         // lexing
         let mut lexer = GoldLexer::new();
         let (tokens, lexer_errors) = lexer.lex(&full_file_content);
@@ -98,7 +170,7 @@ impl GoldDocumentManager{
         })
     }
 
-    fn generate_document_symbols(&self, ast_nodes: &Vec<Box<dyn IAstNode>>) -> Result<Vec<DocumentSymbol>, GoldDocumentManagerError>{
+    fn generate_document_symbols(&self, ast_nodes: &Vec<Box<dyn IAstNode>>) -> Result<Vec<DocumentSymbol>, GoldProjectManagerError>{
         let mut result = Vec::<DocumentSymbol, >::new();
         let mut class_symbol = self.find_and_generate_class_symbol(ast_nodes);
         for node in ast_nodes {
@@ -115,7 +187,7 @@ impl GoldDocumentManager{
     }
 
     fn generate_document_diagnostic_report(&self, gold_doc_errors: &Vec<GoldDocumentError>)
-    -> Result<RelatedFullDocumentDiagnosticReport, GoldDocumentManagerError>{
+    -> Result<RelatedFullDocumentDiagnosticReport, GoldProjectManagerError>{
         let diagnostics = self.generate_diagnostics(gold_doc_errors);
         return Ok(RelatedFullDocumentDiagnosticReport{
             related_documents: None,
@@ -271,13 +343,13 @@ impl GoldDocumentManager{
 
 #[cfg(test)]
 mod test{
-    use super::GoldDocumentManager;
+    use super::GoldProjectManager;
 
 
     #[test]
     fn test_gold_document_manager(){
-        let mut doc_manager = GoldDocumentManager::new();
-        let doc = doc_manager.get_document("test/aTestClass.god").unwrap();
+        let mut doc_manager = GoldProjectManager::new();
+        // let doc = doc_manager.get_parsed_document("test/aTestClass.god").unwrap();
         // println!("{:#?}",doc);
     }
 }

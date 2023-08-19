@@ -1,6 +1,7 @@
 class aTestClass (aFullObject)
 
 MyVariables : refTo aType
+SecondVar : Int4
 
 function anotherFunction return Int4
     
@@ -14,4 +15,19 @@ endFunc
 procedure testProcedure(firstParam: aType) protected override
     ; some proc
     ; some comment sss
-    endProc
+endProc
+
+procedure testProcedure1(firstParam: aType) protected override
+    ; some proc
+    ; some comment sss
+endProc
+
+procedure testProcedure2(firstParam: aType) protected override
+    ; some proc
+    ; some comment sss
+endProc
+
+procedure testProcedure3(firstParam: aType) protected override
+    ; some proc
+    ; some comment sss
+endProc

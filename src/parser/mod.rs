@@ -96,7 +96,7 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
                msg: most_matched.msg
             };
             // move one to prevent infinite loop
-            if most_matched.input.len() == input.len(){
+            if most_matched.input.len() == next.len(){
                iter.next();
             }
             errors.push(doc_error);
@@ -1496,5 +1496,22 @@ mod test {
       assert!(node.is_final);
       assert_eq!(node.external_dll_name.unwrap(), "SomeDLL.Method".to_string());
       assert!(node.is_forward);
+   }
+
+   #[test]
+   fn test_parse_proc_decl_nested() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::Proc, Some("procedure".to_string())),
+         (TokenType::Identifier, Some("FirstMethod".to_string())),
+         (TokenType::Proc, Some("procedure".to_string())),
+         (TokenType::Identifier, Some("NestedMethod".to_string())),
+         (TokenType::EndProc, Some("endproc".to_string())),
+         (TokenType::EndProc, Some("endproc".to_string()))
+      ]);
+      let next = &input;
+      let (_, (node, errors)) = parse_procedure_declaration(next).unwrap();
+      let downcasted = cast_and_unwrap::<AstProcedure>(&node);
+      // check_node_pos_and_range(downcasted, &input);
+      assert_eq!(errors.len(), 1);
    }
 }

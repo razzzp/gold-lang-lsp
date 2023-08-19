@@ -56,13 +56,16 @@ impl GoldLexer{
                     buf.next(); 
                     None
                 },
-                Some((pos , '\r')) => {
+                Some((_ , '\r')) => {
                     // push newline pos to list
-                    self.line_pos.push(*pos);
+                    
                     buf.next();
                     // check next char \n, if it is discard that too
                     match buf.peek() {
-                        Some((_, '\n')) => {buf.next();}
+                        Some((pos, '\n')) => {
+                            self.line_pos.push(*pos);
+                            buf.next();
+                        }
                         _ => (),
                     }
                     None
@@ -391,15 +394,15 @@ impl GoldLexer{
 
     /*creates a range from a raw position and length */
     fn create_range(&self, raw_pos: usize, length: usize) -> Range{
-        // plus 1 for zero based offset
         let last_line_pos = if self.line_pos.last().is_none() {0} else {self.line_pos.last().unwrap().to_owned()+1};
         let start_pos = Position {
             line: self.line_pos.len(),
+            // minus one because char right after newline should be 0
             character: raw_pos - last_line_pos
         };
         let end_pos = Position {
             line: start_pos.line,
-            character: start_pos.character + length -1
+            character: start_pos.character + length
         };
         return Range { start: start_pos, end: end_pos}
     }
