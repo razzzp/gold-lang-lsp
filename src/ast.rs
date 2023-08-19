@@ -437,7 +437,7 @@ impl IRange for AstGlobalVariableDeclaration {
 }
 impl IAstNode for AstGlobalVariableDeclaration {
     fn get_type(&self) -> &'static str {
-        return "Variable Declaration"
+        return "Global Variable Declaration"
     }
 
     fn get_raw_pos(&self) -> usize {
@@ -1485,5 +1485,66 @@ impl IAstNode for AstLoopBlock {
     }
     fn to_string_type(&self) -> String {
         "loop".to_string()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstLocalVariableDeclaration {
+    pub raw_pos: usize,
+    pub pos: Position,
+    pub range: Range,
+    pub identifier: Token,
+    pub type_node: Box<dyn IAstNode>,
+    pub absolute: Option<Box<dyn IAstNode>>,
+}
+impl IRange for AstLocalVariableDeclaration {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstLocalVariableDeclaration {
+    fn get_type(&self) -> &'static str {
+        return "Local Variable Declaration"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.pos.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.type_node.as_ref().as_ast_node());
+        if let Some(node) = &self.absolute {
+            result.push(node.as_ref().as_ast_node()); 
+        }
+        return Some(result);
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+
+        if let Some(children) = self.get_children() {
+            return Some(children.into_iter().map(|child| {
+                DynamicChild::new(child, Some(self.as_ast_node()))
+            }).collect())
+        } else {
+            return None
+        }
+    }
+    fn get_identifier(&self) -> String {
+        self.identifier.get_value()
+    }
+    fn to_string_type(&self) -> String {
+        "lvar_decl".to_string()
     }
 }

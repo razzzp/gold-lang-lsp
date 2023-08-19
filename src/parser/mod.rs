@@ -1019,7 +1019,7 @@ mod test {
       return result;
    }
 
-   fn check_node_pos_and_range(node: &impl IAstNode,input: &Vec<Token>){
+   pub fn check_node_pos_and_range(node: &dyn IAstNode,input: &Vec<Token>){
       assert_eq!(node.get_raw_pos(), input.first().unwrap().raw_pos);
       assert_eq!(node.get_pos(), input.first().unwrap().pos);
       assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));

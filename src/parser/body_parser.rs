@@ -1,8 +1,8 @@
 use nom::error;
 
-use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
+use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
 
-use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic, parse_separated_list, create_closure, GoldDocumentError, parse_comment, opt_parse};
+use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic, parse_separated_list, create_closure, GoldDocumentError, parse_comment, opt_parse, parse_type, parse_constant_declaration};
 
 /// expr = ident
 ///     | bin_op
@@ -675,6 +675,42 @@ fn parse_statement<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstN
     };
 }
 
+fn parse_local_var_decl<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+    // var
+    let (next, var_token) = exp_token(TokenType::Var)(input)?;
+    // ident
+    let (next, identifier_token) = exp_token(TokenType::Identifier)(next)?;
+    // colon token
+    let (next, _) = exp_token(TokenType::Colon)(next)?;
+    // parse type
+    let (next, type_node) = parse_type(next)?;
+    let mut end_range = type_node.get_range();
+    // parse absolute
+    let (mut next, abs_token) = opt_parse(exp_token(TokenType::Absolute))(next)?;
+    let mut absolute_node : Option<Box<dyn IAstNode>>= None;
+    if abs_token.is_some() {
+        (next, absolute_node) = match parse_dot_op_left(next) {
+            Ok((n, node)) => {
+                end_range = node.get_range();
+                (n, Some(node))
+            },
+            Err(e) => return Err(e)
+        };
+    }
+
+    return Ok((
+        next,
+        Box::new(AstLocalVariableDeclaration {
+            raw_pos: var_token.get_raw_pos(),
+            pos: var_token.get_pos(),
+            range: create_new_range(var_token.get_range(), end_range),
+            identifier: identifier_token,
+            type_node: type_node,
+            absolute: absolute_node,
+        })
+    ));
+ }
+
 pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
     // try match block statements first
     let mut last_error;
@@ -706,6 +742,8 @@ pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dy
     
     match alt_parse([
         parse_comment,
+        parse_local_var_decl,
+        parse_constant_declaration,
         parse_assignment,
         parse_expr,
     ].as_ref())(input) {
@@ -864,10 +902,11 @@ mod test{
 
     use std::ops::Deref;
 
-    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock};
+    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration};
+    use crate::parser::test::check_node_pos_and_range;
     use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range_from_irange, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block, parse_loop_block};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block, parse_loop_block, parse_local_var_decl};
 
 
     #[test]
@@ -881,7 +920,7 @@ mod test{
         ]);
         let (next, node) = parse_bracket_closure(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         
         let node = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         assert_eq!(node.left_node.get_identifier(), "First");
@@ -899,7 +938,7 @@ mod test{
         ]);
         let (next, node) = parse_cast(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstCast>().unwrap();
         assert_eq!(node.type_node.get_identifier(), "CastType");
         assert_eq!(node.expr_node.get_identifier(), "Expression");
@@ -917,7 +956,7 @@ mod test{
         ]);
         let (next, node) = parse_dot_ops(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect
@@ -945,7 +984,7 @@ mod test{
         ]);
         let (next, node) = parse_factors(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect same tree struct as dot_ops
@@ -968,7 +1007,7 @@ mod test{
         ]);
         let (next, node) = parse_terms(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect
@@ -996,7 +1035,7 @@ mod test{
         ]);
         let (next, node) = parse_bit_ops_2(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect
@@ -1024,7 +1063,7 @@ mod test{
         ]);
         let (next, node) = parse_shifts(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect
@@ -1052,7 +1091,7 @@ mod test{
         ]);
         let (next, node) = parse_compare(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect
@@ -1080,7 +1119,7 @@ mod test{
         ]);
         let (next, node) = parse_logical_or(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect
@@ -1111,7 +1150,7 @@ mod test{
         // print!("{:#?}", input);
         // print!("{}",print_ast_brief_recursive(node.as_ref()));
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
         assert_eq!(node.op_token.get_value(), "not");
         assert_eq!(node.expr_node.get_identifier(), "bNot");
@@ -1125,7 +1164,7 @@ mod test{
         ]);
         let (next, node) = parse_terms(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstTerminal>().unwrap();
         let dfs = dfs(bin_op);
         assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
@@ -1147,7 +1186,7 @@ mod test{
         ]);
         let (next, node) = parse_method_call(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstMethodCall>().unwrap();
         assert_eq!(node.get_identifier(), input.get(0).unwrap().get_value());
         assert_eq!(node.parameter_list.len(), 3);
@@ -1175,7 +1214,7 @@ mod test{
         ]);
         let (next, node) = parse_dot_ops(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         dfs.iter().for_each(|n| {println!("{}",print_ast_brief(n.as_ast_node()))});
@@ -1205,7 +1244,7 @@ mod test{
         ]);
         let (next, node) = parse_assignment(&input).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let bfs = bfs(bin_op);
         // expect
@@ -1242,7 +1281,7 @@ mod test{
         let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
         let bfs = bfs(if_node);
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
@@ -1282,7 +1321,7 @@ mod test{
         let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
         let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
@@ -1308,7 +1347,7 @@ mod test{
         let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
         let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
@@ -1332,7 +1371,7 @@ mod test{
         let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
         let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
@@ -1370,7 +1409,7 @@ mod test{
         
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         
         let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
         assert_eq!(if_node.if_block.get_children().unwrap().len(), 4);
@@ -1399,7 +1438,7 @@ mod test{
         let (next, (node, errors)) = parse_for_block(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let for_node = node.as_any().downcast_ref::<AstForBlock>().unwrap();
         // check counter var
         assert_eq!(for_node.counter_token, input.get(1).unwrap().clone());
@@ -1445,7 +1484,7 @@ mod test{
         let (next, (node, errors)) = parse_for_block(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let for_node = node.as_any().downcast_ref::<AstForBlock>().unwrap();
         // check counter var
         assert_eq!(for_node.counter_token, input.get(1).unwrap().clone());
@@ -1494,7 +1533,7 @@ mod test{
         let (next, (node, errors)) = parse_for_block(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let for_node = node.as_any().downcast_ref::<AstForBlock>().unwrap();
         // check counter var
         assert_eq!(for_node.counter_token, input.get(1).unwrap().clone());
@@ -1537,7 +1576,7 @@ mod test{
         let (next, (node, errors)) = parse_foreach_block(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let foreach_node = node.as_any().downcast_ref::<AstForEachBlock>().unwrap();
         // check counter var
         assert_eq!(foreach_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
@@ -1573,7 +1612,7 @@ mod test{
         let (next, (node, errors)) = parse_while_block(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let while_node = node.as_any().downcast_ref::<AstWhileBlock>().unwrap();
         // check counter var
         assert_eq!(while_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
@@ -1599,7 +1638,7 @@ mod test{
         let (next, (node, errors)) = parse_loop_block(&input).unwrap();
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);
-        assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+        check_node_pos_and_range(node.as_ast_node(), &input);
         let while_node = node.as_any().downcast_ref::<AstLoopBlock>().unwrap();
         // check counter var
         assert_eq!(while_node.to_string_type_pos(), input.get(0).unwrap().to_string_val_and_pos());
@@ -1610,5 +1649,45 @@ mod test{
         // bfs.iter().for_each(|n|{
         //     println!("{}", print_ast_brief(n.data))
         // });      
+    }
+
+    #[test]
+    fn test_local_var_decl(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Var, Some("var".to_string())),
+            (TokenType::Identifier, Some("VarName".to_string())),
+            (TokenType::Colon, Some(":".to_string())),
+            (TokenType::Identifier, Some("SomeType".to_string())), 
+        ]);
+        let (next, node) = parse_local_var_decl(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        check_node_pos_and_range(node.as_ast_node(), &input);
+        let var_decl = node.as_any().downcast_ref::<AstLocalVariableDeclaration>().unwrap();
+        
+        // check ident
+        assert_eq!(var_decl.get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(var_decl.get_children().unwrap().len(), 1);  
+    }
+
+    #[test]
+    fn test_local_var_with_abs(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Var, Some("var".to_string())),
+            (TokenType::Identifier, Some("VarName".to_string())),
+            (TokenType::Colon, Some(":".to_string())),
+            (TokenType::Identifier, Some("SomeType".to_string())), 
+            (TokenType::Absolute, Some("absolute".to_string())),
+            (TokenType::Identifier, Some("OtheVar".to_string())), 
+        ]);
+        let (next, node) = parse_local_var_decl(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        check_node_pos_and_range(node.as_ast_node(), &input);
+        let var_decl = node.as_any().downcast_ref::<AstLocalVariableDeclaration>().unwrap();
+        
+        // check ident
+        assert_eq!(var_decl.get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(var_decl.get_children().unwrap().len(), 2);
+        // check abs
+        assert_eq!(var_decl.get_children().unwrap().get(1).unwrap().get_identifier(), input.last().unwrap().get_value());  
     }
 }
