@@ -44,6 +44,10 @@ impl IRange for AstTerminal {
     fn get_range(&self) -> Range {
         self.token.range.clone()
     }
+    fn set_range(&mut self, new_range: Range) {
+        // hmm what TODO 
+        ()
+    }
     fn as_range(&self) -> &dyn IRange {
         self
     }
@@ -86,6 +90,9 @@ impl IRange for AstClass {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
     fn as_range(&self) -> &dyn IRange {
         self
     }
@@ -126,6 +133,9 @@ impl IRange for AstUses {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
     fn as_range(&self) -> &dyn IRange {
         self
     }
@@ -164,6 +174,9 @@ pub struct AstTypeBasic {
 impl IRange for AstTypeBasic {
     fn get_range(&self) -> Range {
         self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
     }
     fn as_range(&self) -> &dyn IRange {
         self
@@ -211,6 +224,9 @@ impl IRange for AstEmpty {
     fn get_range(&self) -> Range {
         Range::default()
     }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
     fn as_range(&self) -> &dyn IRange {
         self
     }
@@ -250,6 +266,9 @@ pub struct AstTypeEnum{
 impl IRange for AstTypeEnum {
     fn get_range(&self) -> Range {
         self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
     }
     fn as_range(&self) -> &dyn IRange {
         self
@@ -293,6 +312,9 @@ impl IRange for AstTypeReference {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
     fn as_range(&self) -> &dyn IRange {
         self
     }
@@ -334,6 +356,9 @@ pub struct AstTypeDeclaration {
 impl IRange for AstTypeDeclaration {
     fn get_range(&self) -> Range {
         self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
     }
     fn as_range(&self) -> &dyn IRange {
         self
@@ -388,6 +413,9 @@ impl IRange for AstConstantDeclaration {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
     fn as_range(&self) -> &dyn IRange {
         self
     }
@@ -430,6 +458,9 @@ pub struct AstGlobalVariableDeclaration {
 impl IRange for AstGlobalVariableDeclaration {
     fn get_range(&self) -> Range {
         self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
     }
     fn as_range(&self) -> &dyn IRange {
         self
@@ -485,6 +516,9 @@ pub struct AstProcedure {
 impl IRange for AstProcedure {
     fn get_range(&self) -> Range {
         self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
     }
     fn as_range(&self) -> &dyn IRange {
         self
@@ -547,6 +581,9 @@ impl IRange for AstFunction {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
     fn as_range(&self) -> &dyn IRange {
         self
     }
@@ -604,6 +641,9 @@ impl IRange for AstParameterDeclarationList {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
     fn as_range(&self) -> &dyn IRange {
         self
     }
@@ -654,6 +694,9 @@ pub struct AstParameterDeclaration {
 impl IRange for AstParameterDeclaration {
     fn get_range(&self) -> Range {
         self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
     }
     fn as_range(&self) -> &dyn IRange {
         self
@@ -711,6 +754,9 @@ impl IRange for AstMethodModifiers {
     fn get_range(&self) -> Range {
         self.range.clone()
     }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
     fn as_range(&self) -> &dyn IRange {
         self
     }
@@ -751,6 +797,9 @@ pub struct AstMethodBody {
 impl IRange for AstMethodBody {
     fn get_range(&self) -> Range {
         self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
     }
     fn as_range(&self) -> &dyn IRange {
         self
@@ -1500,6 +1549,9 @@ pub struct AstLocalVariableDeclaration {
 impl IRange for AstLocalVariableDeclaration {
     fn get_range(&self) -> Range {
         self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
     }
     fn as_range(&self) -> &dyn IRange {
         self
