@@ -13,8 +13,8 @@ pub struct GoldLexer {
 
 #[derive(Debug)]
 pub struct GoldLexerError {
-    range: Range,
-    msg: String,
+    pub range: Range,
+    pub msg: String,
 }
 
 impl GoldLexer{

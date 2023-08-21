@@ -145,12 +145,15 @@ impl GoldProjectManager{
             Ok(f) => f,
             Err(e) => return Err(GoldProjectManagerError{msg:e.to_string(), error_code: ErrorCode::InternalError})
         };
-        let mut contents = String::new();
-        match file.read_to_string(&mut contents){
-            Ok(s)=> (),
+        // read bytes first, then convert to handle invalid chars
+        let mut contents = Vec::new();
+        match file.read_to_end(&mut contents){
+            Ok(_n)=> (),
             Err(e) => return Err(GoldProjectManagerError{msg:e.to_string(), error_code: ErrorCode::InternalError})
         };
-        return self.parse_content(&contents)
+        // invalid chars replaced with �
+        let contents_as_string = String::from_utf8_lossy(contents.as_slice()).to_string();
+        return self.parse_content(&contents_as_string)
     }
 
     fn parse_content(&self, full_file_content: &String) -> Result<GoldDocument, GoldProjectManagerError> {
@@ -158,7 +161,11 @@ impl GoldProjectManager{
         let mut lexer = GoldLexer::new();
         let (tokens, lexer_errors) = lexer.lex(&full_file_content);
         // parse
-        let (ast_nodes, doc_errors) = parse_gold(&tokens);
+        let (ast_nodes, mut doc_errors) = parse_gold(&tokens);
+        // add lexer errors
+        doc_errors.extend(lexer_errors.into_iter().map(|l_error|{
+            GoldDocumentError { range: l_error.range, msg: l_error.msg }
+        }));
         let symbols = self.generate_document_symbols(ast_nodes.1.as_ref())?;
         let diagnostic_report = self.generate_document_diagnostic_report(&doc_errors)?;
 
@@ -348,8 +355,8 @@ mod test{
 
     #[test]
     fn test_gold_document_manager(){
-        let mut doc_manager = GoldProjectManager::new();
-        // let doc = doc_manager.get_parsed_document("test/aTestClass.god").unwrap();
+        let doc_manager = GoldProjectManager::new();
+        let doc = doc_manager.parse_document("test/aTestClass.god").unwrap();
         // println!("{:#?}",doc);
     }
 }
