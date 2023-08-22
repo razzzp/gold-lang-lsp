@@ -1,7 +1,7 @@
 
 use crate::lexer::tokens::{Token, TokenType};
-use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange};
-use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction};
+use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange, create_new_range};
+use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers};
 
 use self::body_parser::{parse_repeat, parse_statement_v2};
 use self::utils::{prepend_msg_to_error};
@@ -340,9 +340,22 @@ fn parse_type_reference<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
       Ok((r,t)) => (r,t),
       Err(e) => return Err(e)
    };
+
+   // inverse
+   let (mut next, inverse_token) = opt_parse(exp_token(TokenType::Inverse))(next)?;
+   let mut inverse_var = None;
+   if inverse_token.is_some(){
+      (next, inverse_var) = match exp_token(TokenType::Identifier)(next) {
+         Ok((n, inv_tok)) => (n, Some(inv_tok)),
+         Err(e) => return Err(e),
+      };
+   }
+
    // calc end pos
-   let mut end_pos = ident_token.pos;
-   end_pos.character += ident_token.value.unwrap().len();
+   let mut end_range = ident_token.get_range();
+   if inverse_var.is_some(){
+      end_range = inverse_var.as_ref().unwrap().get_range();
+   }
    // if there are options remove open and close sqr brackets
    if option_tokens.len() > 0 {
       option_tokens.pop();
@@ -353,8 +366,10 @@ fn parse_type_reference<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
       raw_pos: ref_token.raw_pos,
       pos: ref_token.pos.clone(),
       ref_type: ref_token.clone(),
-      range: Range{start:ref_token.pos,end:end_pos},
-      options: option_tokens
+      range: create_new_range(ref_token.get_range(), end_range),
+      options: option_tokens,
+      ident_token,
+      inverse_var_token: inverse_var,
    })));
 }
 
@@ -402,17 +417,26 @@ fn parse_global_variable_declaration<'a>(input : &'a [Token]) -> Result<(&'a [To
       Ok((n, t)) => (n,t),
       Err(e) => return Err(e)
    };
+   // modifiers
+   let (next, member_modifiers) = parse_member_modifiers(next)?;
    let raw_pos = if memory_token.is_some() {memory_token.as_ref().unwrap().raw_pos.clone()} else {identifier_token.raw_pos.clone()};
-   let start = if memory_token.is_some() {memory_token.as_ref().unwrap().pos.clone()} else {identifier_token.pos.clone()};
+   let start = if memory_token.is_some() {memory_token.as_ref().unwrap().get_range()} else {identifier_token.get_range()};
+   let end;
+   if member_modifiers.is_some(){
+      end = member_modifiers.as_ref().unwrap().get_range();
+   } else {
+      end = type_node.get_range()
+   }
    return Ok((
       next,
       Box::new(AstGlobalVariableDeclaration {
          is_memory: if memory_token.is_some() {true} else {false},
          raw_pos: raw_pos,
-         pos: start.clone(),
-         range: Range {start:start, end: type_node.get_range().end.clone()},
+         pos: start.start.clone(),
+         range: create_new_range(start, end),
          identifier: identifier_token,
          type_node: type_node,
+         modifiers: member_modifiers,
       })
    ));
 }
@@ -660,7 +684,7 @@ fn parse_parameter_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
 }
 
 /// parsers all modifiers, whether it is valid will be done in sematic analysis
-fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Option<AstMethodModifiers>), GoldParserError<'a>>{
+fn parse_member_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Option<Box<AstMemberModifiers>>), GoldParserError<'a>>{
    // private
    let mut start = None;
    let mut end = None;
@@ -700,6 +724,33 @@ fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opti
    end = if override_token.is_some() {Some(get_end_pos(override_token.as_ref().unwrap()))} else {end};
    raw_pos = if raw_pos == None && override_token.is_some() {Some(override_token.as_ref().unwrap().raw_pos)} else {raw_pos};
    
+   
+   if private_token.is_none() && protected_token.is_none() && final_token.is_none() &&
+   override_token.is_none(){
+      return Ok((input, None))
+   } else {
+      return Ok((next, Some(Box::new(AstMemberModifiers{
+         raw_pos: raw_pos.unwrap(),
+         range: Range { start: start.unwrap(), end: end.unwrap()},
+         is_private: private_token.is_some(),
+         is_protected: protected_token.is_some(),
+         is_final: final_token.is_some(),
+         is_override: override_token.is_some(),
+      }))))
+   }
+} 
+
+/// parsers all modifiers, whether it is valid will be done in sematic analysis
+fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Option<AstMethodModifiers>), GoldParserError<'a>>{
+   // private
+   let mut start = None;
+   let mut end = None;
+   let mut raw_pos : Option<usize>= None;
+   let (next, member_modifiers) = parse_member_modifiers(input)?;
+   start = if start == None && member_modifiers.is_some() {Some(member_modifiers.as_ref().unwrap().get_pos())} else {start};
+   end = if member_modifiers.is_some() {Some(get_end_pos(member_modifiers.as_ref().unwrap().as_range()))} else {end};
+   raw_pos = if raw_pos == None && member_modifiers.is_some() {Some(member_modifiers.as_ref().unwrap().raw_pos)} else {raw_pos};
+   
    // external
    let (next, external_token_list) = match seq_parse(&[
       exp_token(TokenType::External),
@@ -721,18 +772,13 @@ fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opti
    end = if forward_token.is_some() {Some(get_end_pos(forward_token.as_ref().unwrap()))} else {end};
    raw_pos = if raw_pos == None && forward_token.is_some() {Some(forward_token.as_ref().unwrap().raw_pos)} else {raw_pos};
 
-   if private_token.is_none() && protected_token.is_none() && final_token.is_none() &&
-   override_token.is_none() && external_token_list.is_none() && forward_token.is_none(){
+   if member_modifiers.is_none()&& external_token_list.is_none() && forward_token.is_none(){
       return Ok((input, None))
    } else {
       return Ok((next, Some(AstMethodModifiers{
          raw_pos: raw_pos.unwrap(),
-         pos: start.clone().unwrap(),
          range: Range { start: start.unwrap(), end: end.unwrap()},
-         is_private: private_token.is_some(),
-         is_protected: protected_token.is_some(),
-         is_final: final_token.is_some(),
-         is_override: override_token.is_some(),
+         modifiers: member_modifiers,
          external_dll_name: if external_token_list.is_some() {
             external_token_list.as_ref().unwrap()[1].value.clone()
          } else {
@@ -1179,6 +1225,8 @@ mod test {
          (TokenType::Identifier, Some("T".to_string())),
          (TokenType::CSqrBracket, Some("]".to_string())),
          (TokenType::Identifier, Some("aType".to_string())),
+         (TokenType::Inverse, Some("inverse".to_string())),
+         (TokenType::Identifier, Some("InvVar".to_string())),
       ]);
       let next : &[Token] = &input;
 
@@ -1190,6 +1238,8 @@ mod test {
       check_node_pos_and_range(downcasted, &input);
       assert_eq!(downcasted.ref_type.token_type, TokenType::RefTo);
       assert_eq!(downcasted.options.len(), 3);
+      assert_eq!(downcasted.ident_token.get_value(), "aType".to_string());
+      assert_eq!(downcasted.inverse_var_token.as_ref().unwrap().get_value(), "InvVar".to_string());
       assert_eq!(downcasted.options[0].value.as_ref().unwrap().as_str(), "A");
       assert_eq!(downcasted.options[1].value.as_ref().unwrap().as_str(), "P");
       assert_eq!(downcasted.options[2].value.as_ref().unwrap().as_str(), "T");
@@ -1265,6 +1315,8 @@ mod test {
          (TokenType::Identifier, Some("T".to_string())),
          (TokenType::CSqrBracket, Some("]".to_string())),
          (TokenType::Identifier, Some("aType".to_string())),
+         (TokenType::Protected, Some("protected".to_string())),
+         (TokenType::Override, Some("override".to_string())),
       ]);
       let next : &[Token] = &input;
 
@@ -1275,6 +1327,8 @@ mod test {
       let downcasted = node.as_ref().as_any().downcast_ref::<AstGlobalVariableDeclaration>().unwrap();
       check_node_pos_and_range(downcasted, &input);
       assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "aVariable");
+      assert!(downcasted.modifiers.as_ref().unwrap().is_override);
+      assert!(downcasted.modifiers.as_ref().unwrap().is_protected);
 
       // test refto type
       let downcasted = downcasted.type_node.as_any().downcast_ref::<AstTypeReference>().unwrap();
@@ -1329,10 +1383,10 @@ mod test {
       }
       // test modifiers
       let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
-      assert!(modifiers_node.is_private);
-      assert!(modifiers_node.is_protected);
-      assert!(modifiers_node.is_final);
-      assert!(modifiers_node.is_override);
+      assert!(modifiers_node.modifiers.as_ref().unwrap().is_private);
+      assert!(modifiers_node.modifiers.as_ref().unwrap().is_protected);
+      assert!(modifiers_node.modifiers.as_ref().unwrap().is_final);
+      assert!(modifiers_node.modifiers.as_ref().unwrap().is_override);
       assert_eq!(modifiers_node.external_dll_name.as_ref().unwrap().as_str(), "SomeDLL.Method");
       assert!(modifiers_node.is_forward);
    }
@@ -1384,10 +1438,10 @@ mod test {
       assert_eq!(return_node.type_token.value.as_ref().unwrap().as_str(), "aReturnType");
       // test modifiers
       let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
-      assert!(!modifiers_node.is_private);
-      assert!(modifiers_node.is_protected);
-      assert!(!modifiers_node.is_final);
-      assert!(modifiers_node.is_override);
+      assert!(!modifiers_node.modifiers.as_ref().unwrap().is_private);
+      assert!(modifiers_node.modifiers.as_ref().unwrap().is_protected);
+      assert!(!modifiers_node.modifiers.as_ref().unwrap().is_final);
+      assert!(modifiers_node.modifiers.as_ref().unwrap().is_override);
       assert!(modifiers_node.external_dll_name.is_none());
       assert!(!modifiers_node.is_forward);
    }
@@ -1490,10 +1544,10 @@ mod test {
       check_node_pos_and_range(&node, &input);
 
       // test modifiers
-      assert!(node.is_private);
-      assert!(node.is_protected);
-      assert!(node.is_override);
-      assert!(node.is_final);
+      assert!(node.modifiers.as_ref().unwrap().is_private);
+      assert!(node.modifiers.as_ref().unwrap().is_protected);
+      assert!(node.modifiers.as_ref().unwrap().is_override);
+      assert!(node.modifiers.as_ref().unwrap().is_final);
       assert_eq!(node.external_dll_name.unwrap(), "SomeDLL.Method".to_string());
       assert!(node.is_forward);
    }

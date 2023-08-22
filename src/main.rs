@@ -380,6 +380,7 @@ endfunc
 
     #[test]
     fn test_convert_uri_to_file_path(){
+        // TODO not valid in different pcs
         let uri = Url::parse("file:///home/razzzp/dev/gold-lang-lsp/test/aTestClass.god").unwrap();
         let path = convert_uri_to_file_path_str(&uri).unwrap();
         assert_eq!(path, "/home/razzzp/dev/gold-lang-lsp/test/aTestClass.god");

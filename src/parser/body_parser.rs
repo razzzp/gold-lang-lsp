@@ -1,8 +1,10 @@
+use std::process::id;
+
 use nom::error;
 
-use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
+use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
 
-use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic, parse_separated_list, create_closure, GoldDocumentError, parse_comment, opt_parse, parse_type, parse_constant_declaration};
+use super::{GoldParserError, exp_token, utils::prepend_msg_to_error, alt_parse, parse_type_basic, parse_separated_list, create_closure, GoldDocumentError, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_separated_list_token};
 
 /// expr = ident
 ///     | bin_op
@@ -25,19 +27,52 @@ impl<'a> BlockParser<'a> {
     }
 }
 
-fn parse_literals<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+fn parse_literal_set<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+    let (next, obracket_token) = exp_token(TokenType::OSqrBracket)(input)?;
+    let (next, ident_tokens) = parse_separated_list_token(next, TokenType::Identifier, TokenType::Comma)?;
+    let (next, cbracket_token) = exp_token(TokenType::CSqrBracket)(next)?;
+    return Ok((next, Box::new(AstSetLiteral{
+        raw_pos: obracket_token.get_raw_pos(),
+        range: create_new_range(obracket_token.get_range(), cbracket_token.get_range()),
+        set_items: ident_tokens
+    })))
+}
+
+fn parse_literal_basic<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
     let (next, ident_token) = alt_parse(&[
         exp_token(TokenType::StringLiteral),
         exp_token(TokenType::NumericLiteral),
         exp_token(TokenType::BooleanTrue),
-        exp_token(TokenType::BooleanFalse)])(input)?;
+        exp_token(TokenType::BooleanFalse),
+        exp_token(TokenType::Nil),
+        exp_token(TokenType::MethodName),
+        exp_token(TokenType::ModuleName)
+    ])(input)?;
     return Ok((next, Box::new(AstTerminal{
         token: ident_token
     })))
 }
 
+fn parse_literals<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+    return alt_parse([
+        parse_literal_basic,
+        parse_literal_set,
+    ].as_ref())(input);
+}
+
 fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
-    let (next, ident_token) = exp_token(TokenType::Identifier)(input)?;
+    let (next, ident_token) = alt_parse([
+        exp_token(TokenType::Identifier),
+        exp_token(TokenType::Member),
+        exp_token(TokenType::MetaModelEntity),
+        exp_token(TokenType::New),
+        exp_token(TokenType::Dispose),
+        exp_token(TokenType::Concat),
+        exp_token(TokenType::Write),
+        exp_token(TokenType::WriteLn),
+        exp_token(TokenType::Length),
+        exp_token(TokenType::SizeOf)
+    ].as_ref())(input)?;
     let (next, _) = exp_token(TokenType::OBracket)(next)?;
     let (next, parameter_list) = parse_separated_list(next, parse_expr, TokenType::Comma)?;
     let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
@@ -55,6 +90,7 @@ fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
         exp_token(TokenType::Identifier),
         exp_token(TokenType::TSelf),
         exp_token(TokenType::Result),
+        exp_token(TokenType::Type),
         ])(input)?;
     return Ok((next, Box::new(AstTerminal{
         token: ident_token
@@ -98,23 +134,12 @@ fn parse_cast<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>),
     })));
 }
 
-fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
-    let parsers = [
-        parse_dot_ops,
-        parse_bracket_closure,
-        parse_unary_op,
-        parse_literals,
-        parse_cast
-    ];
-    let (next, node) = alt_parse(&parsers)(input)?;
-    return Ok((next, node));
-}
-
 fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
     let op_parsers = [
         exp_token(TokenType::Not),
         exp_token(TokenType::BNot),
-        exp_token(TokenType::AddressOf)
+        exp_token(TokenType::AddressOf),
+        exp_token(TokenType::Inherited),
     ];
     let (next, op_token) = alt_parse(&op_parsers)(input)?;
     let (next, expr_node) = parse_primary(next)?;
@@ -125,6 +150,18 @@ fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNod
         op_token,
         expr_node
     })))
+}
+
+fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let parsers = [
+        parse_dot_ops,
+        parse_bracket_closure,
+        parse_unary_op,
+        parse_literals,
+        parse_cast
+    ];
+    let (next, node) = alt_parse(&parsers)(input)?;
+    return Ok((next, node));
 }
 
 fn parse_factors<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
@@ -555,9 +592,18 @@ fn parse_for_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstN
 
 fn parse_foreach_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
     let (next, foreach_token) = exp_token(TokenType::ForEach)(input)?;
+    // curVar in List
     let in_op_parser = exp_token(TokenType::In);
     let (next, in_expr_node) = parse_binary_ops(next, &in_op_parser, &parse_expr)?;
-    
+    // using someVar
+    let (mut next, using_token) = opt_parse(exp_token(TokenType::Using))(next)?;
+    let mut using_var : Option<Box<dyn IAstNode>> = None;
+    if using_token.is_some() {
+        (next, using_var) = match parse_dot_op_left(next){
+            Ok((n, using_node)) => (n, Some(using_node)),
+            Err(e) => return Err(e),
+        };
+    }
     let stop_tokens = [exp_token(TokenType::EndFor), exp_token(TokenType::End)];
     let stop_parser = alt_parse(&stop_tokens);
     let (next, statement_nodes, errors, end_token) = parse_until(next, &stop_parser, &parse_statement_v2);
@@ -572,6 +618,7 @@ fn parse_foreach_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn I
             pos: foreach_token.get_pos(),
             range: create_new_range(foreach_token.get_range(), end_pos_token.get_range()),
             in_expr_node,
+            using_var: using_var,
             statements: Some(statement_nodes),
             end_token
         }),
@@ -712,6 +759,35 @@ fn parse_local_var_decl<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
     ));
  }
 
+fn parse_return_statement<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+    let (next, return_token) = exp_token(TokenType::Return)(input)?;
+    let (next, return_expr) = parse_expr(next)?;
+    return Ok((next, Box::new(AstReturnNode{
+        raw_pos: return_token.get_raw_pos(),
+        pos: return_token.get_pos(),
+        range: create_new_range(return_token.get_range(), return_expr.get_range()),
+        return_expr: return_expr,
+    })));
+}
+
+fn _parse_control_statements<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+    let (next, control_token) = alt_parse([
+        exp_token(TokenType::Exit),
+        exp_token(TokenType::Break),
+        exp_token(TokenType::Continue),
+    ].as_ref())(input)?;
+    return Ok((next, Box::new(AstTerminal{
+        token: control_token,
+    })));
+}
+
+fn parse_control_statements<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+    return alt_parse([
+        _parse_control_statements,
+        parse_return_statement,
+    ].as_ref())(input);
+}
+
 pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
     // try match block statements first
     let mut last_error;
@@ -743,9 +819,11 @@ pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dy
     
     match alt_parse([
         parse_comment,
-        parse_local_var_decl,
+        parse_uses,
         parse_constant_declaration,
+        parse_local_var_decl,
         parse_assignment,
+        parse_control_statements,
         parse_expr,
     ].as_ref())(input) {
         Ok(r) => return Ok((r.0, (r.1, Vec::new()))),
@@ -912,11 +990,11 @@ mod test{
 
     use std::ops::Deref;
 
-    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration};
+    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstSetLiteral};
     use crate::parser::test::check_node_pos_and_range;
     use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range_from_irange, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block, parse_loop_block, parse_local_var_decl};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block, parse_loop_block, parse_local_var_decl, parse_literal_set};
 
 
     #[test]
@@ -1606,6 +1684,34 @@ mod test{
     }
 
     #[test]
+    fn test_foreach_block_with_using(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::ForEach, Some("foreach".to_string())),
+            (TokenType::Identifier, Some("LoopVar".to_string())),
+            (TokenType::In, Some("in".to_string())),
+            (TokenType::Identifier, Some("List".to_string())),
+            (TokenType::Using, Some("using".to_string())),
+            (TokenType::Identifier, Some("SomeVar".to_string())),
+            (TokenType::EndFor, Some("endfor".to_string())),     
+        ]);
+        let (next, (node, errors)) = parse_foreach_block(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(errors.len(), 0);
+        check_node_pos_and_range(node.as_ast_node(), &input);
+        let foreach_node = node.as_any().downcast_ref::<AstForEachBlock>().unwrap();
+        // check counter var
+        assert_eq!(foreach_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
+        assert_eq!(foreach_node.using_var.as_ref().unwrap().get_identifier(), "SomeVar".to_string());
+        assert_eq!(foreach_node.in_expr_node.to_string_ident_pos(), format!("in:{}", input.get(1).unwrap().get_pos().to_string_brief()));
+        assert_eq!(foreach_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
+        assert_eq!(foreach_node.statements.as_ref().unwrap().len(), 0);
+        // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+        // bfs.iter().for_each(|n|{
+        //     println!("{}", print_ast_brief(n.data))
+        // });      
+    }
+
+    #[test]
     fn test_while_block_with_statements(){
         let input = gen_list_of_tokens(&[
             (TokenType::While, Some("while".to_string())),
@@ -1699,5 +1805,24 @@ mod test{
         assert_eq!(var_decl.get_children().unwrap().len(), 2);
         // check abs
         assert_eq!(var_decl.get_children().unwrap().get(1).unwrap().get_identifier(), input.last().unwrap().get_value());  
+    }
+
+    #[test]
+    fn test_parse_literal_set(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::OSqrBracket, Some("[".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::Comma, Some(",".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),
+            (TokenType::Comma, Some(",".to_string())),
+            (TokenType::Identifier, Some("Third".to_string())),
+            (TokenType::CSqrBracket, Some("]".to_string())),
+        ]);
+        let (next, node) = parse_literal_set(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        check_node_pos_and_range(node.as_ast_node(), &input);
+        
+        let node = node.as_any().downcast_ref::<AstSetLiteral>().unwrap();
+        assert_eq!(node.set_items.len(), 3);
     }
 }
