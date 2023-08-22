@@ -71,7 +71,8 @@ fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
         exp_token(TokenType::Write),
         exp_token(TokenType::WriteLn),
         exp_token(TokenType::Length),
-        exp_token(TokenType::SizeOf)
+        exp_token(TokenType::SizeOf),
+        exp_token(TokenType::Upcase)
     ].as_ref())(input)?;
     let (next, _) = exp_token(TokenType::OBracket)(next)?;
     let (next, parameter_list) = parse_separated_list(next, parse_expr, TokenType::Comma)?;
@@ -91,6 +92,7 @@ fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
         exp_token(TokenType::TSelf),
         exp_token(TokenType::Result),
         exp_token(TokenType::Type),
+        exp_token(TokenType::Scenario),
         ])(input)?;
     return Ok((next, Box::new(AstTerminal{
         token: ident_token
