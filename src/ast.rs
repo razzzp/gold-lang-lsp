@@ -265,11 +265,50 @@ impl IAstNode for AstEmpty {
 }
 
 #[derive(Debug)]
+pub struct AstEnumVariant{
+    pub raw_pos: usize,
+    pub range: Range,
+    pub identifier: Token
+}
+impl IRange for AstEnumVariant {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstEnumVariant {
+    fn get_type(&self) -> &'static str {
+        return "Enum Variant"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        return self.raw_pos;
+    }
+    fn as_any(&self) -> &dyn Any {
+        self 
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        self.identifier.get_value()
+    }
+    fn to_string_type(&self) -> String {
+        "enum_variant".to_string()
+    }
+}
+
+#[derive(Debug)]
 pub struct AstTypeEnum{
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub variants: Vec<Token>
+    pub variants: Vec<Box<AstEnumVariant>>,
 }
 impl IRange for AstTypeEnum {
     fn get_range(&self) -> Range {
@@ -290,7 +329,11 @@ impl IAstNode for AstTypeEnum {
     fn get_raw_pos(&self) -> usize {
         return self.raw_pos;
     }
-
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        return Some(
+            self.variants.iter().map(|n| n.as_ast_node()).collect()
+        )
+    }
     fn get_pos(&self) -> Position {
         return self.pos.clone();
     }

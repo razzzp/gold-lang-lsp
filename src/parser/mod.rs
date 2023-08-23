@@ -1,7 +1,7 @@
 
 use crate::lexer::tokens::{Token, TokenType};
 use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange, create_new_range};
-use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers};
+use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant};
 
 use self::body_parser::{parse_repeat, parse_statement_v2};
 use self::utils::{prepend_msg_to_error};
@@ -121,9 +121,20 @@ fn parse_comment<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstN
    })))
 }
 
+fn parse_annotations<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError> {
+   // TODO for now annotations ignored
+   let (next, _) = exp_token(TokenType::OSqrBracket)(input)?;
+   let (next, _, _) = take_until([TokenType::CSqrBracket].as_ref())(next)?;
+   return Ok((
+      next,
+      Box::new(AstEmpty::default())
+   ))
+}
+
 fn parse_class<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError> {
+   let (next, _) = opt_parse(parse_annotations)(input)?;
    // class keyword
-   let (next, class_token) = match exp_token(TokenType::Class)(input) {
+   let (next, class_token) = match exp_token(TokenType::Class)(next) {
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
@@ -296,6 +307,19 @@ fn parse_type_basic<'a>(input : &'a [Token])
    }
 }
 
+fn parse_enum_variant<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<AstEnumVariant>), GoldParserError<'a>>{
+   let (next, _) = opt_parse(parse_annotations)(input)?;
+   let (next, variant_ident) = exp_token(TokenType::Identifier)(next)?;
+   return Ok((
+      next,
+      Box::new(AstEnumVariant{
+         raw_pos: variant_ident.get_raw_pos(),
+         range: variant_ident.get_range(),
+         identifier: variant_ident
+      })
+   ))
+}
+
 fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
    // opening (
    let (next, obracket_token) = match exp_token(TokenType::OBracket)(input){
@@ -303,7 +327,7 @@ fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAs
       Err(e) => return Err(e)
    };
    // list of enums: enum1, enum2, enum3, ...
-   let (next, tokens) = match parse_separated_list_token(next, TokenType::Identifier, TokenType::Comma){
+   let (next, variants) = match parse_separated_list(next, parse_enum_variant, TokenType::Comma){
        Ok((r, ts)) => (r, ts),
        Err(e) => return Err(e)
    };
@@ -316,7 +340,7 @@ fn parse_type_enum<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAs
       raw_pos: obracket_token.raw_pos,
       pos: obracket_token.pos.clone(),
       range: create_new_range_from_irange(&obracket_token, &cbracket_token),
-      variants: tokens
+      variants: variants
    })));
 }
 
@@ -397,8 +421,9 @@ fn parse_type_reference_options<'a>(input : &'a [Token]) -> Result<(&'a [Token],
 }
 
 fn parse_global_variable_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+   let (next, _) = opt_parse(parse_annotations)(input)?;
    // memory?
-   let (next, memory_token) = match exp_token(TokenType::Memory)(input){
+   let (next, memory_token) = match exp_token(TokenType::Memory)(next){
       Ok((n, t)) => (n,Some(t)),
       Err(e) => (e.input, None)
    };
@@ -861,12 +886,12 @@ fn parse_method_body<'a>(input : &'a [Token]) -> Result<(&'a [Token], (Option<As
    }), errors)))
 }
 
-fn parse_separated_list<'a>(
+fn parse_separated_list<'a, T:IAstNode + ?Sized>(
    input : &'a [Token],
-   parser : impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), GoldParserError>,
+   parser : impl Fn(&[Token]) -> Result<(&[Token],  Box<T>), GoldParserError>,
    separator: TokenType) 
--> Result<(&'a [Token],  Vec<Box<dyn IAstNode>>), GoldParserError<'a>> {
-   let mut identifiers = Vec::<Box<dyn IAstNode>>::new();
+-> Result<(&'a [Token],  Vec<Box<T>>), GoldParserError<'a>> {
+   let mut identifiers = Vec::<Box<T>>::new();
    // match first identifier
    let r = _parse_seperated_list_recursive(input, &parser, &separator, &mut identifiers);
    match r{
@@ -875,11 +900,11 @@ fn parse_separated_list<'a>(
    };
 }
 
-fn _parse_seperated_list_recursive<'a, 'b>(
+fn _parse_seperated_list_recursive<'a, 'b, T:IAstNode + ?Sized>(
    input : &'a [Token],
-   parser :&'b impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), GoldParserError>,
+   parser :&'b impl Fn(&[Token]) -> Result<(&[Token],  Box<T>), GoldParserError>,
    sep: &'b TokenType,
-   result: &'b mut Vec<Box<dyn IAstNode>>) 
+   result: &'b mut Vec<Box<T>>) 
 -> Result<&'a [Token], GoldParserError<'a>> {
    // match first identifier
    let next = match parser(input){
@@ -1211,6 +1236,7 @@ mod test {
       };
       let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeEnum>().unwrap();
       check_node_pos_and_range(downcasted, &input);
+      assert_eq!(downcasted.get_children().unwrap().len(), 3);
    }
 
    #[test]
