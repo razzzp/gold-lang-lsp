@@ -7,7 +7,9 @@ pub trait IAstNode: std::fmt::Debug + IRange {
     /// returns node type, for display?
     fn get_type(&self) -> &'static str;
     fn get_raw_pos(&self) -> usize;
-    fn get_pos(&self) -> Position;
+    fn get_pos(&self) -> Position{
+        self.get_range().start.clone()
+    }
     // fn get_range(&self) -> Range;
     fn as_any(&self) -> &dyn Any;
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>>{
@@ -1215,14 +1217,6 @@ impl IAstNode for AstConditionalBlock {
         }));
         return Some(result);
     }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
-        let mut result = Vec::new();
-        if self.condition.is_some() {result.push(DynamicChild::new(self.condition.as_ref().unwrap().as_ast_node(), Some(self)));}
-        result.extend(self.statements.iter().map(|n| {
-            DynamicChild::new(n.as_ast_node(), Some(self))
-        }));
-        return Some(result);
-    }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
@@ -1744,5 +1738,109 @@ impl IAstNode for AstSetLiteral {
     }
     fn to_string_type(&self) -> String {
         "set_lit".to_string()
+    }
+}
+
+
+#[derive(Debug)]
+pub struct AstWhenBlock {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub when_expr: Option<Box<dyn IAstNode>>,
+    pub statements: Vec<Box<dyn IAstNode>>,
+}
+impl IRange for AstWhenBlock {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstWhenBlock {
+    fn get_type(&self) -> &'static str {
+        "When Block"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        if self.when_expr.is_some() {result.push(self.when_expr.as_ref().unwrap().as_ast_node());}
+        result.extend(self.statements.iter().map(|n| {
+            n.as_ast_node()
+        }));
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "when_block".to_string()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstSwitchBlock {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub switch_expr: Box<dyn IAstNode>,
+    // else block also goes here, with conditional node being an empty node
+    pub when_blocks: Vec<Box<AstWhenBlock>>,
+    pub end_token: Option<Token>
+}
+impl AstSwitchBlock {
+    pub fn add_case_block(&mut self, block: Box<AstWhenBlock>){
+        self.when_blocks.push(block);
+    }
+}
+impl IRange for AstSwitchBlock {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstSwitchBlock {
+    fn get_type(&self) -> &'static str {
+        "Switch Block"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.switch_expr.as_ast_node());
+        result.extend(self.when_blocks.iter().map(|n| {
+            n.as_ast_node()
+        }));
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "switch".to_string()
     }
 }
