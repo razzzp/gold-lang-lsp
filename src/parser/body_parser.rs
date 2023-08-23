@@ -29,12 +29,12 @@ impl<'a> BlockParser<'a> {
 
 fn parse_literal_set<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
     let (next, obracket_token) = exp_token(TokenType::OSqrBracket)(input)?;
-    let (next, ident_tokens) = parse_separated_list_token(next, TokenType::Identifier, TokenType::Comma)?;
+    let (next, set_items) = parse_separated_list(next, parse_primary, TokenType::Comma)?;
     let (next, cbracket_token) = exp_token(TokenType::CSqrBracket)(next)?;
     return Ok((next, Box::new(AstSetLiteral{
         raw_pos: obracket_token.get_raw_pos(),
         range: create_new_range(obracket_token.get_range(), cbracket_token.get_range()),
-        set_items: ident_tokens
+        set_items,
     })))
 }
 

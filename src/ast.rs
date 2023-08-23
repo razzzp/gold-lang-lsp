@@ -1703,7 +1703,7 @@ impl IAstNode for AstReturnNode {
 pub struct AstSetLiteral {
     pub raw_pos: usize,
     pub range: Range,
-    pub set_items: Vec<Token>,
+    pub set_items: Vec<Box<dyn IAstNode>>,
 }
 impl IRange for AstSetLiteral {
     fn get_range(&self) -> Range {
@@ -1735,7 +1735,9 @@ impl IAstNode for AstSetLiteral {
         self
     }
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
-        return None;
+        return Some(
+            self.set_items.iter().map(|n| n.as_ast_node()).collect()
+        );
     }
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
