@@ -145,7 +145,7 @@ fn parse_cast<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>),
     })));
 }
 
-fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_unary_op_pre<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
     let op_parsers = [
         exp_token(TokenType::Not),
         exp_token(TokenType::BNot),
@@ -161,6 +161,29 @@ fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNod
         op_token,
         expr_node
     })))
+}
+
+fn parse_unary_op_post<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    let op_parsers = [
+        exp_token(TokenType::Increment),
+        exp_token(TokenType::Decrement),
+    ];
+    let (next, expr_node) = parse_dot_ops(input)?;
+    let (next, op_token) = alt_parse(&op_parsers)(next)?;
+    return Ok((next, Box::new(AstUnaryOp{
+        raw_pos: expr_node.get_raw_pos(),
+        pos: expr_node.get_pos(),
+        range: create_new_range_from_irange(expr_node.as_range(), op_token.as_range()),
+        op_token,
+        expr_node
+    })))
+}
+
+fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+    return alt_parse([
+        parse_unary_op_pre,
+        parse_unary_op_post,
+    ].as_ref())(input);
 }
 
 fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
@@ -1283,7 +1306,7 @@ mod test{
     }
 
     #[test]
-    fn test_parse_unary_op(){
+    fn test_parse_unary_op_pre(){
         let input = gen_list_of_tokens(&[
             (TokenType::Not, Some("not".to_string())),
             (TokenType::OBracket, Some("(".to_string())),
@@ -1304,6 +1327,28 @@ mod test{
         assert_eq!(node.expr_node.get_identifier(), "bNot");
     }
 
+    #[test]
+    fn test_parse_unary_op_post(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::TSelf, Some("self".to_string())),
+            (TokenType::Dot, Some(".".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::Dot, Some(".".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),
+            (TokenType::Increment, Some("++".to_string())),
+        ]);
+        let (next, node) = parse_unary_op(&input).unwrap();
+        // print!("{:#?}", node.as_ref());
+        // print!("{:#?}", input);
+        // print!("{}",print_ast_brief_recursive(node.as_ref()));
+        assert_eq!(next.len(), 0);
+        // TODO related to bracket closure, pos & range
+        check_node_pos_and_range(node.as_ast_node(), &input);
+        let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
+        assert_eq!(node.op_token.get_value(), "++");
+        assert_eq!(node.expr_node.get_identifier(), ".");
+        assert_eq!(node.expr_node.get_children().unwrap().get(0).unwrap().get_identifier(), ".");
+    }
 
     #[test]
     fn test_parse_logical_only_terminal(){
