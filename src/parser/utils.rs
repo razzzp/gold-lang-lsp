@@ -97,19 +97,27 @@ pub fn exp_token(
 ) -> impl Fn(&[Token]) -> Result<(&[Token], Token), GoldParserError> {
     move |input: &[Token]| -> Result<(&[Token], Token), GoldParserError> {
         let mut it = input.iter();
-        match it.next() {
-            Some(t) if t.token_type == token_type => Ok((it.as_slice(), t.clone())),
-            Some(t) => Err(GoldParserError {
-                input: input,
-                msg: String::from(format!(
-                    "Unexpected {:?} token found",
-                    t.token_type
-                )),
-            }),
-            None => Err(GoldParserError {
-                input: input,
-                msg: String::from(format!("Unexpected EOF")),
-            }),
+        loop{
+            match it.next() {
+                Some(t) if t.token_type == token_type => return Ok((it.as_slice(), t.clone())),
+                Some(t) => {
+                    if t.token_type == TokenType::Comment{
+                        // ignore comments
+                        continue;
+                    }
+                    return Err(GoldParserError {
+                        input: input,
+                        msg: String::from(format!(
+                            "Unexpected {:?} token found",
+                            t.token_type
+                        )),
+                    })
+                },
+                None => return Err(GoldParserError {
+                    input: input,
+                    msg: String::from(format!("Unexpected EOF")),
+                }),
+            }
         }
     }
 }
@@ -286,6 +294,39 @@ pub fn parse_until<'a, T: IAstNode + ?Sized>(
     return (next, result, errors, None);
 }
 
+/// parses using the parser until the stop parser matches
+pub fn parse_until_strict<'a, T: IAstNode + ?Sized>(
+    input: &'a [Token],
+    stop_parser: impl Fn(&[Token]) -> Result<(&[Token], Token), GoldParserError>,
+    parser: impl Fn(&[Token]) -> Result<(&[Token], Box<T>), GoldParserError>,
+) -> Result<(
+    &'a [Token],
+    Vec<Box<T>>,
+    Option<Token>,
+), GoldParserError> {
+    let mut result: Vec<Box<T>> = Vec::new();
+    let mut next = input;
+    loop {
+        if next.len() == 0 {
+            break;
+        }
+        // check if it sees a delimiting token
+        next = match stop_parser(next) {
+            Ok((next, t)) => {
+                return Ok((next, result, Some(t)));
+            }
+            Err(_) => {
+                // parse statements and adds to current block
+                let (new_next, new_node) = parser(next)?;
+                result.push(new_node);
+                new_next
+            }
+        };
+    }
+    // end token not found
+    return Ok((next, result, None));
+}
+
 /// parses using the parser until it doesn't match
 pub fn parse_until_no_match<'a, T: IAstNode + ?Sized>(
     input: &'a [Token],
@@ -318,9 +359,7 @@ pub fn parse_until_no_match<'a, T: IAstNode + ?Sized>(
 
 pub fn parse_repeat<'a>(
     input: &'a [Token],
-    parser: impl Fn(
-        &[Token],
-    )
+    parser: impl Fn(&[Token],)
         -> Result<(&[Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>,
 ) -> (&'a [Token], Vec<Box<dyn IAstNode>>, Vec<GoldDocumentError>) {
     let mut result: Vec<Box<dyn IAstNode>> = Vec::new();

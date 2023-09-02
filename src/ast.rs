@@ -417,7 +417,7 @@ impl IRange for AstTypeSet {
 }
 impl IAstNode for AstTypeSet {
     fn get_type(&self) -> &'static str {
-        return "Type Reference"
+        return "Type Set"
     }
 
     fn get_raw_pos(&self) -> usize {
@@ -435,6 +435,11 @@ impl IAstNode for AstTypeSet {
     }
     fn get_identifier(&self) -> String {
         self.set_type.get_identifier()
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.set_type.as_ref());
+        return Some(result);
     }
     fn to_string_type(&self) -> String {
         "type_set".to_string()
@@ -1929,5 +1934,140 @@ impl IAstNode for AstSwitchBlock {
     }
     fn to_string_type(&self) -> String {
         "switch".to_string()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstTypeRecordField{
+    pub raw_pos: usize,
+    pub range: Range,
+    pub identifier : Token,
+    pub type_node: Box<dyn IAstNode>
+}
+impl IRange for AstTypeRecordField {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstTypeRecordField {
+    fn get_type(&self) -> &'static str {
+        "Type Record Field"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.type_node.as_ref());
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        self.identifier.get_value()
+    }
+    fn to_string_type(&self) -> String {
+        "type_record_field".to_string()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstTypeRecord{
+    pub raw_pos: usize,
+    pub range: Range,
+    pub fields : Vec<Box<dyn IAstNode>>
+}
+impl IRange for AstTypeRecord {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstTypeRecord {
+    fn get_type(&self) -> &'static str {
+        "Type Record"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        self.fields.iter().for_each(|field| {
+            result.push(field.as_ref());
+        });
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "type_record".to_string()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstTypePointer{
+    pub raw_pos: usize,
+    pub range: Range,
+    pub type_node : Box<dyn IAstNode>
+}
+impl IRange for AstTypePointer {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstTypePointer {
+    fn get_type(&self) -> &'static str {
+        "Type Pointer"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.type_node.as_ref());
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "type_pointer".to_string()
     }
 }
