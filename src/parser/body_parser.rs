@@ -38,7 +38,7 @@ fn parse_literal_set<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
     })))
 }
 
-fn parse_literal_basic<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+pub fn parse_literal_basic<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
     let (next, ident_token) = alt_parse(&[
         exp_token(TokenType::StringLiteral),
         exp_token(TokenType::NumericLiteral),
@@ -53,7 +53,7 @@ fn parse_literal_basic<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IA
     })))
 }
 
-fn parse_identifier<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+pub fn parse_identifier<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
     let (next, ident_token) = alt_parse(&[
         exp_token(TokenType::Identifier),
     ])(input)?;
@@ -1022,7 +1022,7 @@ pub fn parse_block<'a>(input :&'a[Token]) -> Result<(Vec<Box<dyn IAstNode>>, Vec
     return Ok((result, errors));
 }
 
-fn parse_binary_ops<'a>(
+pub fn parse_binary_ops<'a>(
     input: &'a[Token],
     op_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Token), GoldParserError>,
     expr_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), GoldParserError>,
@@ -1046,7 +1046,8 @@ fn parse_binary_op<'a>(
     input: &'a[Token],
     left_node: Box<dyn IAstNode>,
     op_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Token), GoldParserError>,
-    expr_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), GoldParserError>) -> Result<(&'a [Token], Box<dyn IAstNode>), Box<dyn IAstNode>>{
+    expr_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), GoldParserError>) 
+-> Result<(&'a [Token], Box<dyn IAstNode>), Box<dyn IAstNode>>{
 
     let (next, op_token) = match op_parser(input){
         Ok(r) => r,

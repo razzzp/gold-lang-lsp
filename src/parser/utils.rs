@@ -40,7 +40,7 @@ fn _parse_seperated_list_recursive<'a, 'b, T: IAstNode + ?Sized>(
         Err(e) => {
             return Err(GoldParserError {
                 input: e.input,
-                msg: String::from("Failed to parse uses list"),
+                msg: e.msg,
             })
         }
     };
@@ -80,7 +80,7 @@ fn _parse_seperated_list_token_recursive<'a, 'b>(
         Err(e) => {
             return Err(GoldParserError {
                 input: e.input,
-                msg: format!("Failed to parse token list: {}", e.msg),
+                msg: e.msg,
             })
         }
     };
@@ -102,13 +102,13 @@ pub fn exp_token(
             Some(t) => Err(GoldParserError {
                 input: input,
                 msg: String::from(format!(
-                    "Expected {:?}, found {:?}",
-                    token_type, t.token_type
+                    "Unexpected {:?} token found",
+                    t.token_type
                 )),
             }),
             None => Err(GoldParserError {
                 input: input,
-                msg: String::from(format!("Expected {:?}, found None", token_type)),
+                msg: String::from(format!("Unexpected EOF")),
             }),
         }
     }
@@ -213,7 +213,7 @@ pub fn seq_parse<T>(
                 Err(e) => {
                     return Err(GoldParserError {
                         input: e.input,
-                        msg: format!("failed to parse sequence: {}", e.msg),
+                        msg: e.msg,
                     })
                 }
             };
@@ -267,7 +267,7 @@ pub fn parse_until<'a, T: IAstNode + ?Sized>(
                         };
                         errors.push(GoldDocumentError {
                             range: error_at,
-                            msg: "unexpected token".to_string(),
+                            msg: e.msg,
                         });
                         let mut new_it = e.input.iter();
                         // if iterator has not been moved, move by one, to prevent
@@ -344,7 +344,7 @@ pub fn parse_repeat<'a>(
                 };
                 errors.push(GoldDocumentError {
                     range: error_at,
-                    msg: "unexpected token".to_string(),
+                    msg: e.msg,
                 });
                 let mut new_it = e.input.iter();
                 // if iterator has not been moved, move by one, to prevent

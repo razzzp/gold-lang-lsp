@@ -399,6 +399,50 @@ impl IAstNode for AstTypeReference {
 }
 
 #[derive(Debug)]
+pub struct AstTypeSet {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub set_type: Box<dyn IAstNode>,
+}
+impl IRange for AstTypeSet {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstTypeSet {
+    fn get_type(&self) -> &'static str {
+        return "Type Reference"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+
+    fn get_pos(&self) -> Position {
+        self.get_range().start.clone()
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        self.set_type.get_identifier()
+    }
+    fn to_string_type(&self) -> String {
+        "type_set".to_string()
+    }
+}
+
+
+#[derive(Debug)]
 pub struct AstTypeDeclaration {
     pub raw_pos: usize,
     pub pos: Position,
