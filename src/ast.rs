@@ -2071,3 +2071,98 @@ impl IAstNode for AstTypePointer {
         "type_pointer".to_string()
     }
 }
+
+#[derive(Debug)]
+pub struct AstTypeArray{
+    pub raw_pos: usize,
+    pub range: Range,
+    pub array_seq_token: Token,
+    pub index_nodes : Vec<Box<dyn IAstNode>>,
+    pub object_type : Box<dyn IAstNode>
+}
+impl IRange for AstTypeArray {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstTypeArray {
+    fn get_type(&self) -> &'static str {
+        "Type Array/Seq"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        self.index_nodes.iter().for_each(|node|{
+            result.push(node.as_ast_node());
+        });
+        result.push(self.object_type.as_ref());
+        return Some(result);
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_identifier(&self) -> String {
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "type_array".to_string()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstTypeRange{
+    pub raw_pos: usize,
+    pub range: Range,
+    pub from: Box<dyn IAstNode>,
+    pub to: Box<dyn IAstNode>,
+}
+impl IRange for AstTypeRange {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstTypeRange {
+    fn get_type(&self) -> &'static str {
+        "Type Range"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.from.as_ref());
+        result.push(self.to.as_ref());
+        return Some(result);
+    }
+    fn get_identifier(&self) -> String {
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "type_range".to_string()
+    }
+}

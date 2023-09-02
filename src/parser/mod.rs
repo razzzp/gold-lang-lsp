@@ -2,7 +2,7 @@
 use crate::lexer::tokens::{Token, TokenType};
 use crate::parser::body_parser::parse_identifier;
 use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange, create_new_range};
-use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstBinaryOp, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer};
+use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstBinaryOp, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
 
 use self::body_parser::{parse_statement_v2, parse_binary_ops, parse_literal_basic};
 use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, parse_separated_list, opt_token, parse_repeat, parse_until, parse_until_strict};
@@ -277,7 +277,8 @@ fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
       parse_type_range,
       parse_type_set,
       parse_type_record,
-      parse_type_pointer
+      parse_type_pointer,
+      parse_type_array
    ];
    let parse_result = alt_parse(&parsers)(input);
    return parse_result;
@@ -438,16 +439,14 @@ fn parse_type_range<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IA
    // e.g.: 
    //    1 to 10
    //    'a' to 'b'   
-   let (next, first_node) = parse_literal_basic(input)?;
-   let (next, to_token) = exp_token(TokenType::To)(next)?;
-   let (next, second_node) = parse_literal_basic(next)?;
-   return Ok((next, Box::new(AstBinaryOp{
-      raw_pos: first_node.get_raw_pos(),
-      pos: first_node.get_pos(),
-      range: create_new_range(first_node.get_range(), second_node.get_range()),
-      op_token: to_token,
-      left_node: first_node,
-      right_node: second_node,
+   let (next, from) = parse_literal_basic(input)?;
+   let (next, _to_token) = exp_token(TokenType::To)(next)?;
+   let (next, to) = parse_literal_basic(next)?;
+   return Ok((next, Box::new(AstTypeRange{
+      raw_pos: from.get_raw_pos(),
+      range: create_new_range(from.get_range(), to.get_range()),
+      from,
+      to,
    })));
 }
 
@@ -498,6 +497,51 @@ fn parse_type_pointer<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn 
       raw_pos: dot_token.get_raw_pos(),
       range: create_new_range(dot_token.get_range(), type_node.get_range()),
       type_node,
+   })))
+}
+
+fn parse_type_array_index<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+   // [
+   let (next, _o_bracket) = exp_token(TokenType::OSqrBracket)(input)?;
+   // index node
+   let (next, index_node) = alt_parse([
+      parse_type_basic,
+      parse_type_range
+   ].as_ref())(next)?;
+   // ]
+   let (next, _c_bracket) = exp_token(TokenType::CSqrBracket)(next)?;
+   return Ok((next, index_node));
+}
+
+fn parse_type_array<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+   // array/sequence
+   let (next, array_seq_token) = alt_parse([
+      exp_token(TokenType::Array),
+      exp_token(TokenType::Sequence),
+   ].as_ref())(input)?;
+
+   // index type
+   let mut index_nodes = Vec::new();
+   let (next, index_node) = parse_type_array_index(next)?;
+   index_nodes.push(index_node);
+
+   let (next, sec_index) = opt_parse(parse_type_array_index)(next)?;
+   match sec_index {
+      Some(node) => index_nodes.push(node),
+      _=> ()
+   };
+
+   // of
+   let (next, _of_token) = exp_token(TokenType::Of)(next)?;
+   // object type
+   let (next, object_type) = parse_type_basic(next)?;
+
+   return Ok((next, Box::new(AstTypeArray{
+      raw_pos: array_seq_token.get_raw_pos(),
+      range: create_new_range(array_seq_token.get_range(), object_type.get_range()),
+      array_seq_token: array_seq_token,
+      index_nodes,
+      object_type,
    })))
 }
 
@@ -971,7 +1015,7 @@ fn parse_method_body<'a>(input : &'a [Token]) -> Result<(&'a [Token], (Option<As
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range}, ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range}, ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange}};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type};
 
@@ -1516,7 +1560,7 @@ mod test {
       ]);
       let next = &input;
       let (_, (node, errors)) = parse_procedure_declaration(next).unwrap();
-      let downcasted = cast_and_unwrap::<AstProcedure>(&node);
+      let _downcasted = cast_and_unwrap::<AstProcedure>(&node);
       // check_node_pos_and_range(downcasted, &input);
       assert_eq!(errors.len(), 1);
    }
@@ -1533,11 +1577,10 @@ mod test {
       assert!(next.is_empty());
       check_node_pos_and_range(node.as_ref(), &input);
 
-      let downcasted = node.as_ref().as_any().downcast_ref::<AstBinaryOp>().unwrap();
+      let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeRange>().unwrap();
 
-      assert_eq!(downcasted.left_node.get_identifier(), "'a'");
-      assert_eq!(downcasted.op_token.get_value(), "to");
-      assert_eq!(downcasted.right_node.get_identifier(), "22");
+      assert_eq!(downcasted.from.get_identifier(), "'a'");
+      assert_eq!(downcasted.to.get_identifier(), "22");
    }
 
    #[test]
@@ -1593,5 +1636,29 @@ mod test {
       let downcasted = node.as_ref().as_any().downcast_ref::<AstTypePointer>().unwrap();
 
       assert_eq!(downcasted.type_node.get_identifier(), "SomeType");
+   }
+
+   #[test]
+   fn test_parse_type_array() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::Array, Some("array".to_string())),
+         (TokenType::OSqrBracket, Some("[".to_string())),
+         (TokenType::NumericLiteral, Some("1".to_string())),
+         (TokenType::To, Some("to".to_string())),
+         (TokenType::NumericLiteral, Some("10".to_string())),
+         (TokenType::CSqrBracket, Some("]".to_string())),
+         (TokenType::Of, Some("of".to_string())),
+         (TokenType::Identifier, Some("Type".to_string())),
+      ]);
+
+      let (next, node) = parse_type(&input).unwrap();
+      assert!(next.is_empty());
+      check_node_pos_and_range(node.as_ref(), &input);
+
+      let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeArray>().unwrap();
+
+      assert_eq!(downcasted.array_seq_token.get_value(), "array");
+      downcasted.index_nodes.first().unwrap().as_any().downcast_ref::<AstTypeRange>().unwrap();
+      assert_eq!(downcasted.object_type.get_identifier(), "Type");
    }
 }

@@ -26,11 +26,11 @@ type tDayComments : array [tDays] of String31
   ;( declaration of a string array in which the <index-declaration> is the enumerated type tDays)	
 type tWorkLoad : array [tWorkDays][tOpenedHours] of Int4 
   ;( declaration of an integer two dimensional array)
-type tSeqOfI : sequence [Unbounded] of Int4	
-type tSeq0to10: sequence [0 to 10] of Int4	
-type tSeqOfText: sequence [Unbounded] of Text	
-type tSeqOfSeqOfI: sequence [Unbounded] of tSeqOfI 	
-type tSeqOfCString: sequence [Unbounded] of Cstring31	
+type tSeqOfI : sequence [Unbounded] of Int4
+type tSeq0to10: sequence [0 to 10] of Int4
+type tSeqOfText: sequence [Unbounded] of Text
+type tSeqOfSeqOfI: sequence [Unbounded] of tSeqOfI
+type tSeqOfCString: sequence [Unbounded] of Cstring31
 type tSeqOfRecHouse: sequence [Unbounded] of tHouse 
 type tSeqOfObject: sequence [Unbounded] of aNamedObject
 

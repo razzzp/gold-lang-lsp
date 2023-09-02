@@ -375,6 +375,7 @@ impl GoldLexer{
             "MULTILANG" => self.create_token(pos, TokenType::MultiLang, Some(word)),
             "TRUE" => self.create_token(pos, TokenType::BooleanTrue, Some(word)),
             "FALSE" => self.create_token(pos, TokenType::BooleanFalse, Some(word)),
+            "SEQUENCE" => self.create_token(pos, TokenType::Sequence, Some(word)),
             _ =>self.create_token(pos, TokenType::Identifier, Some(word))
         }
     }
