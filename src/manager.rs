@@ -3,7 +3,7 @@ use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{GoldDocumentError, parse_gold}, lexer::GoldLexer, utils::IRange};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{GoldDocumentError, parse_gold}, lexer::GoldLexer, utils::IRange};
 
 
 // pub trait IDocument {

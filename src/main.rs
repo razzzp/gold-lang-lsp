@@ -18,7 +18,6 @@ use parser::GoldDocumentError;
 
 pub mod lexer;
 pub mod parser;
-pub mod ast;
 pub mod utils;
 pub mod manager;
 
@@ -293,8 +292,7 @@ mod test {
 
     use lsp_types::Url;
 
-    use crate::ast::AstClass;
-    use crate::ast::AstUses;
+    use crate::parser::ast::{AstClass, AstUses};
     use crate::convert_uri_to_file_path_str;
     use crate::lexer::GoldLexer;
     use crate::parser;

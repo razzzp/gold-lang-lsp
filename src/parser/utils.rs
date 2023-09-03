@@ -1,5 +1,5 @@
 use crate::{
-    ast::IAstNode,
+    parser::ast::IAstNode,
     lexer::tokens::{Token, TokenType},
     utils::{IRange, Position, Range},
 };

@@ -2,7 +2,7 @@ use std::{process::id, default};
 
 use nom::error;
 
-use crate::{lexer::tokens::{Token, TokenType}, ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
+use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
 
 use super::{GoldParserError, exp_token, utils::{prepend_msg_to_error, parse_until, parse_until_no_match}, alt_parse, parse_type_basic, parse_separated_list, GoldDocumentError, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_separated_list_token};
 
@@ -1072,7 +1072,7 @@ mod test{
 
     use std::ops::Deref;
 
-    use crate::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstSetLiteral, AstSwitchBlock};
+    use crate::parser::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstSetLiteral, AstSwitchBlock};
     use crate::parser::test::check_node_pos_and_range;
     use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range_from_irange, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};

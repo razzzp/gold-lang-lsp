@@ -2,13 +2,14 @@
 use crate::lexer::tokens::{Token, TokenType};
 use crate::parser::body_parser::parse_identifier;
 use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange, create_new_range};
-use crate::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstBinaryOp, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
+use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstBinaryOp, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
 
 use self::body_parser::{parse_statement_v2, parse_binary_ops, parse_literal_basic};
 use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, parse_separated_list, opt_token, parse_repeat, parse_until, parse_until_strict};
 
 pub mod utils;
 pub mod body_parser;
+pub mod  ast;
 
 #[derive(Debug, Clone)]
 pub struct GoldParserError<'a>{
@@ -1015,7 +1016,7 @@ fn parse_method_body<'a>(input : &'a [Token]) -> Result<(&'a [Token], (Option<As
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range}, ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range}, parser::ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange}};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type};
 

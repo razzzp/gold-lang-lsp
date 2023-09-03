@@ -1,4 +1,4 @@
-use crate::{ast::IAstNode, lexer::tokens::Token};
+use crate::{parser::ast::IAstNode, lexer::tokens::Token};
 use std::{fmt::Write, collections::LinkedList, ops::{DerefMut, Deref}};
 
 
@@ -187,7 +187,7 @@ pub fn bfs(ast_node: &dyn IAstNode) -> Vec<DynamicChild<dyn IAstNode>> {
 
 #[cfg(test)]
 pub mod test_utils{
-    use crate::ast::IAstNode;
+    use crate::parser::ast::IAstNode;
 
     pub fn cast_and_unwrap<'a, T: 'static>(node: &'a Box<dyn IAstNode>) -> &'a T{
         return node.as_ref().as_any().downcast_ref::<T>().unwrap();
