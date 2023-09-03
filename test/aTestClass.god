@@ -14,9 +14,10 @@ endFunc
 
 procedure testProcedure(firstParam: aType) protected override
     var localVar : aType
+    var var2 : int4
     ; some proc
     tetst(asd);
-    if (asd + b)
+    if (asd + a + var2)
         writeln(something)
     else
         asd = Something - another thing

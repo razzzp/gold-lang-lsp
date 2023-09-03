@@ -3,7 +3,7 @@ use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzer::{AnalyzerDiagnostic, ast_walker::AstWalker, IAstWalker, method_analyzer::MethodAnalyzer}};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzer::{AnalyzerDiagnostic, ast_walker::AstWalker, IAstWalker, analyzers::UnusedVarAnalyzer}};
 
 // pub trait IDocument {
 //     fn get_symbols(&self)-> Vec<&'static DocumentSymbol>;
@@ -216,7 +216,7 @@ impl GoldProjectManager{
     fn analyze_ast(&self, ast_nodes : &Vec<Box<dyn IAstNode>>) -> Vec<lsp_types::Diagnostic>{
         // let result = Vec::new();
         let mut analyzer = AstWalker::new();
-        analyzer.register_analyzer(Box::new(MethodAnalyzer::new()));
+        analyzer.register_analyzer(Box::new(UnusedVarAnalyzer::new()));
 
         return analyzer.analyze(ast_nodes);
     }

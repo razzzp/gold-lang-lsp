@@ -20,17 +20,18 @@ impl AstWalker{
         }
         match node.data.get_children_dynamic() {
             Some(children) =>{
-                children.into_iter().for_each(|dyn_child|{
+                for dyn_child in children{
                     self.visit(&dyn_child);
-                });
+                }   
             }
+            
             _=>()
         }
     }
 }
 
 impl IAstWalker for AstWalker{
-    fn analyze(&mut self, ast_nodes: &Vec<Box<dyn IAstNode>>) -> Vec<lsp_types::Diagnostic> {
+    fn analyze(& mut self, ast_nodes: & Vec<Box<dyn IAstNode>>) -> Vec<lsp_types::Diagnostic> {
         let dyn_nodes : Vec<_> = ast_nodes.iter().map(|node|{
             return DynamicChild{
                 data: node.as_ast_node(),
