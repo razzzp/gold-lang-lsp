@@ -106,7 +106,6 @@ impl GoldProjectManager{
 
     pub fn get_parsed_document(&mut self, uri: &Url) -> Result<Arc<GoldDocument>, GoldProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
-        // TODO check document still valid
         // check opened document
         if doc_info.lock().unwrap().get_opened_document().is_some() {
             return Ok(doc_info.lock().unwrap().get_opened_document().unwrap());
@@ -124,7 +123,6 @@ impl GoldProjectManager{
 
     pub fn notify_document_saved(&mut self, uri: &Url) -> Result<Arc<GoldDocument>, GoldProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
-        // TODO check document still valid
         let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
         doc_info.lock().unwrap().saved = Some(Arc::new(new_doc));
         doc_info.lock().unwrap().opened = None;
@@ -133,7 +131,6 @@ impl GoldProjectManager{
 
     pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String) -> Result<Arc<GoldDocument>, GoldProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
-        // TODO check document still valid
         let new_doc = self.parse_content(full_file_content)?;
         doc_info.lock().unwrap().opened = Some(Arc::new(new_doc));
         return Ok(doc_info.lock().unwrap().opened.as_ref().unwrap().clone());

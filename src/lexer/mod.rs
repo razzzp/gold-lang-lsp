@@ -48,8 +48,8 @@ impl GoldLexer{
         let mut next_char : Option<char> = None;
         while next_char.is_none() {
             next_char = match buf.peek() {
-                // if space discard and proceed
-                Some((_ , ' ' )) => {buf.next(); None},
+                // if space or tab discard and proceed
+                Some((_ , ' ' | '\t')) => {buf.next(); None},
                 Some((pos , '\n')) => {
                     // push newline pos to list
                     self.line_pos.push(*pos);
@@ -57,8 +57,7 @@ impl GoldLexer{
                     None
                 },
                 Some((_ , '\r')) => {
-                    // push newline pos to list
-                    
+                    // skip \r
                     buf.next();
                     // check next char \n, if it is discard that too
                     match buf.peek() {

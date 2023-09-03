@@ -1,11 +1,11 @@
 use crate::{parser::ast::IAstNode, lexer::tokens::Token};
-use std::{fmt::Write, collections::LinkedList, ops::{DerefMut, Deref}};
+use std::{fmt::Write, collections::LinkedList, ops::Deref};
 
 
 pub trait IRange {
     fn get_range(&self) -> Range;
     fn set_range(&mut self, new_range: Range){//TODO:implem for all classes
-        todo!()
+        ()
     }
     fn as_range(&self) -> &dyn IRange;
 }
@@ -108,26 +108,26 @@ pub fn create_new_range_from_token_slices(first_slice: &[Token], second_slice: &
 //     }
 // }
 
-pub fn print_ast_brief(ast_node: &dyn IAstNode) -> String{
+pub fn ast_to_string_brief(ast_node: &dyn IAstNode) -> String{
     return format!("[{}:{}]", ast_node.get_type(), ast_node.get_identifier())
 }
 
-pub fn print_ast_brief_recursive(ast_node: &dyn IAstNode) -> String{
+pub fn ast_to_string_brief_recursive(ast_node: &dyn IAstNode) -> String{
     let mut result = String::new();
-    _print_ast_brief(&mut result, ast_node, 0);
+    _write_ast_brief(&mut result, ast_node, 0);
     return result;
 }
 
-fn _print_ast_brief(result: &mut String, ast_node: &dyn IAstNode, indent_level: usize){
-    for x in (0..indent_level){
-        write!(result, "  ");
+fn _write_ast_brief(result: &mut String, ast_node: &dyn IAstNode, indent_level: usize){
+    for _ in 0..indent_level{
+        write!(result, "  ").unwrap();
     }
-    writeln!(result, "[{}:{}]", ast_node.get_type(), ast_node.get_identifier());
+    writeln!(result, "[{}:{}]", ast_node.get_type(), ast_node.get_identifier()).unwrap();
     let children = ast_node.get_children();
     match children {
         Some(children) =>{
             for child in children {
-                _print_ast_brief(result, child, indent_level+1)
+                _write_ast_brief(result, child, indent_level+1)
             }
         },
         None => return

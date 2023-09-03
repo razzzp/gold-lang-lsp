@@ -1,10 +1,7 @@
-use std::{process::id, default};
 
-use nom::error;
+use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range}, parser::take_until};
 
-use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, create_new_range_from_token_slices}, parser::take_until};
-
-use super::{GoldParserError, exp_token, utils::{prepend_msg_to_error, parse_until, parse_until_no_match}, alt_parse, parse_type_basic, parse_separated_list, GoldDocumentError, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_separated_list_token};
+use super::{GoldParserError, exp_token, utils::{parse_until, parse_until_no_match}, alt_parse, parse_type_basic, parse_separated_list, GoldDocumentError, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses};
 
 /// expr = ident
 ///     | bin_op
@@ -15,10 +12,13 @@ use super::{GoldParserError, exp_token, utils::{prepend_msg_to_error, parse_unti
 /// bin_op = bin_op + expr
 /// bin_op = 
 /// 
+
+#[allow(unused)]
 struct BlockParser<'a> {
     errors: Vec<GoldParserError<'a>>
 } 
 
+#[allow(unused)]
 impl<'a> BlockParser<'a> {
     pub fn new(input : &'a [Token]) -> BlockParser<'a>{
         BlockParser{
@@ -123,9 +123,9 @@ fn parse_dot_ops<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode
 
 fn parse_bracket_closure<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
     // should we make a separate node for this?
-    let (next, obracket_token) = exp_token(TokenType::OBracket)(input)?;
-    let (next, mut expr_node) = parse_expr(next)?;
-    let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
+    let (next, _obracket_token) = exp_token(TokenType::OBracket)(input)?;
+    let (next, expr_node) = parse_expr(next)?;
+    let (next, _cbracket_token) = exp_token(TokenType::CBracket)(next)?;
     // TODO need to fix other pos also
     // expr_node.set_range(create_new_range_from_irange(obracket_token.as_range(), cbracket_token.as_range()));
     return Ok((next,expr_node))
@@ -306,6 +306,7 @@ fn parse_assignment<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstN
 }
 
 #[deprecated]
+#[allow(deprecated, unused)]
 fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode + 'static>, Vec<GoldParserError>)), GoldParserError>{
     let (next, if_token) = exp_token(TokenType::If)(input)?;
     
@@ -398,6 +399,7 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
 }
 
 #[deprecated]
+#[allow(deprecated, unused)]
 fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
     let (next, if_token) = exp_token(TokenType::If)(input)?;
     
@@ -607,7 +609,7 @@ fn parse_separated_values<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn
         parse_identifier
     ].as_ref());
     let (next, set_items) = parse_separated_list(input, parser, TokenType::Comma)?;
-    // TODO should we make seperate struct for this?
+    // TODO should we make seperate struct for this? for now reuse set literal
     let start; let end;
     if set_items.first().is_some() {
         start = set_items.first().unwrap().get_range();
@@ -649,7 +651,7 @@ fn parse_when_block<'a>(input: &'a[Token]) -> Result<(&'a[Token], Box<AstWhenBlo
 fn parse_switch_else_block<'a>(input: &'a[Token]) -> Result<(&'a[Token], Option<Box<AstWhenBlock>>, Option<Vec<GoldDocumentError>>, Option<Token>), GoldParserError>{
     let (next, else_tok) = match exp_token(TokenType::Else)(input){
         Ok((n, tok)) => (n, tok),
-        Err(e) => {
+        Err(_e) => {
             // check end tok
             let (next, end_tok) = opt_parse(exp_token(TokenType::EndSwitch))(input)?;
             return Ok((next, None, None, end_tok)) 
@@ -713,7 +715,7 @@ fn parse_switch_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IA
 fn parse_for_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
     let (next, for_token) = exp_token(TokenType::For)(input)?;
     let (next, var_token) = exp_token(TokenType::Identifier)(next)?;
-    let (next, eq_token) = exp_token(TokenType::Equals)(next)?;
+    let (next, _eq_token) = exp_token(TokenType::Equals)(next)?;
 
     let range_op_tokens = [exp_token(TokenType::To), exp_token(TokenType::DownTo)];
     let range_op_parsers = alt_parse(&range_op_tokens);
@@ -853,6 +855,7 @@ fn update_cond_block_range(cond_block: &mut AstConditionalBlock){
 }
 
 #[deprecated]
+#[allow(deprecated, unused)]
 fn parse_statement<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
     // try match block statements first
     let last_error;
@@ -996,6 +999,7 @@ pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dy
 }
 
 #[deprecated]
+#[allow(deprecated, unused)]
 pub fn parse_block<'a>(input :&'a[Token]) -> Result<(Vec<Box<dyn IAstNode>>, Vec<GoldParserError>), GoldParserError>{
     let mut result = Vec::<Box<dyn IAstNode>>::new();
     let mut errors = Vec::<GoldParserError>::new();
@@ -1051,11 +1055,11 @@ fn parse_binary_op<'a>(
 
     let (next, op_token) = match op_parser(input){
         Ok(r) => r,
-        Err(e) => return Err(left_node)
+        Err(_e) => return Err(left_node)
     };
     let (next, right_node) = match expr_parser(next){
         Ok(r) => r,
-        Err(e) => return Err(left_node)
+        Err(_e) => return Err(left_node)
     };
     return Ok((next, Box::new(AstBinaryOp{
         raw_pos: left_node.get_raw_pos(),
@@ -1070,13 +1074,11 @@ fn parse_binary_op<'a>(
 #[cfg(test)]
 mod test{
 
-    use std::ops::Deref;
-
     use crate::parser::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstSetLiteral, AstSwitchBlock};
     use crate::parser::test::check_node_pos_and_range;
-    use crate::utils::{print_ast_brief_recursive, inorder, print_ast_brief, dfs, IRange, create_new_range_from_irange, bfs};
+    use crate::utils::{ast_to_string_brief_recursive, ast_to_string_brief, dfs, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block, parse_if_block_v2, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block, parse_loop_block, parse_local_var_decl, parse_literal_set, parse_switch_block};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block, parse_loop_block, parse_local_var_decl, parse_literal_set, parse_switch_block};
 
 
     #[test]
@@ -1411,7 +1413,7 @@ mod test{
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
-        dfs.iter().for_each(|n| {println!("{}",print_ast_brief(n.as_ast_node()))});
+        dfs.iter().for_each(|n| {println!("{}",ast_to_string_brief(n.as_ast_node()))});
         // 
         assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
         assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(4).unwrap().get_value());
@@ -1599,7 +1601,7 @@ mod test{
             
         ]);
         let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
-        println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+        println!("{}", ast_to_string_brief_recursive(node.as_ast_node()));
         
         assert_eq!(next.len(), 0);
         assert_eq!(errors.len(), 0);

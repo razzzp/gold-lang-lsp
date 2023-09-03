@@ -297,7 +297,7 @@ mod test {
     use crate::lexer::GoldLexer;
     use crate::parser;
     use crate::parser::parse_gold;
-    use crate::utils::print_ast_brief_recursive;
+    use crate::utils::ast_to_string_brief_recursive;
 
     #[test]
     fn test_class_everything(){
@@ -352,7 +352,7 @@ endfunc
         assert_eq!(uses_ident.value.as_ref().unwrap().as_str(), "aSecondClass");
 
         for node in nodes{
-            println!("{}", print_ast_brief_recursive(node.as_ast_node()));
+            println!("{}", ast_to_string_brief_recursive(node.as_ast_node()));
         }  
     }
 
@@ -371,7 +371,7 @@ endfunc
         let ast = parse_gold(&tokens);
         // println!("{:#?}", ast.0.0);
         for node in ast.0.1{
-            println!("{}",print_ast_brief_recursive(node.as_ref()));
+            println!("{}",ast_to_string_brief_recursive(node.as_ref()));
         }
         // println!("{:#?}", ast.1.len());
     }

@@ -1,9 +1,12 @@
 
+use std::f32::consts::E;
+
 use crate::lexer::tokens::{Token, TokenType};
 use crate::parser::body_parser::parse_identifier;
 use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange, create_new_range};
 use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstBinaryOp, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
 
+use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf};
 use self::body_parser::{parse_statement_v2, parse_binary_ops, parse_literal_basic};
 use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, parse_separated_list, opt_token, parse_repeat, parse_until, parse_until_strict};
 
@@ -270,7 +273,7 @@ fn parse_type_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<
 }
 
 fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
-   // TODO record types
+   //
    let parsers = [
       parse_type_composed,
       parse_type_basic,
@@ -279,7 +282,10 @@ fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
       parse_type_set,
       parse_type_record,
       parse_type_pointer,
-      parse_type_array
+      parse_type_array,
+      parse_type_procedure,
+      parse_type_function,
+      parse_type_instanceof
    ];
    let parse_result = alt_parse(&parsers)(input);
    return parse_result;
@@ -543,6 +549,51 @@ fn parse_type_array<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IA
       array_seq_token: array_seq_token,
       index_nodes,
       object_type,
+   })))
+}
+
+fn parse_type_procedure<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+   // parse proc [ident]
+   let (next, proc_token) = exp_token(TokenType::Proc)(input)?;
+   let mut end = proc_token.get_range();
+   // parse params
+   let (next, param_nodes) = match parse_parameter_declaration_list(next){
+      Ok(r) => r,
+      Err(e) => return Err(prepend_msg_to_error("failed to parse proc type: ", e))
+   };
+   end = if param_nodes.is_some() {param_nodes.as_ref().unwrap().get_range()} else {end};
+   return Ok((next, Box::new(AstTypeProcedure{
+      raw_pos: proc_token.get_raw_pos(),
+      range: create_new_range(proc_token.get_range(), end),
+      parameter_list: param_nodes
+   })))
+}
+
+fn parse_type_function<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+   // parse proc [ident]
+   let (next, func_token) = exp_token(TokenType::Func)(input)?;
+   // parse params
+   let (next, param_nodes) = parse_parameter_declaration_list(next)?;
+   // return
+   let (next, _ret_tok) = exp_token(TokenType::Return)(next)?;
+   // return type
+   let (next, return_type) = parse_type_basic(next)?;
+
+   return Ok((next, Box::new(AstTypeFunction{
+      raw_pos: func_token.get_raw_pos(),
+      range: create_new_range(func_token.get_range(), return_type.get_range()),
+      parameter_list: param_nodes,
+      return_type,
+   })))
+}
+
+fn parse_type_instanceof<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+   let (next, instof_tok) = exp_token(TokenType::InstanceOf)(input)?;
+   let (next, inst_type) = parse_type_basic(next)?;
+   return Ok((next, Box::new(AstTypeInstanceOf{
+      raw_pos: instof_tok.get_raw_pos(),
+      range: create_new_range(instof_tok.get_range(), inst_type.get_range()),
+      instance_type: inst_type
    })))
 }
 
@@ -941,6 +992,7 @@ fn parse_method_modifiers<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Opti
 } 
 
 #[deprecated]
+#[allow(unused)]
 /// parsers all modifiers, whether it is valid will be done in sematic analysis
 fn parse_method_modifiers_<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Option<AstMethodModifiers>), GoldParserError<'a>>{
    // private
@@ -1016,7 +1068,7 @@ fn parse_method_body<'a>(input : &'a [Token]) -> Result<(&'a [Token], (Option<As
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range}, parser::ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, AstParameterDeclarationList, AstMethodModifiers, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf}, utils::{ast_to_string_brief, ast_to_string_brief_recursive}};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type};
 
@@ -1662,4 +1714,72 @@ mod test {
       downcasted.index_nodes.first().unwrap().as_any().downcast_ref::<AstTypeRange>().unwrap();
       assert_eq!(downcasted.object_type.get_identifier(), "Type");
    }
+
+   #[test]
+   fn test_parse_type_proc() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::Proc, Some("procedure".to_string())),
+         (TokenType::OBracket, Some("(".to_string())),
+         (TokenType::Identifier, Some("Param1".to_string())),
+         (TokenType::Colon, Some(":".to_string())),
+         (TokenType::Identifier, Some("Type".to_string())),
+         (TokenType::Comma, Some(",".to_string())),
+         (TokenType::Identifier, Some("Param1".to_string())),
+         (TokenType::Colon, Some(":".to_string())),
+         (TokenType::Int4, Some("Int4".to_string())),
+         (TokenType::CBracket, Some(")".to_string())),
+      ]);
+
+      let (next, node) = parse_type(&input).unwrap();
+      assert!(next.is_empty());
+      check_node_pos_and_range(node.as_ref(), &input);
+
+      let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeProcedure>().unwrap();
+
+      assert!(downcasted.parameter_list.is_some());
+      assert_eq!(downcasted.parameter_list.as_ref().unwrap().get_children().unwrap().len(), 2);
+   }
+
+   #[test]
+   fn test_parse_type_func() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::Func, Some("func".to_string())),
+         (TokenType::OBracket, Some("(".to_string())),
+         (TokenType::Identifier, Some("Param1".to_string())),
+         (TokenType::Comma, Some(",".to_string())),
+         (TokenType::Identifier, Some("Param1".to_string())),
+         (TokenType::Colon, Some(":".to_string())),
+         (TokenType::Int4, Some("Int4".to_string())),
+         (TokenType::CBracket, Some(")".to_string())),
+         (TokenType::Return, Some("return".to_string())),
+         (TokenType::Identifier, Some("Type".to_string())),
+      ]);
+
+      let (next, node) = parse_type(&input).unwrap();
+      assert!(next.is_empty());
+      check_node_pos_and_range(node.as_ref(), &input);
+
+      let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeFunction>().unwrap();
+
+      assert!(downcasted.parameter_list.is_some());
+      assert_eq!(downcasted.parameter_list.as_ref().unwrap().get_children().unwrap().len(), 2);
+      print!("{}",ast_to_string_brief_recursive(downcasted));
+   }
+
+   #[test]
+   fn test_parse_type_instanceof() {
+      let input = gen_list_of_tokens(&[
+         (TokenType::InstanceOf, Some("instanceof".to_string())),
+         (TokenType::Identifier, Some("SomeType".to_string())),
+      ]);
+
+      let (next, node) = parse_type(&input).unwrap();
+      assert!(next.is_empty());
+      check_node_pos_and_range(node.as_ref(), &input);
+
+      let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeInstanceOf>().unwrap();
+
+      assert_eq!(downcasted.instance_type.get_identifier(), "SomeType");
+   }
+
 }

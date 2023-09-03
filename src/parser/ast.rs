@@ -52,8 +52,8 @@ impl IRange for AstTerminal {
     fn get_range(&self) -> Range {
         self.token.range.clone()
     }
-    fn set_range(&mut self, new_range: Range) {
-        // hmm what TODO 
+    fn set_range(&mut self, _new_range: Range) {
+        // TODO hmm what todo here?
         ()
     }
     fn as_range(&self) -> &dyn IRange {
@@ -778,7 +778,7 @@ impl IAstNode for AstParameterDeclarationList {
         self
     }
     fn get_identifier(&self) -> String {
-        self.pos.to_string()
+        self.to_string_type_pos()
     }
     fn to_string_type(&self) -> String {
         "param_decls".to_string()
@@ -807,7 +807,7 @@ impl IRange for AstParameterDeclaration {
 }
 impl IAstNode for AstParameterDeclaration {
     fn get_type(&self) -> &'static str {
-        "Procedure"
+        "Param Declaration"
     }
 
     fn get_raw_pos(&self) -> usize {
@@ -2164,5 +2164,139 @@ impl IAstNode for AstTypeRange {
     }
     fn to_string_type(&self) -> String {
         "type_range".to_string()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstTypeProcedure {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub parameter_list: Option<AstParameterDeclarationList>,
+}
+impl IRange for AstTypeProcedure {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstTypeProcedure {
+    fn get_type(&self) -> &'static str {
+        "Type Procedure"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
+        return Some(result);
+    }
+    fn get_identifier(&self) -> String {
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "type_proc".to_string()
+    }
+}
+
+
+#[derive(Debug)]
+pub struct AstTypeFunction {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub parameter_list: Option<AstParameterDeclarationList>,
+    pub return_type: Box<dyn IAstNode>
+}
+impl IRange for AstTypeFunction {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstTypeFunction {
+    fn get_type(&self) -> &'static str {
+        "Type Function"
+    }
+
+    fn get_raw_pos(&self) -> usize {
+        self.raw_pos
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
+        result.push(self.return_type.as_ast_node());
+        return Some(result);
+    }
+    fn get_identifier(&self) -> String {
+        self.to_string_type_pos()
+    }
+    fn to_string_type(&self) -> String {
+        "type_func".to_string()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstTypeInstanceOf {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub instance_type: Box<dyn IAstNode>,
+}
+impl IRange for AstTypeInstanceOf {
+    fn get_range(&self) -> Range {
+        self.range.clone()
+    }
+    fn set_range(&mut self, new_range: Range) {
+        self.range=new_range
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstTypeInstanceOf {
+    fn get_type(&self) -> &'static str {
+        return "Type InstanceOf";
+    }
+    fn get_identifier(&self) -> String {
+        return self.instance_type.get_identifier()
+    }
+    fn get_raw_pos(&self) -> usize {
+        return self.raw_pos;
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.instance_type.as_ast_node());
+        return Some(result);
+    }
+    fn to_string_type(&self) -> String {
+        "type_instanceof".to_string()
     }
 }

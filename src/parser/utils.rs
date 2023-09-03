@@ -1,7 +1,7 @@
 use crate::{
     parser::ast::IAstNode,
     lexer::tokens::{Token, TokenType},
-    utils::{IRange, Position, Range},
+    utils::IRange,
 };
 
 use super::{GoldParserError, GoldDocumentError};
@@ -347,7 +347,7 @@ pub fn parse_until_no_match<'a, T: IAstNode + ?Sized>(
                 errors.extend(errs.into_iter());
                 next
             }
-            Err(e) => {
+            Err(_e) => {
                 // not matching anymore, return
                 return (next, result, errors);
             }
