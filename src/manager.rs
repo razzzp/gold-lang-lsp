@@ -1,27 +1,40 @@
-use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc::Rc, alloc::GlobalAlloc, sync::{Arc, Mutex}};
+use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc::Rc, alloc::GlobalAlloc, sync::{Arc, Mutex}, cell::RefCell, panic::resume_unwind};
 
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{GoldDocumentError, parse_gold}, lexer::GoldLexer, utils::IRange};
-
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzer::{AnalyzerDiagnostic, ast_walker::AstWalker, IAstWalker, method_analyzer::MethodAnalyzer}};
 
 // pub trait IDocument {
 //     fn get_symbols(&self)-> Vec<&'static DocumentSymbol>;
 // }
 #[derive(Debug)]
+#[derive(Default)]
 pub struct GoldDocument{
-    symbols: Vec<DocumentSymbol>,
     ast_nodes: Vec<Box<dyn IAstNode>>,
-    errors: Vec<GoldDocumentError>,
-    diagnostic_report: RelatedFullDocumentDiagnosticReport
+    parser_diagnostics: Vec<ParserDiagnostic>,
+    symbols: Option<Rc<Vec<DocumentSymbol>>>,
+    analyzer_diagnostics: Option<Rc<Vec<lsp_types::Diagnostic>>>,
+    diagnostic_report: Option<Rc<RelatedFullDocumentDiagnosticReport>>
 }
 impl GoldDocument{
-    pub fn get_symbols(&self)-> Vec<DocumentSymbol>{
-        self.symbols.iter().map(|s| s.clone()).collect()
+    pub fn get_symbols(&self)-> Option<Rc<Vec<DocumentSymbol>>>{
+        match &self.symbols {
+            Some(syms) => return Some(syms.clone()),
+            _=> None
+        }
     }
-    pub fn get_diagnostic_report(&self)-> RelatedFullDocumentDiagnosticReport{
-        self.diagnostic_report.clone()
+    pub fn get_analyzer_diagnostics(&self)-> Option<Rc<Vec<lsp_types::Diagnostic>>>{
+        match &self.analyzer_diagnostics {
+            Some(syms) => return Some(syms.clone()),
+            _=> None
+        }
+    }
+    pub fn get_diagnostic_report(&self)-> Option<Rc<RelatedFullDocumentDiagnosticReport>>{
+        match &self.diagnostic_report {
+            Some(diag_report) => Some(diag_report.clone()),
+            _=> None
+        }
     }
 }
 
@@ -29,11 +42,12 @@ impl GoldDocument{
 pub struct GoldDocumentInfo{
     uri: String,
     file_path: String,
-    saved: Option<Arc<GoldDocument>>, 
-    opened: Option<Arc<GoldDocument>>
+    saved: Option<Rc<RefCell<GoldDocument>>>,
+    opened: Option<Rc<RefCell<GoldDocument>>>
 }
+
 impl GoldDocumentInfo{
-    pub fn get_saved_document(&self) -> Option<Arc<GoldDocument>> {
+    pub fn get_saved_document(&self) -> Option<Rc<RefCell<GoldDocument>>> {
         if let Some(doc) = &self.saved {
             return Some(doc.clone())
         } else {
@@ -41,7 +55,7 @@ impl GoldDocumentInfo{
         }
     }
 
-    pub fn get_opened_document(&self) -> Option<Arc<GoldDocument>> {
+    pub fn get_opened_document(&self) -> Option<Rc<RefCell<GoldDocument>>> {
         if let Some(doc) = &self.opened {
             return Some(doc.clone())
         } else {
@@ -104,7 +118,7 @@ impl GoldProjectManager{
         }
     }
 
-    pub fn get_parsed_document(&mut self, uri: &Url) -> Result<Arc<GoldDocument>, GoldProjectManagerError>{
+    pub fn get_parsed_document(&mut self, uri: &Url) -> Result<Rc<RefCell<GoldDocument>>, GoldProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         // check opened document
         if doc_info.lock().unwrap().get_opened_document().is_some() {
@@ -116,23 +130,41 @@ impl GoldProjectManager{
         } else {
             // if none, read from file
             let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
-            doc_info.lock().unwrap().saved = Some(Arc::new(new_doc));
+            doc_info.lock().unwrap().saved = Some(Rc::new(RefCell::new(new_doc)));
             return Ok(doc_info.lock().unwrap().get_saved_document().unwrap());
         }
     }
 
-    pub fn notify_document_saved(&mut self, uri: &Url) -> Result<Arc<GoldDocument>, GoldProjectManagerError>{
+    pub fn get_document_symbols(&mut self, doc: Rc<RefCell<GoldDocument>>)-> Rc<Vec<DocumentSymbol>>{
+        let syms = doc.borrow().get_symbols();
+        if syms.is_some() {
+            return syms.unwrap();
+        } else {
+            return self.generate_document_symbols(doc).unwrap();
+        }
+    }
+
+    pub fn get_diagnostic_report(&mut self, doc: Rc<RefCell<GoldDocument>>) -> Rc<RelatedFullDocumentDiagnosticReport>{
+        let diag_report = doc.borrow().get_diagnostic_report();
+        if diag_report.is_some(){
+            return diag_report.unwrap();
+        } else {
+            return self.generate_document_diagnostic_report(doc).unwrap();
+        }
+    }
+
+    pub fn notify_document_saved(&mut self, uri: &Url) -> Result<Rc<RefCell<GoldDocument>>, GoldProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
-        doc_info.lock().unwrap().saved = Some(Arc::new(new_doc));
+        doc_info.lock().unwrap().saved = Some(Rc::new(RefCell::new(new_doc)));
         doc_info.lock().unwrap().opened = None;
         return Ok(doc_info.lock().unwrap().saved.as_ref().unwrap().clone());
     }
 
-    pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String) -> Result<Arc<GoldDocument>, GoldProjectManagerError>{
+    pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String) -> Result<Rc<RefCell<GoldDocument>>, GoldProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_content(full_file_content)?;
-        doc_info.lock().unwrap().opened = Some(Arc::new(new_doc));
+        doc_info.lock().unwrap().opened = Some(Rc::new(RefCell::new(new_doc)));
         return Ok(doc_info.lock().unwrap().opened.as_ref().unwrap().clone());
     }
 
@@ -158,26 +190,41 @@ impl GoldProjectManager{
         let mut lexer = GoldLexer::new();
         let (tokens, lexer_errors) = lexer.lex(&full_file_content);
         // parse
-        let (ast_nodes, mut doc_errors) = parse_gold(&tokens);
+        let (ast_nodes, mut parser_diagnostics) = parse_gold(&tokens);
         // add lexer errors
-        doc_errors.extend(lexer_errors.into_iter().map(|l_error|{
-            GoldDocumentError { range: l_error.range, msg: l_error.msg }
+        parser_diagnostics.extend(lexer_errors.into_iter().map(|l_error|{
+            ParserDiagnostic { range: l_error.range, msg: l_error.msg }
         }));
-        let symbols = self.generate_document_symbols(ast_nodes.1.as_ref())?;
-        let diagnostic_report = self.generate_document_diagnostic_report(&doc_errors)?;
-
         return Ok(GoldDocument { 
-            symbols: symbols, 
-            ast_nodes: ast_nodes.1, 
-            errors: doc_errors,
-            diagnostic_report
+            ast_nodes: ast_nodes.1,
+            parser_diagnostics,
+            ..Default::default()
         })
     }
 
-    fn generate_document_symbols(&self, ast_nodes: &Vec<Box<dyn IAstNode>>) -> Result<Vec<DocumentSymbol>, GoldProjectManagerError>{
-        let mut result = Vec::<DocumentSymbol, >::new();
-        let mut class_symbol = self.find_and_generate_class_symbol(ast_nodes);
-        for node in ast_nodes {
+    fn get_analyzer_diagnostics(&self, doc : Rc<RefCell<GoldDocument>>) -> Result<Rc<Vec<lsp_types::Diagnostic>>, GoldProjectManagerError>{
+        let diags = doc.borrow().get_analyzer_diagnostics();
+        if diags.is_some(){
+            return Ok(diags.unwrap());
+        } else {
+            let diags = self.analyze_ast(&doc.borrow().ast_nodes);
+            doc.borrow_mut().analyzer_diagnostics = Some(Rc::new(diags));
+            return Ok(doc.borrow().analyzer_diagnostics.as_ref().unwrap().clone());
+        }
+    }
+
+    fn analyze_ast(&self, ast_nodes : &Vec<Box<dyn IAstNode>>) -> Vec<lsp_types::Diagnostic>{
+        // let result = Vec::new();
+        let mut analyzer = AstWalker::new();
+        analyzer.register_analyzer(Box::new(MethodAnalyzer::new()));
+
+        return analyzer.analyze(ast_nodes);
+    }
+
+    fn generate_document_symbols(&self, doc: Rc<RefCell<GoldDocument>>) -> Result<Rc<Vec<DocumentSymbol>>, GoldProjectManagerError>{
+        let mut result = Vec::<DocumentSymbol>::new();
+        let mut class_symbol = self.find_and_generate_class_symbol(&doc.borrow().ast_nodes);
+        for node in &doc.borrow().ast_nodes {
             let symbol = self.generate_symbol_for_node(node.as_ref());
             if symbol.is_some(){
                 match &mut class_symbol {
@@ -187,23 +234,24 @@ impl GoldProjectManager{
             }
         }
         if class_symbol.is_some(){result.push(class_symbol.unwrap())}
-        return Ok(result);
+        doc.borrow_mut().symbols = Some(Rc::new(result));
+        return Ok(doc.borrow().symbols.as_ref().unwrap().clone());
     }
 
-    fn generate_document_diagnostic_report(&self, gold_doc_errors: &Vec<GoldDocumentError>)
-    -> Result<RelatedFullDocumentDiagnosticReport, GoldProjectManagerError>{
-        let diagnostics = self.generate_diagnostics(gold_doc_errors);
-        return Ok(RelatedFullDocumentDiagnosticReport{
+    fn generate_document_diagnostic_report(&self, doc: Rc<RefCell<GoldDocument>>)
+    -> Result<Rc<RelatedFullDocumentDiagnosticReport>, GoldProjectManagerError>{
+        let mut diagnostics = self.get_diagnostics(doc)?;
+        return Ok(Rc::new(RelatedFullDocumentDiagnosticReport{
             related_documents: None,
             full_document_diagnostic_report: FullDocumentDiagnosticReport{
                 result_id: None,
                 items: diagnostics,
             },
-        })
+        }))
     }
 
-    fn generate_diagnostics(&self, gold_doc_errors: &Vec<GoldDocumentError>) -> Vec<Diagnostic>{
-        gold_doc_errors.iter()
+    fn get_diagnostics(&self, doc: Rc<RefCell<GoldDocument>>) -> Result<Vec<Diagnostic>, GoldProjectManagerError>{
+        let mut result: Vec<Diagnostic> = doc.borrow().parser_diagnostics.iter()
             .map(|gold_error| {
                 Diagnostic::new(
                     gold_error.get_range().as_lsp_type_range(),
@@ -213,7 +261,10 @@ impl GoldProjectManager{
                     gold_error.get_msg(), 
                     None, 
                     None)
-            }).collect()
+            }).collect();
+        let analyzer_diags = self.get_analyzer_diagnostics(doc)?;
+        analyzer_diags.iter().for_each(|d|{result.push(d.clone())});
+        return Ok(result);
     }
 
     fn generate_symbol_for_node(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{

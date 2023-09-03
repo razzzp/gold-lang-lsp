@@ -1,7 +1,7 @@
 
 use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range}, parser::take_until};
 
-use super::{GoldParserError, exp_token, utils::{parse_until, parse_until_no_match}, alt_parse, parse_type_basic, parse_separated_list, GoldDocumentError, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses};
+use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses};
 
 /// expr = ident
 ///     | bin_op
@@ -15,7 +15,7 @@ use super::{GoldParserError, exp_token, utils::{parse_until, parse_until_no_matc
 
 #[allow(unused)]
 struct BlockParser<'a> {
-    errors: Vec<GoldParserError<'a>>
+    errors: Vec<ParseError<'a>>
 } 
 
 #[allow(unused)]
@@ -27,7 +27,7 @@ impl<'a> BlockParser<'a> {
     }
 }
 
-fn parse_literal_set<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+fn parse_literal_set<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
     let (next, obracket_token) = exp_token(TokenType::OSqrBracket)(input)?;
     let (next, set_items) = parse_separated_list(next, parse_primary, TokenType::Comma)?;
     let (next, cbracket_token) = exp_token(TokenType::CSqrBracket)(next)?;
@@ -38,7 +38,7 @@ fn parse_literal_set<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
     })))
 }
 
-pub fn parse_literal_basic<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+pub fn parse_literal_basic<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
     let (next, ident_token) = alt_parse(&[
         exp_token(TokenType::StringLiteral),
         exp_token(TokenType::NumericLiteral),
@@ -53,7 +53,7 @@ pub fn parse_literal_basic<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dy
     })))
 }
 
-pub fn parse_identifier<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+pub fn parse_identifier<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
     let (next, ident_token) = alt_parse(&[
         exp_token(TokenType::Identifier),
     ])(input)?;
@@ -62,14 +62,14 @@ pub fn parse_identifier<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn I
     })))
 }
 
-fn parse_literals<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+fn parse_literals<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
     return alt_parse([
         parse_literal_basic,
         parse_literal_set,
     ].as_ref())(input);
 }
 
-fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
     let (next, ident_token) = alt_parse([
         exp_token(TokenType::Identifier),
         exp_token(TokenType::Member),
@@ -95,7 +95,7 @@ fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
     })))
 }
 
-fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
     let (next, ident_token) = alt_parse(&[
         exp_token(TokenType::Identifier),
         exp_token(TokenType::TSelf),
@@ -108,7 +108,7 @@ fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
     })))
 }
 
-fn parse_dot_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError> {
+fn parse_dot_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
     let parsers = [
         parse_method_call,
         parse_dot_op_left,
@@ -116,12 +116,12 @@ fn parse_dot_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>
     return alt_parse(&parsers)(input);
 }
 
-fn parse_dot_ops<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_dot_ops<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let op_parser = exp_token(TokenType::Dot);
     return parse_binary_ops(input, &op_parser, &parse_dot_op);
 } 
 
-fn parse_bracket_closure<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_bracket_closure<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     // should we make a separate node for this?
     let (next, _obracket_token) = exp_token(TokenType::OBracket)(input)?;
     let (next, expr_node) = parse_expr(next)?;
@@ -131,7 +131,7 @@ fn parse_bracket_closure<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn 
     return Ok((next,expr_node))
 }
 
-fn parse_cast<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_cast<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let (next, type_node) = parse_type_basic(input)?;
     let (next, _) = exp_token(TokenType::OBracket)(next)?;
     let (next, expr_node) = parse_expr(next)?;
@@ -145,7 +145,7 @@ fn parse_cast<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>),
     })));
 }
 
-fn parse_unary_op_pre<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_unary_op_pre<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let op_parsers = [
         exp_token(TokenType::Not),
         exp_token(TokenType::BNot),
@@ -163,7 +163,7 @@ fn parse_unary_op_pre<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAs
     })))
 }
 
-fn parse_unary_op_post<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_unary_op_post<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let op_parsers = [
         exp_token(TokenType::Increment),
         exp_token(TokenType::Decrement),
@@ -179,14 +179,14 @@ fn parse_unary_op_post<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IA
     })))
 }
 
-fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     return alt_parse([
         parse_unary_op_pre,
         parse_unary_op_post,
     ].as_ref())(input);
 }
 
-fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let parsers = [
         parse_dot_ops,
         parse_bracket_closure,
@@ -198,7 +198,7 @@ fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode
     return Ok((next, node));
 }
 
-fn parse_factors<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_factors<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let op_token_parsers = [
         exp_token(TokenType::Multiply),
         exp_token(TokenType::Divide),
@@ -208,7 +208,7 @@ fn parse_factors<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode
     return parse_binary_ops(input, &op_parser, &parse_primary);
 } 
 
-fn parse_terms<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_terms<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let op_token_parsers = [
         exp_token(TokenType::Plus),
         exp_token(TokenType::Minus),
@@ -218,7 +218,7 @@ fn parse_terms<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>)
     return parse_binary_ops(input, &op_parser, &parse_factors);
 } 
 
-fn parse_bit_ops_1<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_bit_ops_1<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let op_token_parsers = [
         exp_token(TokenType::BAnd),
     ];
@@ -227,7 +227,7 @@ fn parse_bit_ops_1<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNo
 } 
 
 
-fn parse_bit_ops_2<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_bit_ops_2<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let op_token_parsers = [
         exp_token(TokenType::BOr),
         exp_token(TokenType::BXor),
@@ -236,7 +236,7 @@ fn parse_bit_ops_2<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNo
     return parse_binary_ops(input, &op_parser, &parse_bit_ops_1);
 } 
 
-fn parse_shifts<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_shifts<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let op_token_parsers = [
         exp_token(TokenType::LeftShift),
         exp_token(TokenType::RightShift),
@@ -245,7 +245,7 @@ fn parse_shifts<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>
     return parse_binary_ops(input, &op_parser, &parse_bit_ops_2);
 } 
 
-fn parse_compare<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_compare<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let op_token_parsers = [
         exp_token(TokenType::Equals),
         exp_token(TokenType::NotEquals),
@@ -259,7 +259,7 @@ fn parse_compare<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode
     return parse_binary_ops(input, &op_parser, &parse_shifts);
 } 
 
-fn parse_logical_and<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_logical_and<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let op_token_parsers = [
         exp_token(TokenType::And),
     ];
@@ -267,7 +267,7 @@ fn parse_logical_and<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
     return parse_binary_ops(input, &op_parser, &parse_compare);
 }
 
-fn parse_logical_or<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_logical_or<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let op_token_parsers = [
         exp_token(TokenType::Or),
     ];
@@ -275,7 +275,7 @@ fn parse_logical_or<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstN
     return parse_binary_ops(input, &op_parser, &parse_logical_and);
 }
 
-fn parse_expr<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError> {
+fn parse_expr<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError> {
     let parser = [
         parse_logical_or,
     ];
@@ -285,7 +285,7 @@ fn parse_expr<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
 
 
 
-fn parse_assignment<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_assignment<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let (next, left_node) = parse_dot_ops(input)?;
     let op_parsers = [
         exp_token(TokenType::Equals),
@@ -307,7 +307,7 @@ fn parse_assignment<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstN
 
 #[deprecated]
 #[allow(deprecated, unused)]
-fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode + 'static>, Vec<GoldParserError>)), GoldParserError>{
+fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode + 'static>, Vec<ParseError>)), ParseError>{
     let (next, if_token) = exp_token(TokenType::If)(input)?;
     
     let stop_tokens = [
@@ -320,7 +320,7 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
     let (mut next, if_block_tokens, mut end_token) = take_until(&stop_tokens)(next)?;
     let (if_block_tokens, if_cond_node) = parse_expr(if_block_tokens)?;
     let mut result: AstIfBlock;
-    let mut errors: Vec<GoldParserError> = Vec::new();
+    let mut errors: Vec<ParseError> = Vec::new();
     match parse_block(&if_block_tokens) {
         Ok((nodes, errs)) => {
             let end_node = match nodes.is_empty(){
@@ -400,7 +400,7 @@ fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNo
 
 #[deprecated]
 #[allow(deprecated, unused)]
-fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
+fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParseError>)), ParseError>{
     let (next, if_token) = exp_token(TokenType::If)(input)?;
     
     let stop_tokens = [
@@ -425,7 +425,7 @@ fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
         else_if_blocks: None,
         end_token: None
     };
-    let mut errors: Vec<GoldParserError> = Vec::new();
+    let mut errors: Vec<ParseError> = Vec::new();
     let mut cur_cond_block = result.if_block.as_mut();
     let mut next = next;
     // parse statements until it reaches the stop tokens
@@ -451,7 +451,7 @@ fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
                         (next, tmp)
                     },
                     _ => {
-                        return Err(GoldParserError { input: next, msg: "error while parsing if, something went wrong".to_string() })
+                        return Err(ParseError { input: next, msg: "error while parsing if, something went wrong".to_string() })
                     }
                 };
                 // create new block to append to
@@ -482,13 +482,13 @@ fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
             return Ok((next,(Box::new(result), errors)));
         },
         None => {
-            return Err(GoldParserError { input: next, msg: "unclosed if block".to_string() })
+            return Err(ParseError { input: next, msg: "unclosed if block".to_string() })
         }
     }
     
 }
 
-fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
+fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
     let (next, if_token) = exp_token(TokenType::If)(input)?;
 
     let stop_tokens = [
@@ -516,7 +516,7 @@ fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
         else_if_blocks: None,
         end_token: None
     };
-    let mut errors: Vec<GoldDocumentError> = Vec::new();
+    let mut errors: Vec<ParserDiagnostic> = Vec::new();
     let mut cur_cond_block = result.if_block.as_mut();
     let mut next = next;
     // parse statements until it reaches the stop tokens
@@ -553,7 +553,7 @@ fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
                         (next, None)
                     },
                     _ => {
-                        return Err(GoldParserError { input: next, msg: "error while parsing if, something went wrong".to_string() })
+                        return Err(ParseError { input: next, msg: "error while parsing if, something went wrong".to_string() })
                     }
                 };
                 // create new block to append to
@@ -569,7 +569,7 @@ fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
             },
             None => {
                 // add error: no end token found
-                errors.push(GoldDocumentError { range: if_token.get_range(), msg: "no end token found".to_string()});
+                errors.push(ParserDiagnostic { range: if_token.get_range(), msg: "no end token found".to_string()});
                 next
             }
         };
@@ -586,7 +586,7 @@ fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
     }
 }
 
-fn parse_to_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_to_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let (next, left) = parse_literal_basic(input)?;
     let (next, op_tok) = exp_token(TokenType::To)(next)?;
     let (next, right) = parse_literal_basic(next)?;
@@ -603,7 +603,7 @@ fn parse_to_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>)
     ))
 }
 
-fn parse_separated_values<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_separated_values<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let parser = alt_parse([
         parse_literal_basic,
         parse_identifier
@@ -625,14 +625,14 @@ fn parse_separated_values<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn
     })))
 }
 
-fn parse_when_expr<'a>(input: &'a[Token]) -> Result<(&'a[Token], Box<dyn IAstNode>), GoldParserError>{
+fn parse_when_expr<'a>(input: &'a[Token]) -> Result<(&'a[Token], Box<dyn IAstNode>), ParseError>{
     return alt_parse([
         parse_to_op,
         parse_separated_values,
     ].as_ref())(input);
 }
 
-fn parse_when_block<'a>(input: &'a[Token]) -> Result<(&'a[Token], Box<AstWhenBlock>, Vec<GoldDocumentError>), GoldParserError>{
+fn parse_when_block<'a>(input: &'a[Token]) -> Result<(&'a[Token], Box<AstWhenBlock>, Vec<ParserDiagnostic>), ParseError>{
     let (next, when_tok) = exp_token(TokenType::When)(input)?;
     let (next, when_expr) = parse_when_expr(next)?;
     let (next, statements,errs, end_tok) = parse_until(next, exp_token(TokenType::EndWhen), parse_statement_v2);
@@ -648,7 +648,7 @@ fn parse_when_block<'a>(input: &'a[Token]) -> Result<(&'a[Token], Box<AstWhenBlo
     ));
 }
 
-fn parse_switch_else_block<'a>(input: &'a[Token]) -> Result<(&'a[Token], Option<Box<AstWhenBlock>>, Option<Vec<GoldDocumentError>>, Option<Token>), GoldParserError>{
+fn parse_switch_else_block<'a>(input: &'a[Token]) -> Result<(&'a[Token], Option<Box<AstWhenBlock>>, Option<Vec<ParserDiagnostic>>, Option<Token>), ParseError>{
     let (next, else_tok) = match exp_token(TokenType::Else)(input){
         Ok((n, tok)) => (n, tok),
         Err(_e) => {
@@ -675,7 +675,7 @@ fn parse_switch_else_block<'a>(input: &'a[Token]) -> Result<(&'a[Token], Option<
     ))
 }
 
-fn parse_switch_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
+fn parse_switch_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
     let (next, switch_tok) = exp_token(TokenType::Switch)(input)?;
     let (next, switch_expr) = parse_expr(next)?;
 
@@ -712,7 +712,7 @@ fn parse_switch_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IA
 // fn parse_for_block_condition<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
 // }
 
-fn parse_for_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
+fn parse_for_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
     let (next, for_token) = exp_token(TokenType::For)(input)?;
     let (next, var_token) = exp_token(TokenType::Identifier)(next)?;
     let (next, _eq_token) = exp_token(TokenType::Equals)(next)?;
@@ -749,7 +749,7 @@ fn parse_for_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstN
         errors)));
 }
 
-fn parse_foreach_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
+fn parse_foreach_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
     let (next, foreach_token) = exp_token(TokenType::ForEach)(input)?;
     // curVar in List
     let in_op_parser = exp_token(TokenType::In);
@@ -784,7 +784,7 @@ fn parse_foreach_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn I
         errors)));
 }
 
-fn parse_while_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
+fn parse_while_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
     let (next, while_token) = exp_token(TokenType::While)(input)?;
     let (next, cond_node) = parse_expr(next)?;
     
@@ -819,7 +819,7 @@ fn parse_while_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
         errors)));
 }
 
-fn parse_loop_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
+fn parse_loop_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
     let (next, loop_token) = exp_token(TokenType::Loop)(input)?;
     
     let stop_tokens = [exp_token(TokenType::EndLoop), exp_token(TokenType::End)];
@@ -856,7 +856,7 @@ fn update_cond_block_range(cond_block: &mut AstConditionalBlock){
 
 #[deprecated]
 #[allow(deprecated, unused)]
-fn parse_statement<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
+fn parse_statement<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParseError>)), ParseError>{
     // try match block statements first
     let last_error;
     // TODO can't use alt_parse, why?
@@ -883,7 +883,7 @@ fn parse_statement<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstN
     };
 }
 
-fn parse_local_var_decl<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+fn parse_local_var_decl<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
     // var
     let (next, var_token) = exp_token(TokenType::Var)(input)?;
     // ident
@@ -919,7 +919,7 @@ fn parse_local_var_decl<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
     ));
  }
 
-fn parse_return_statement<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+fn parse_return_statement<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
     let (next, return_token) = exp_token(TokenType::Return)(input)?;
     let (next, return_expr) = parse_expr(next)?;
     return Ok((next, Box::new(AstReturnNode{
@@ -930,7 +930,7 @@ fn parse_return_statement<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<
     })));
 }
 
-fn _parse_control_statements<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+fn _parse_control_statements<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
     let (next, control_token) = alt_parse([
         exp_token(TokenType::Exit),
         exp_token(TokenType::Break),
@@ -941,14 +941,14 @@ fn _parse_control_statements<'a>(input : &'a [Token]) -> Result<(&'a [Token],  B
     })));
 }
 
-fn parse_control_statements<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), GoldParserError<'a>>{
+fn parse_control_statements<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
     return alt_parse([
         _parse_control_statements,
         parse_return_statement,
     ].as_ref())(input);
 }
 
-pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldDocumentError>)), GoldParserError>{
+pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
     // try match block statements first
     let mut last_error;
     // TODO can't use alt_parse, why?
@@ -1000,9 +1000,9 @@ pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dy
 
 #[deprecated]
 #[allow(deprecated, unused)]
-pub fn parse_block<'a>(input :&'a[Token]) -> Result<(Vec<Box<dyn IAstNode>>, Vec<GoldParserError>), GoldParserError>{
+pub fn parse_block<'a>(input :&'a[Token]) -> Result<(Vec<Box<dyn IAstNode>>, Vec<ParseError>), ParseError>{
     let mut result = Vec::<Box<dyn IAstNode>>::new();
-    let mut errors = Vec::<GoldParserError>::new();
+    let mut errors = Vec::<ParseError>::new();
     if input.len() == 0 {
         return Ok((result, errors));
      }
@@ -1028,10 +1028,10 @@ pub fn parse_block<'a>(input :&'a[Token]) -> Result<(Vec<Box<dyn IAstNode>>, Vec
 
 pub fn parse_binary_ops<'a>(
     input: &'a[Token],
-    op_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Token), GoldParserError>,
-    expr_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), GoldParserError>,
+    op_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Token), ParseError>,
+    expr_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParseError>,
 ) 
--> Result<(&'a [Token], Box<dyn IAstNode>), GoldParserError<'a>>{
+-> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let (mut next, left_node) = expr_parser(input)?;
     let mut left_node = Some(left_node);
     loop {
@@ -1049,8 +1049,8 @@ pub fn parse_binary_ops<'a>(
 fn parse_binary_op<'a>(
     input: &'a[Token],
     left_node: Box<dyn IAstNode>,
-    op_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Token), GoldParserError>,
-    expr_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), GoldParserError>) 
+    op_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Token), ParseError>,
+    expr_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParseError>) 
 -> Result<(&'a [Token], Box<dyn IAstNode>), Box<dyn IAstNode>>{
 
     let (next, op_token) = match op_parser(input){

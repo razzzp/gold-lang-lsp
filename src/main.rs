@@ -1,4 +1,5 @@
 use std::net::ToSocketAddrs;
+use std::ops::Deref;
 use std::{io::Read, fs::File};
 
 use crate::manager::GoldProjectManager;
@@ -14,12 +15,13 @@ use lsp_types::{
 
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError, ErrorCode, Notification,};
 use nom::error;
-use parser::GoldDocumentError;
+use parser::ParserDiagnostic;
 
 pub mod lexer;
 pub mod parser;
 pub mod utils;
 pub mod manager;
+pub mod analyzer;
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Note that  we must have our logging only write out to stderr.
@@ -153,8 +155,8 @@ fn handle_document_symbol_request(
             return Err((e.error_code as i32, e.msg));
         }
     };
-    let symbols = doc.get_symbols();
-    let result = Some(DocumentSymbolResponse::Nested(symbols));
+    let symbols = doc_manager.get_document_symbols(doc.clone());
+    let result = Some(DocumentSymbolResponse::Nested(symbols.deref().clone()));
     let result = serde_json::to_value(&result).unwrap();
     let resp = Response { id, result: Some(result), error: None };
     return Ok(Message::Response(resp));
@@ -173,8 +175,8 @@ fn handle_document_diagnostics_request(
             return Err((e.error_code as i32, e.msg));
         }
     };
-    let diag_report = doc.get_diagnostic_report();
-    let result = DocumentDiagnosticReport::Full(diag_report);
+    let diag_report = doc_manager.get_diagnostic_report(doc.clone());
+    let result = DocumentDiagnosticReport::Full(diag_report.deref().clone());
     let result = serde_json::to_value(&result).unwrap();
     let resp = Response { id, result: Some(result), error: None };
     return Ok(Message::Response(resp));
@@ -202,7 +204,7 @@ fn handle_did_change_notification(
             return Err((e.error_code as i32, e.msg));
         }
     };
-    let diag_report = doc.get_diagnostic_report();
+    let diag_report = doc_manager.get_diagnostic_report(doc.clone());
     let pub_diag_params = PublishDiagnosticsParams::new(
         params.text_document.uri, 
         diag_report.full_document_diagnostic_report.items.clone(), 
@@ -230,7 +232,7 @@ fn handle_did_save_notification(
             return Err((e.error_code as i32, e.msg));
         }
     };
-    let diag_report = doc.get_diagnostic_report();
+    let diag_report = doc_manager.get_diagnostic_report(doc.clone());
     let pub_diag_params = PublishDiagnosticsParams::new(
         params.text_document.uri, 
         diag_report.full_document_diagnostic_report.items.clone(), 
