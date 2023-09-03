@@ -39,4 +39,4 @@ type tProc : procedure (I4 : Int4, inOut theMessage : CString) ;(pointer to proc
 type tRefVehicle: refTo aVehicle ;(refto type referencing the class aVehicle)
 type tListOfVehicles: listOf aVehicle ;(listof type referencing the class aVehicle)
 
-type tInstanceType instanceOf aInstance
+type tInstanceType: instanceOf aInstance
