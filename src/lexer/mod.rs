@@ -8,10 +8,11 @@ pub mod tokens;
 
 #[derive(Debug)]
 pub struct GoldLexer {
-    line_pos: Vec<usize>
+    line_pos: Vec<usize>,
+    errors : Vec<GoldLexerError>
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GoldLexerError {
     pub range: Range,
     pub msg: String,
@@ -19,13 +20,15 @@ pub struct GoldLexerError {
 
 impl GoldLexer{
     pub fn new() -> GoldLexer{
-        return GoldLexer{line_pos:Vec::<usize>::new()};
+        return GoldLexer{
+            line_pos:Vec::<usize>::new(),
+            errors: Vec::<GoldLexerError>::new()
+        };
     }
 
     pub fn lex(&mut self, buf: &String) -> (Vec<Token>, Vec<GoldLexerError>) {
         let mut chars =buf.chars().enumerate().peekable();
         let mut result = Vec::<Token>::new();
-        let mut errors = Vec::<GoldLexerError>::new();
         loop {
             let cur_char =  self.skip_whitespace(&mut chars);
             if cur_char.is_none() { break };
@@ -37,10 +40,10 @@ impl GoldLexer{
             };
             match cur_token{
                 Ok(token) =>result.push(token),
-                Err(error) => errors.push(error)
+                Err(error) => self.errors.push(error)
             }
         }
-        return (result, errors);
+        return (result, self.errors.clone());
     }
     
     fn skip_whitespace(&mut self, buf: &mut Peekable<Enumerate<Chars>>) -> Option<char> {
@@ -138,6 +141,7 @@ impl GoldLexer{
             ':' => self.read_double_char_op(next.1, pos, buf),
             '&' => self.read_double_char_op(next.1, pos, buf),
             ';' => Ok(self.read_comment(pos, buf)),
+            '#' => Ok(self.read_int_char_literal(pos, buf)),
             _=> Err(GoldLexerError { range: self.create_range(pos, 1), msg: format!("Unknown first symbol: {}", next.1) })
         };
         return token;
@@ -234,6 +238,36 @@ impl GoldLexer{
         if is_double_op {buf.next();};
     
         return result;
+    }
+
+    fn read_int_char_literal(&mut self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token{
+        let mut int_char = String::new();
+        let mut contains_invalid_char : bool = false;
+        int_char.push('#');
+        loop {
+            match buf.peek() {
+                Some((_ , '0'..='1')) => {
+                    int_char.push(buf.next().unwrap().1);
+                },
+                Some((_, ' '| '\n'| '\r'| '\t')) => break,
+                Some((_,_)) => {
+                    contains_invalid_char = true;
+                    int_char.push(buf.next().unwrap().1);},
+                None => break
+            }
+        }
+        if contains_invalid_char{
+            self.errors.push(GoldLexerError{
+                msg: "int char literal should only contain digits".to_string(),
+                range: self.create_range(pos, int_char.len())
+            })
+        } else if int_char.len() == 1 {
+            self.errors.push(GoldLexerError{
+                msg: "digits expected".to_string(),
+                range: self.create_range(pos, int_char.len())
+            })
+        };
+        return self.create_token(pos, TokenType::StringLiteral, Some(int_char));
     }
 
     fn create_word_token(&self, pos: usize, word : String) -> Token {
@@ -350,24 +384,25 @@ impl GoldLexer{
             "USING" =>self.create_token(pos, TokenType::Using, Some(word)),
             "WRITE" =>self.create_token(pos, TokenType::Write, Some(word)),
             "WRITELN" =>self.create_token(pos, TokenType::WriteLn, Some(word)),
-            "ALLVERSIONSOF" =>self.create_token(pos, TokenType::AllVersionsOf, Some(word)),
-            "DESCENDING" =>self.create_token(pos, TokenType::Descending, Some(word)),
             "DISTINCT" =>self.create_token(pos, TokenType::Distinct, Some(word)),
             "FROM" =>self.create_token(pos, TokenType::From, Some(word)),
             "OQL" =>self.create_token(pos, TokenType::OQL, Some(word)),
-            "FETCH" =>self.create_token(pos, TokenType::Fetch, Some(word)),
-            "SELECT" =>self.create_token(pos, TokenType::Select, Some(word)),
-            "OQLCLASSID" =>self.create_token(pos, TokenType::OQLClassId, Some(word)),
-            "OQLCOUNT" =>self.create_token(pos, TokenType::OQLCount, Some(word)),
-            "OQLMAX" =>self.create_token(pos, TokenType::OQLMax, Some(word)),
-            "OQLMIN" =>self.create_token(pos, TokenType::OQLMin, Some(word)),
-            "OQLSUM" =>self.create_token(pos, TokenType::OQLSum, Some(word)),
-            "OQLUPDATEDATE" =>self.create_token(pos, TokenType::OQLUpdateDate, Some(word)),
-            "OQLUPDATETIME" =>self.create_token(pos, TokenType::OQLUpdateTime, Some(word)),
-            "ORDER" =>self.create_token(pos, TokenType::Order, Some(word)),
-            "BY" =>self.create_token(pos, TokenType::By, Some(word)),
-            "PHANTOMSTOO" =>self.create_token(pos, TokenType::PhantomsToo, Some(word)),
-            "WHERE" =>self.create_token(pos, TokenType::Where, Some(word)),
+            // commented because words can be used as member names too
+            // "FETCH" =>self.create_token(pos, TokenType::Fetch, Some(word)),
+            // "DESCENDING" =>self.create_token(pos, TokenType::Descending, Some(word)),
+            // "ALLVERSIONSOF" =>self.create_token(pos, TokenType::AllVersionsOf, Some(word)),
+            // "SELECT" =>self.create_token(pos, TokenType::Select, Some(word)),
+            // "OQLCLASSID" =>self.create_token(pos, TokenType::OQLClassId, Some(word)),
+            // "OQLCOUNT" =>self.create_token(pos, TokenType::OQLCount, Some(word)),
+            // "OQLMAX" =>self.create_token(pos, TokenType::OQLMax, Some(word)),
+            // "OQLMIN" =>self.create_token(pos, TokenType::OQLMin, Some(word)),
+            // "OQLSUM" =>self.create_token(pos, TokenType::OQLSum, Some(word)),
+            // "OQLUPDATEDATE" =>self.create_token(pos, TokenType::OQLUpdateDate, Some(word)),
+            // "OQLUPDATETIME" =>self.create_token(pos, TokenType::OQLUpdateTime, Some(word)),
+            // "ORDER" =>self.create_token(pos, TokenType::Order, Some(word)),
+            // "BY" =>self.create_token(pos, TokenType::By, Some(word)),
+            // "PHANTOMSTOO" =>self.create_token(pos, TokenType::PhantomsToo, Some(word)),
+            // "WHERE" =>self.create_token(pos, TokenType::Where, Some(word)),
             "SELF" =>self.create_token(pos, TokenType::TSelf, Some(word)),
             "_RESULT" =>self.create_token(pos, TokenType::Result, Some(word)),
             "MODULE" =>self.create_token(pos, TokenType::Module, Some(word)),
@@ -443,11 +478,11 @@ mod test {
         let mut lexer = GoldLexer::new();
         let input = String::from(
             "* / % + - && << >> < <= > >=
-= <> @ . ++ += -- -= :=");
+= <> @ . ++ += -- -= := #100");
         let result = lexer.lex(&input);
         let token = result.0;
-
-        assert_eq!(token.len(), 21);
+        assert_eq!(result.1.len(), 0);
+        assert_eq!(token.len(), 22);
         assert_eq!(token[0].token_type, TokenType::Multiply);
         assert_eq!(token[1].token_type, TokenType::Divide);
         assert_eq!(token[2].token_type, TokenType::Modulus);
@@ -474,6 +509,7 @@ mod test {
         assert_eq!(token[18].token_type, TokenType::Decrement);
         assert_eq!(token[19].token_type, TokenType::DecrementAssign);
         assert_eq!(token[20].token_type, TokenType::DeepAssign);
+        assert_eq!(token[21].token_type, TokenType::StringLiteral);
     }
 
     #[test]

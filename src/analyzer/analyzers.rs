@@ -38,8 +38,10 @@ impl UnusedVarAnalyzer {
             }
         }
     }
-    fn notify_terminal_node(&mut self, node : &AstTerminal){
-        match self.cur_local_vars.get_mut(&node.get_identifier()){
+    fn notify_terminal_node(&mut self, node : &DynamicChild<dyn IAstNode>){
+        // TODO check is on the left side of bin_op to prevent false positive with
+        //  member variables
+        match self.cur_local_vars.get_mut(&node.data.get_identifier()){
             Some(var_info) => {
                 var_info.use_count = var_info.use_count+1;
             }
@@ -82,7 +84,7 @@ impl IAnalyzer for UnusedVarAnalyzer{
             _=> ()
         }
         match node.data.as_any().downcast_ref::<AstTerminal>() {
-            Some(node) =>{
+            Some(data) =>{
                 self.notify_terminal_node(node)
             }
             _=>()

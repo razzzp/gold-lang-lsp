@@ -398,6 +398,10 @@ impl GoldProjectManager{
 
 #[cfg(test)]
 mod test{
+    use std::{fs::File, io::Read};
+
+    use crate::{lexer::GoldLexer, parser::parse_gold, utils::ast_to_string_brief_recursive};
+
     use super::GoldProjectManager;
 
 
@@ -406,5 +410,51 @@ mod test{
         let doc_manager = GoldProjectManager::new();
         let doc = doc_manager.parse_document("test/aTestClass.god").unwrap();
         // println!("{:#?}",doc);
+    }
+
+    #[test]
+    fn test_read_file_proc1() {
+        let  mut f = File::open("./test/aTestProc1.god").expect("file not found");
+        let mut file_contents = String::new();
+        match f.read_to_string(&mut file_contents){
+            Ok(_)=>(),
+            Err(msg) => panic!("{msg}")
+        };
+        // println!("{file_contents}");
+        let mut lexer = GoldLexer::new();
+        let lex_result = lexer.lex(&file_contents);
+        // println!("{:#?}", tokens);
+        assert_eq!(lex_result.1.len(), 0);
+        let ast = parse_gold(&lex_result.0);
+
+        assert_eq!(ast.1.len(), 0);
+        // println!("{:#?}", ast.0.0);
+        for node in ast.0.1{
+            println!("{}",ast_to_string_brief_recursive(node.as_ref()));
+        }
+        // println!("{:#?}", ast.1.len());
+    }
+
+    #[test]
+    fn test_read_file_proc_call() {
+        let  mut f = File::open("./test/aTestProcCall.god").expect("file not found");
+        let mut file_contents = String::new();
+        match f.read_to_string(&mut file_contents){
+            Ok(_)=>(),
+            Err(msg) => panic!("{msg}")
+        };
+        // println!("{file_contents}");
+        let mut lexer = GoldLexer::new();
+        let lex_result = lexer.lex(&file_contents);
+        // println!("{:#?}", tokens);
+        assert_eq!(lex_result.1.len(), 0);
+        let ast = parse_gold(&lex_result.0);
+
+        assert_eq!(ast.1.len(), 0);
+        // println!("{:#?}", ast.0.0);
+        for node in ast.0.1{
+            println!("{}",ast_to_string_brief_recursive(node.as_ref()));
+        }
+        // println!("{:#?}", ast.1.len());
     }
 }

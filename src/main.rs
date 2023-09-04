@@ -379,6 +379,7 @@ endfunc
     }
 
     #[test]
+    #[ignore] 
     fn test_convert_uri_to_file_path(){
         // TODO not valid in different pcs
         let uri = Url::parse("file:///home/razzzp/dev/gold-lang-lsp/test/aTestClass.god").unwrap();

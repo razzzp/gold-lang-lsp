@@ -1,7 +1,7 @@
 
 use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range}, parser::take_until};
 
-use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses};
+use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration};
 
 /// expr = ident
 ///     | bin_op
@@ -45,18 +45,56 @@ pub fn parse_literal_basic<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dy
         exp_token(TokenType::BooleanTrue),
         exp_token(TokenType::BooleanFalse),
         exp_token(TokenType::Nil),
-        exp_token(TokenType::MethodName),
-        exp_token(TokenType::ModuleName)
     ])(input)?;
     return Ok((next, Box::new(AstTerminal{
         token: ident_token
     })))
 }
 
-pub fn parse_identifier<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
-    let (next, ident_token) = alt_parse(&[
+pub fn parse_ident_token<'a>(input: &'a[Token]) -> Result<(&'a [Token], Token), ParseError> {
+    return alt_parse(&[
         exp_token(TokenType::Identifier),
-    ])(input)?;
+        exp_token(TokenType::MethodName),
+        exp_token(TokenType::ModuleName),
+        exp_token(TokenType::TSelf),
+        exp_token(TokenType::Result),
+        exp_token(TokenType::Type),
+        exp_token(TokenType::Scenario),
+        exp_token(TokenType::Member),
+        exp_token(TokenType::MetaModelEntity),
+        exp_token(TokenType::New),
+        exp_token(TokenType::Dispose),
+        exp_token(TokenType::Concat),
+        exp_token(TokenType::Write),
+        exp_token(TokenType::WriteLn),
+        exp_token(TokenType::Length),
+        exp_token(TokenType::SizeOf),
+        exp_token(TokenType::Upcase),
+        exp_token(TokenType::BooleanTrue),
+        exp_token(TokenType::BooleanFalse),
+        exp_token(TokenType::Nil),
+        exp_token(TokenType::Int1),
+        exp_token(TokenType::Int2),
+        exp_token(TokenType::Int4),
+        exp_token(TokenType::Int8),
+        exp_token(TokenType::Boolean),
+        exp_token(TokenType::Char),
+        exp_token(TokenType::Num4),
+        exp_token(TokenType::Num8),
+        exp_token(TokenType::Num10),
+        exp_token(TokenType::Decimal),
+        exp_token(TokenType::CString),
+        exp_token(TokenType::String),
+        exp_token(TokenType::Text),
+        exp_token(TokenType::Fetch),
+        exp_token(TokenType::Select),
+        exp_token(TokenType::Sequence),
+    ])(input);
+}
+
+pub fn parse_identifier<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
+    // reserved keywords can also be used a class members
+    let (next, ident_token) = parse_ident_token(input)?;
     return Ok((next, Box::new(AstTerminal{
         token: ident_token
     })))
@@ -70,19 +108,7 @@ fn parse_literals<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNod
 }
 
 fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
-    let (next, ident_token) = alt_parse([
-        exp_token(TokenType::Identifier),
-        exp_token(TokenType::Member),
-        exp_token(TokenType::MetaModelEntity),
-        exp_token(TokenType::New),
-        exp_token(TokenType::Dispose),
-        exp_token(TokenType::Concat),
-        exp_token(TokenType::Write),
-        exp_token(TokenType::WriteLn),
-        exp_token(TokenType::Length),
-        exp_token(TokenType::SizeOf),
-        exp_token(TokenType::Upcase)
-    ].as_ref())(input)?;
+    let (next, ident_token) = parse_ident_token(input)?;
     let (next, _) = exp_token(TokenType::OBracket)(next)?;
     let (next, parameter_list) = parse_separated_list(next, parse_expr, TokenType::Comma)?;
     let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
@@ -96,16 +122,8 @@ fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
 }
 
 fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
-    let (next, ident_token) = alt_parse(&[
-        exp_token(TokenType::Identifier),
-        exp_token(TokenType::TSelf),
-        exp_token(TokenType::Result),
-        exp_token(TokenType::Type),
-        exp_token(TokenType::Scenario),
-        ])(input)?;
-    return Ok((next, Box::new(AstTerminal{
-        token: ident_token
-    })))
+    let (next, ident_node) = parse_identifier(input)?;
+    return Ok((next, ident_node))
 }
 
 fn parse_dot_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
@@ -151,6 +169,7 @@ fn parse_unary_op_pre<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAs
         exp_token(TokenType::BNot),
         exp_token(TokenType::AddressOf),
         exp_token(TokenType::Inherited),
+        exp_token(TokenType::Minus),
     ];
     let (next, op_token) = alt_parse(&op_parsers)(input)?;
     let (next, expr_node) = parse_primary(next)?;
@@ -188,9 +207,9 @@ fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNod
 
 fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
     let parsers = [
-        parse_dot_ops,
         parse_bracket_closure,
         parse_unary_op,
+        parse_dot_ops,
         parse_literals,
         parse_cast
     ];
@@ -985,6 +1004,7 @@ pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dy
         parse_comment,
         parse_uses,
         parse_constant_declaration,
+        parse_type_declaration,
         parse_local_var_decl,
         parse_assignment,
         parse_control_statements,
@@ -1330,6 +1350,47 @@ mod test{
         assert_eq!(node.expr_node.get_identifier(), "bNot");
     }
 
+
+    #[test]
+    fn test_parse_unary_op_pre_minus(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Minus, Some("-".to_string())),
+            (TokenType::OBracket, Some("(".to_string())),
+            (TokenType::BNot, Some("bNot".to_string())),
+            (TokenType::AddressOf, Some("@".to_string())),
+            (TokenType::Identifier, Some("Expression".to_string())),
+            (TokenType::CBracket, Some(")".to_string())),
+        ]);
+        let (next, node) = parse_unary_op(&input).unwrap();
+        // print!("{:#?}", node.as_ref());
+        // print!("{:#?}", input);
+        // print!("{}",print_ast_brief_recursive(node.as_ref()));
+        assert_eq!(next.len(), 0);
+        // TODO related to bracket closure, pos & range
+        // check_node_pos_and_range(node.as_ast_node(), &input);
+        let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
+        assert_eq!(node.op_token.get_value(), "-");
+        assert_eq!(node.expr_node.get_identifier(), "bNot");
+    }
+
+    #[test]
+    fn test_parse_unary_op_pre_minus_num(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Minus, Some("-".to_string())),
+            (TokenType::NumericLiteral, Some("100".to_string())),
+        ]);
+        let (next, node) = parse_unary_op(&input).unwrap();
+        // print!("{:#?}", node.as_ref());
+        // print!("{:#?}", input);
+        // print!("{}",print_ast_brief_recursive(node.as_ref()));
+        assert_eq!(next.len(), 0);
+        // TODO related to bracket closure, pos & range
+        // check_node_pos_and_range(node.as_ast_node(), &input);
+        let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
+        assert_eq!(node.op_token.get_value(), "-");
+        assert_eq!(node.expr_node.get_identifier(), "100");
+    }
+
     #[test]
     fn test_parse_unary_op_post(){
         let input = gen_list_of_tokens(&[
@@ -1351,6 +1412,24 @@ mod test{
         assert_eq!(node.op_token.get_value(), "++");
         assert_eq!(node.expr_node.get_identifier(), ".");
         assert_eq!(node.expr_node.get_children().unwrap().get(0).unwrap().get_identifier(), ".");
+    }
+
+    #[test]
+    fn test_parse_unary_op_post_single_left(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::Increment, Some("++".to_string())),
+        ]);
+        let (next, node) = parse_unary_op(&input).unwrap();
+        // print!("{:#?}", node.as_ref());
+        // print!("{:#?}", input);
+        // print!("{}",print_ast_brief_recursive(node.as_ref()));
+        assert_eq!(next.len(), 0);
+        // TODO related to bracket closure, pos & range
+        check_node_pos_and_range(node.as_ast_node(), &input);
+        let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
+        assert_eq!(node.op_token.get_value(), "++");
+        assert_eq!(node.expr_node.get_identifier(), "First");
     }
 
     #[test]

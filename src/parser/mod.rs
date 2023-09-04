@@ -7,8 +7,8 @@ use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange, cre
 use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstBinaryOp, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
 
 use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf};
-use self::body_parser::{parse_statement_v2, parse_binary_ops, parse_literal_basic};
-use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, parse_separated_list, opt_token, parse_repeat, parse_until, parse_until_strict};
+use self::body_parser::{parse_statement_v2, parse_binary_ops, parse_literal_basic, parse_ident_token};
+use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, parse_separated_list, opt_token, parse_repeat, parse_until, parse_until_strict, create_closure};
 
 pub mod utils;
 pub mod body_parser;
@@ -290,6 +290,25 @@ fn parse_type<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode
    let parse_result = alt_parse(&parsers)(input);
    return parse_result;
 }
+
+// pub fn parse_type_primitive<'a>(input : &'a [Token]) 
+// -> Result<(&'a [Token],  Token), ParseError<'a>> {
+//    return alt_parse(&[
+//       exp_token(TokenType::Int1),
+//       exp_token(TokenType::Int2),
+//       exp_token(TokenType::Int4),
+//       exp_token(TokenType::Int8),
+//       exp_token(TokenType::Boolean),
+//       exp_token(TokenType::Char),
+//       exp_token(TokenType::Num4),
+//       exp_token(TokenType::Num8),
+//       exp_token(TokenType::Num10),
+//       exp_token(TokenType::Decimal),
+//       exp_token(TokenType::CString),
+//       exp_token(TokenType::String),
+//       exp_token(TokenType::Text),
+//    ])(input);
+// }
 
 fn parse_type_basic<'a>(input : &'a [Token]) 
 -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
@@ -838,10 +857,7 @@ fn parse_parameter_declaration<'a>(input : &'a [Token]) -> Result<(&'a [Token], 
       Err(e) => (e.input, None)
    };
    // identifier
-   let (next, ident_token) = match exp_token(TokenType::Identifier)(next) {
-       Ok(r) => r,
-       Err(e) => return Err(prepend_msg_to_error("Failed parsing parameter decl: ", e))
-   };
+   let (next, ident_token) = parse_ident_token(next)?;
    // calculate pos and range
    let raw_pos;
    let pos;
