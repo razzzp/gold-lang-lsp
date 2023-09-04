@@ -1250,51 +1250,20 @@ pub struct AstMethodCall {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub identifier: Token,
+    pub identifier: Box<dyn IAstNode>,
     pub parameter_list: Vec<Box<dyn IAstNode>>
 }
-impl IRange for AstMethodCall {
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
-    fn set_range(&mut self, new_range: Range) {
-        self.range=new_range
-    }
-    fn as_range(&self) -> &dyn IRange {
-        self
-    }
-}
+implem_irange!(AstMethodCall);
 impl IAstNode for AstMethodCall {
-    fn get_type(&self) -> &'static str {
-        "Method Call"
-    }
-
-    fn get_raw_pos(&self) -> usize {
-        self.raw_pos
-    }
-
-    fn get_pos(&self) -> Position {
-        self.pos.clone()
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+    implem_iastnode_common!(AstMethodCall, "method_call");
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
-        return Some(self.parameter_list.iter().map(|node| {node.as_ref()}).collect());
-    }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
-        return Some(self.parameter_list.iter().map(|node| {
-            DynamicChild::new(node.as_ref(), Some(self))        
-        }).collect());
-    }
-    fn as_ast_node(&self) -> &dyn IAstNode{
-        self
+        let mut result = Vec::new();
+        result.push(self.identifier.as_ast_node());
+        self.parameter_list.iter().for_each(|node| {result.push(node.as_ast_node())});
+        return Some(result);
     }
     fn get_identifier(&self) -> String {
-        self.identifier.get_value()
-    }
-    fn to_string_type(&self) -> String {
-        "method_call".to_string()
+        self.identifier.get_identifier()
     }
 }
 

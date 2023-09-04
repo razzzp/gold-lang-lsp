@@ -108,15 +108,15 @@ fn parse_literals<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNod
 }
 
 fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
-    let (next, ident_token) = parse_ident_token(input)?;
+    let (next, ident_node) = parse_identifier(input)?;
     let (next, _) = exp_token(TokenType::OBracket)(next)?;
     let (next, parameter_list) = parse_separated_list(next, parse_expr, TokenType::Comma)?;
     let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
     return Ok((next, Box::new(AstMethodCall{
-        raw_pos: ident_token.get_raw_pos(),
-        pos: ident_token.get_pos(),
-        range: create_new_range_from_irange(ident_token.as_range(), cbracket_token.as_range()),
-        identifier: ident_token,
+        raw_pos: ident_node.get_raw_pos(),
+        pos: ident_node.get_pos(),
+        range: create_new_range_from_irange(ident_node.as_range(), cbracket_token.as_range()),
+        identifier: ident_node,
         parameter_list,
     })))
 }
@@ -1531,19 +1531,14 @@ mod test{
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
+        assert_eq!(dfs.len(), 12);
         dfs.iter().for_each(|n| {println!("{}",ast_to_string_brief(n.as_ast_node()))});
         // 
         assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(6).unwrap().get_value());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(2).unwrap().get_value());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value());
-
-        assert_eq!(dfs.get(5).unwrap().get_identifier(), input.get(11).unwrap().get_value());
-        assert_eq!(dfs.get(6).unwrap().get_identifier(), input.get(13).unwrap().get_value());
-        assert_eq!(dfs.get(7).unwrap().get_identifier(), input.get(12).unwrap().get_value());
-        assert_eq!(dfs.get(8).unwrap().get_identifier(), input.get(9).unwrap().get_value());
-        assert_eq!(dfs.get(9).unwrap().get_identifier(), input.get(8).unwrap().get_value());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(6).unwrap().get_value());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(2).unwrap().get_value());
     }
 
     #[test]
