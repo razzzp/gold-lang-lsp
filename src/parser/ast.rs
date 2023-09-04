@@ -3,6 +3,42 @@ use std::any::Any;
 use crate::lexer::tokens::Token;
 use crate::utils::{Position, Range, IRange, DynamicChild};
 
+macro_rules! implem_irange {
+    ($struct_name:ident) => {
+        impl IRange for $struct_name {
+            fn get_range(&self) -> Range {
+                self.range.clone()
+            }
+            fn set_range(&mut self, new_range: Range) {
+                self.range=new_range
+            }
+            fn as_range(&self) -> &dyn IRange {
+                self
+            }
+        }
+    };
+}
+
+macro_rules! implem_iastnode_common {
+    ($struct_name:ident, $string_type:literal) => {
+        fn get_type(&self) -> &'static str {
+            return stringify!($struct_name);
+        }
+        fn get_raw_pos(&self) -> usize {
+            return self.raw_pos;
+        }
+        fn as_any(&self) -> &dyn Any {
+            self
+        }
+        fn as_ast_node(&self) -> &dyn IAstNode{
+            self
+        }
+        fn to_string_type(&self) -> String {
+            $string_type.to_string()
+        }
+    };
+}
+
 pub trait IAstNode: std::fmt::Debug + IRange {
     /// returns node type, for display?
     fn get_type(&self) -> &'static str;
@@ -2298,5 +2334,26 @@ impl IAstNode for AstTypeInstanceOf {
     }
     fn to_string_type(&self) -> String {
         "type_instanceof".to_string()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstArrayAccess {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub left_node: Box<dyn IAstNode>,
+    pub index_node: Box<dyn IAstNode>
+}
+implem_irange!(AstArrayAccess);
+impl IAstNode for AstArrayAccess {
+    implem_iastnode_common!(AstArrayAccess, "array_access");
+    fn get_identifier(&self) -> String {
+        return self.left_node.get_identifier()
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.left_node.as_ast_node());
+        result.push(self.index_node.as_ast_node());
+        return Some(result);
     }
 }

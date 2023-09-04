@@ -1,7 +1,7 @@
 
 use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range}, parser::take_until};
 
-use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration};
+use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::AstArrayAccess};
 
 /// expr = ident
 ///     | bin_op
@@ -121,6 +121,19 @@ fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
     })))
 }
 
+fn parse_array_access<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
+    let (next, ident_node) = parse_identifier(input)?;
+    let (next, _) = exp_token(TokenType::OSqrBracket)(next)?;
+    let (next, index_node) = parse_expr(next)?;
+    let (next, cbracket_token) = exp_token(TokenType::CSqrBracket)(next)?;
+    return Ok((next, Box::new(AstArrayAccess{
+        raw_pos: ident_node.get_raw_pos(),
+        range: create_new_range(ident_node.get_range(), cbracket_token.get_range()),
+        left_node: ident_node,
+        index_node,
+    })))
+}
+
 fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
     let (next, ident_node) = parse_identifier(input)?;
     return Ok((next, ident_node))
@@ -129,7 +142,8 @@ fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
 fn parse_dot_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
     let parsers = [
         parse_method_call,
-        parse_dot_op_left,
+        parse_array_access,
+        parse_identifier,
         ];
     return alt_parse(&parsers)(input);
 }
@@ -777,7 +791,7 @@ fn parse_foreach_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn I
     let (mut next, using_token) = opt_parse(exp_token(TokenType::Using))(next)?;
     let mut using_var : Option<Box<dyn IAstNode>> = None;
     if using_token.is_some() {
-        (next, using_var) = match parse_dot_op_left(next){
+        (next, using_var) = match parse_identifier(next){
             Ok((n, using_node)) => (n, Some(using_node)),
             Err(e) => return Err(e),
         };
@@ -916,7 +930,7 @@ fn parse_local_var_decl<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
     let (mut next, abs_token) = opt_parse(exp_token(TokenType::Absolute))(next)?;
     let mut absolute_node : Option<Box<dyn IAstNode>>= None;
     if abs_token.is_some() {
-        (next, absolute_node) = match parse_dot_op_left(next) {
+        (next, absolute_node) = match parse_identifier(next) {
             Ok((n, node)) => {
                 end_range = node.get_range();
                 (n, Some(node))
@@ -1094,7 +1108,7 @@ fn parse_binary_op<'a>(
 #[cfg(test)]
 mod test{
 
-    use crate::parser::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstSetLiteral, AstSwitchBlock};
+    use crate::parser::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstSetLiteral, AstSwitchBlock, AstArrayAccess};
     use crate::parser::test::check_node_pos_and_range;
     use crate::utils::{ast_to_string_brief_recursive, ast_to_string_brief, dfs, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
@@ -1465,6 +1479,31 @@ mod test{
         let node = node.as_any().downcast_ref::<AstMethodCall>().unwrap();
         assert_eq!(node.get_identifier(), input.get(0).unwrap().get_value());
         assert_eq!(node.parameter_list.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_array_access(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Identifier, Some("Var".to_string())),
+            (TokenType::OSqrBracket, Some("[".to_string())),
+            (TokenType::Identifier, Some("Index".to_string())),
+            (TokenType::CSqrBracket, Some("]".to_string())),
+            (TokenType::Dot, Some(".".to_string())),
+            (TokenType::Identifier, Some("Var".to_string())),
+            (TokenType::OSqrBracket, Some("[".to_string())),
+            (TokenType::Identifier, Some("Some".to_string())),
+            (TokenType::Plus, Some("+".to_string())),
+            (TokenType::NumericLiteral, Some("10".to_string())),
+            (TokenType::CSqrBracket, Some("]".to_string())),
+        ]);
+        let (next, node) = parse_dot_ops(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        check_node_pos_and_range(node.as_ast_node(), &input);
+        let node = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
+        assert_eq!(node.op_token.get_value(), ".");
+        let _left_node = node.left_node.as_any().downcast_ref::<AstArrayAccess>().unwrap();
+        let _right_node = node.right_node.as_any().downcast_ref::<AstArrayAccess>().unwrap();
+        let _right_index_node = _right_node.index_node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
     }
 
     #[test]
