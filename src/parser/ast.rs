@@ -253,50 +253,21 @@ impl IAstNode for AstTypeBasic {
 #[derive(Debug)]
 pub struct AstEmpty {
     pub raw_pos: usize,
-    pub pos: Position,
     pub range: Range,
 }
 impl AstEmpty{
-    pub fn new(raw_pos:usize, pos: Position, range: Range)-> AstEmpty{
-        AstEmpty{raw_pos,pos,range}
+    pub fn new(raw_pos:usize,  range: Range)-> AstEmpty{
+        AstEmpty{raw_pos,range}
     }
     pub fn default()-> AstEmpty{
-        AstEmpty{raw_pos:0,pos:Position::default(),range:Range::default()}
+        AstEmpty{raw_pos:0,range:Range::default()}
     }
 }
-impl IRange for AstEmpty {
-    fn get_range(&self) -> Range {
-        Range::default()
-    }
-    fn set_range(&mut self, new_range: Range) {
-        self.range=new_range
-    }
-    fn as_range(&self) -> &dyn IRange {
-        self
-    }
-}
+implem_irange!(AstEmpty);
 impl IAstNode for AstEmpty {
-    fn get_type(&self) -> &'static str {
-        return "";
-    }
-    fn get_raw_pos(&self) -> usize {
-        return 0;
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn get_pos(&self) -> Position {
-        Position::default()
-    }
-    fn as_ast_node(&self) -> &dyn IAstNode{
-        self
-    }
+    implem_iastnode_common!(AstEmpty, "empty_node");
     fn get_identifier(&self) -> String {
         "empty_node".to_string()
-    }
-    fn to_string_type(&self) -> String {
-        "empty".to_string()
     }
 }
 
@@ -1074,60 +1045,22 @@ impl IAstNode for AstComment {
 #[derive(Debug)]
 pub struct AstBinaryOp {
     pub raw_pos: usize,
-    pub pos: Position,
     pub range: Range,
     pub op_token: Token,
     pub left_node: Box<dyn IAstNode>,
     pub right_node: Box<dyn IAstNode>
 }
-impl IRange for AstBinaryOp {
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
-    fn set_range(&mut self, new_range: Range) {
-        self.range = new_range;
-    }
-    fn as_range(&self) -> &dyn IRange {
-        self
-    }
-}
+implem_irange!(AstBinaryOp);
 impl IAstNode for AstBinaryOp {
-    fn get_type(&self) -> &'static str {
-        "Binary Op"
-    }
-
+    implem_iastnode_common!(AstBinaryOp, "bin_op");
     fn get_identifier(&self) -> String {
         self.op_token.get_value()
-    }
-
-    fn get_raw_pos(&self) -> usize {
-        self.raw_pos
-    }
-
-    fn get_pos(&self) -> Position {
-        self.pos.clone()
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
     }
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.left_node.as_ref());
         result.push(self.right_node.as_ref());
         return Some(result);
-    }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
-        let mut result = Vec::new();
-        result.push(DynamicChild::new(self.left_node.as_ref(), Some(self)));
-        result.push(DynamicChild::new(self.right_node.as_ref(),Some(self)));
-        return Some(result);
-    }
-        
-    fn as_ast_node(&self) -> &dyn IAstNode{
-        self
-    }
-    fn to_string_type(&self) -> String {
-        "bin_op".to_string()
     }
 }
 

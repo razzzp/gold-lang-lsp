@@ -1,5 +1,5 @@
 
-use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range}, parser::take_until};
+use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, Range}, parser::take_until};
 
 use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match, parse_separated_list_allow_empty, parse_separated_list_w_context, alt_parse_w_context, parse_until_w_context, parse_until_no_match_w_context, opt_parse_w_context}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::AstArrayAccess, IParserContext, ParserContext};
 
@@ -337,7 +337,6 @@ fn parse_assignment<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
     let (next, right_node) = parse_expr(next, context)?;
     return Ok((next, Box::new(AstBinaryOp{
         raw_pos: left_node.get_raw_pos(),
-        pos: left_node.get_pos(),
         range: create_new_range_from_irange(left_node.as_range(), right_node.as_range()),
         op_token,
         left_node,
@@ -449,7 +448,6 @@ fn parse_to_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], 
         next,
         Box::new(AstBinaryOp{
             raw_pos: left.get_raw_pos(),
-            pos: left.get_pos(),
             range: create_new_range(left.get_range(), right.get_range()),
             op_token: op_tok,
             left_node: left,
@@ -853,7 +851,6 @@ fn parse_binary_op<'a>(
     };
     return Ok((next, Box::new(AstBinaryOp{
         raw_pos: left_node.get_raw_pos(),
-        pos: left_node.get_pos(),
         range: create_new_range_from_irange(left_node.as_range(), right_node.as_range()),
         op_token,
         left_node,
@@ -896,11 +893,39 @@ fn parse_binary_op_w_context<'a, C:IParserContext<ParserDiagnostic> +'a>(
     };
     let (next, right_node) = match expr_parser(next, context){
         Ok(r) => r,
-        Err(_e) => return Err(left_node)
+        Err(_e) => {
+            if op_token.token_type == TokenType::Dot {
+                // allow empty nodes, if dot operator
+                //  to handle dereference op and auto-complete in the future
+                let start = Range{
+                    start: op_token.get_range().start.offset_char(1),
+                    end: op_token.get_range().start.offset_char(2),
+                };
+                let end = match _e.input.first() {
+                    Some(t) => t.get_range(),
+                    _=> start.clone()
+                };
+                let right_node = Box::new(AstEmpty{
+                    raw_pos: op_token.get_raw_pos()+1,
+                    range: create_new_range(start, end)
+                });
+                return Ok((
+                    next,
+                    Box::new(AstBinaryOp{
+                        raw_pos: left_node.get_raw_pos(),
+                        range: create_new_range(left_node.get_range(), right_node.get_range()),
+                        left_node,
+                        right_node,
+                        op_token
+                    })
+                ))
+            } else {
+                return Err(left_node)
+            }
+        }
     };
     return Ok((next, Box::new(AstBinaryOp{
         raw_pos: left_node.get_raw_pos(),
-        pos: left_node.get_pos(),
         range: create_new_range_from_irange(left_node.as_range(), right_node.as_range()),
         op_token,
         left_node,

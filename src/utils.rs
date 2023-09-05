@@ -45,6 +45,11 @@ impl Position{
     pub fn to_string_brief(&self) -> String {
         format!("(l:{},c:{})", self.line, self.character)
     }
+    pub fn offset_char(&self, offset : usize) -> Position{
+        let mut new = self.clone();
+        new.character += offset;
+        new
+    }
 }
 
 #[derive(Debug, Clone)]
