@@ -28,6 +28,11 @@ impl AstWalker{
             _=>()
         }
     }
+    fn notify_end(&mut self){
+        for analyzer in &mut self.analyzers{
+            analyzer.notify_end();
+        }
+    }
 }
 
 impl IAstWalker for AstWalker{
@@ -41,6 +46,7 @@ impl IAstWalker for AstWalker{
         for dyn_node in &dyn_nodes{
             self.visit(dyn_node);
         }
+        self.notify_end();
         let mut result = Vec::<lsp_types::Diagnostic>::new();
         self.analyzers.iter().for_each(|analyzer|{
             analyzer.append_diagnostics(&mut result);

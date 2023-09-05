@@ -1203,7 +1203,6 @@ impl IAstNode for AstMethodCall {
 #[derive(Debug)]
 pub struct AstConditionalBlock {
     pub raw_pos: usize,
-    pub pos: Position,
     pub range: Range,
     pub condition: Option<Box<dyn IAstNode>>,
     pub statements: Vec<Box<dyn IAstNode>>,
@@ -1213,32 +1212,9 @@ impl AstConditionalBlock{
         self.statements.push(node);
     }
 }
-impl IRange for AstConditionalBlock {
-    fn get_range(&self) -> Range {
-        self.range.clone()
-    }
-    fn set_range(&mut self, new_range: Range) {
-        self.range=new_range
-    }
-    fn as_range(&self) -> &dyn IRange {
-        self
-    }
-}
+implem_irange!(AstConditionalBlock);
 impl IAstNode for AstConditionalBlock {
-    fn get_type(&self) -> &'static str {
-        "Conditional Block"
-    }
-
-    fn get_raw_pos(&self) -> usize {
-        self.raw_pos
-    }
-
-    fn get_pos(&self) -> Position {
-        self.pos.clone()
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+    implem_iastnode_common!(AstConditionalBlock, "cond_block");
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         if self.condition.is_some() {result.push(self.condition.as_ref().unwrap().as_ast_node());}
@@ -1247,14 +1223,8 @@ impl IAstNode for AstConditionalBlock {
         }));
         return Some(result);
     }
-    fn as_ast_node(&self) -> &dyn IAstNode{
-        self
-    }
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
-    }
-    fn to_string_type(&self) -> String {
-        "cond_block".to_string()
     }
 }
 
@@ -2257,5 +2227,30 @@ impl IAstNode for AstArrayAccess {
         result.push(self.left_node.as_ast_node());
         result.push(self.index_node.as_ast_node());
         return Some(result);
+    }
+}
+
+#[derive(Debug)]
+pub struct AstRepeatBlock {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub cond_block: Box<AstConditionalBlock>,
+    pub end_token: Option<Token>
+}
+implem_irange!(AstRepeatBlock);
+impl IAstNode for AstRepeatBlock {
+    implem_iastnode_common!(AstRepeatBlock, "repeat");
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.cond_block.as_ast_node());
+        return Some(result);
+    }
+    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(DynamicChild::new(self.cond_block.as_ast_node(), Some(self)));
+        return Some(result);
+    }
+    fn get_identifier(&self) -> String {
+        self.to_string_type_pos()
     }
 }

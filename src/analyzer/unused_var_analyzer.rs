@@ -2,7 +2,7 @@ use std::{collections::HashMap, string};
 
 use lsp_types::{DiagnosticSeverity, DiagnosticTag};
 
-use crate::{parser::ast::{AstProcedure, IAstNode, AstFunction, AstTerminal, AstLocalVariableDeclaration}, utils::{IRange, DynamicChild}, lexer::tokens::Token};
+use crate::{parser::ast::{AstProcedure, IAstNode, AstFunction, AstTerminal, AstLocalVariableDeclaration, AstBinaryOp}, utils::{IRange, DynamicChild}, lexer::tokens::{Token, TokenType}};
 
 use super::{IAnalyzer, AnalyzerDiagnostic};
 
@@ -31,19 +31,37 @@ impl UnusedVarAnalyzer {
                     Some(DiagnosticSeverity::WARNING), 
                     None,
                     Some("gold".to_string()),
-                    "Unused var".to_string(),
+                    format!("Unused var: {}", key),
                     None,
                     Some([DiagnosticTag::UNNECESSARY].into_iter().collect())
                 ))
             }
         }
     }
+    fn is_left_node(node : &DynamicChild<dyn IAstNode>)-> bool{
+        if node.parent.is_none() {return true}
+        match node.parent.unwrap().as_any().downcast_ref::<AstBinaryOp>() {
+            Some(bin_node) => {
+                if bin_node.op_token.token_type != TokenType::Dot {
+                    return true
+                }
+                if bin_node.left_node.to_string_ident_pos()== node.data.to_string_ident_pos(){
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+            _=> true,
+        }
+    }
     fn notify_terminal_node(&mut self, node : &DynamicChild<dyn IAstNode>){
-        // TODO check is on the left side of bin_op to prevent false positive with
-        //  member variables
+        // let ident = node.data.get_identifier();
         match self.cur_local_vars.get_mut(&node.data.get_identifier()){
             Some(var_info) => {
-                var_info.use_count = var_info.use_count+1;
+                // check is on the left side of bin_op to prevent false positive with
+                //  member variables
+                if Self::is_left_node(node)
+                {var_info.use_count = var_info.use_count+1}
             }
             _=> ()
         }
@@ -101,5 +119,9 @@ impl IAnalyzer for UnusedVarAnalyzer{
         self.diagnostics.iter().for_each(|diag|{
             result.push(diag.clone());
         })
+    }
+
+    fn notify_end(&mut self) {
+        self.check_unused_vars();
     }
 }

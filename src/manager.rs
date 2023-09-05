@@ -3,7 +3,7 @@ use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzer::{AnalyzerDiagnostic, ast_walker::AstWalker, IAstWalker, analyzers::UnusedVarAnalyzer}};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzer::{AnalyzerDiagnostic, ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer}};
 
 // pub trait IDocument {
 //     fn get_symbols(&self)-> Vec<&'static DocumentSymbol>;
@@ -164,8 +164,9 @@ impl GoldProjectManager{
     pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String) -> Result<Rc<RefCell<GoldDocument>>, GoldProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_content(full_file_content)?;
-        doc_info.lock().unwrap().opened = Some(Rc::new(RefCell::new(new_doc)));
-        return Ok(doc_info.lock().unwrap().opened.as_ref().unwrap().clone());
+        let rc_doc = Rc::new(RefCell::new(new_doc));
+        doc_info.lock().unwrap().opened = Some(rc_doc.clone());
+        return Ok(rc_doc);
     }
 
     fn parse_document(&self, file_path: &str) -> Result<GoldDocument, GoldProjectManagerError>{
@@ -195,11 +196,12 @@ impl GoldProjectManager{
         parser_diagnostics.extend(lexer_errors.into_iter().map(|l_error|{
             ParserDiagnostic { range: l_error.range, msg: l_error.msg }
         }));
-        return Ok(GoldDocument { 
+        let new_doc =GoldDocument { 
             ast_nodes: ast_nodes.1,
             parser_diagnostics,
             ..Default::default()
-        })
+        };
+        return Ok(new_doc)
     }
 
     fn get_analyzer_diagnostics(&self, doc : Rc<RefCell<GoldDocument>>) -> Result<Rc<Vec<lsp_types::Diagnostic>>, GoldProjectManagerError>{
@@ -240,7 +242,7 @@ impl GoldProjectManager{
 
     fn generate_document_diagnostic_report(&self, doc: Rc<RefCell<GoldDocument>>)
     -> Result<Rc<RelatedFullDocumentDiagnosticReport>, GoldProjectManagerError>{
-        let mut diagnostics = self.get_diagnostics(doc)?;
+        let diagnostics = self.get_diagnostics(doc)?;
         return Ok(Rc::new(RelatedFullDocumentDiagnosticReport{
             related_documents: None,
             full_document_diagnostic_report: FullDocumentDiagnosticReport{
@@ -400,10 +402,32 @@ impl GoldProjectManager{
 mod test{
     use std::{fs::File, io::Read};
 
-    use crate::{lexer::GoldLexer, parser::parse_gold, utils::ast_to_string_brief_recursive};
+    use crate::{lexer::{GoldLexer, tokens::Token}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::ast_to_string_brief_recursive, analyzer::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer}};
 
     use super::GoldProjectManager;
 
+    fn parse_and_analyze(file_path: &str) -> (Vec<Box<dyn IAstNode>>, Vec<ParserDiagnostic>){
+        let  mut f = File::open(file_path).expect("file not found");
+        let mut file_contents = String::new();
+        match f.read_to_string(&mut file_contents){
+            Ok(_)=>(),
+            Err(msg) => panic!("{msg}")
+        };
+        // println!("{file_contents}");
+        let mut lexer = GoldLexer::new();
+        let lex_result = lexer.lex(&file_contents);
+        // println!("{:#?}", tokens);
+        assert_eq!(lex_result.1.len(), 0);
+        let ast = parse_gold(&lex_result.0);
+        assert_eq!(ast.1.len(), 0);
+        return (ast.0.1, ast.1);
+    }
+
+    fn create_ast_walker()->AstWalker{
+        let mut result = AstWalker::new();
+        result.register_analyzer(Box::new(UnusedVarAnalyzer::new()));
+        return result;
+    }
 
     #[test]
     fn test_gold_document_manager(){
@@ -456,5 +480,16 @@ mod test{
             println!("{}",ast_to_string_brief_recursive(node.as_ref()));
         }
         // println!("{:#?}", ast.1.len());
+    }
+
+    #[test]
+    fn test_read_file_unused_var() {
+        let (asts, _) = parse_and_analyze("./test/aTestUnusedVar.god");
+        let mut walker = create_ast_walker();
+        let diags = walker.analyze(&asts);
+        // for diag in diags{
+        //     print!("{:#?}",diag);
+        // }
+        assert_eq!(diags.len(), 1);
     }
 }

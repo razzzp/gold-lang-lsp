@@ -1,7 +1,7 @@
 use crate::{parser::ast::IAstNode, utils::DynamicChild};
 
 pub mod ast_walker;
-pub mod analyzers;
+pub mod unused_var_analyzer;
 
 pub trait IAstWalker{
     fn analyze(& mut self, ast_nodes: & Vec<Box<dyn IAstNode>>) -> Vec<lsp_types::Diagnostic>;
@@ -16,4 +16,5 @@ pub struct AnalyzerDiagnostic{
 pub trait IAnalyzer{
     fn visit(&mut self, node: &DynamicChild<dyn IAstNode>);
     fn append_diagnostics(&self, result : &mut Vec<lsp_types::Diagnostic>);
+    fn notify_end(&mut self);
 }

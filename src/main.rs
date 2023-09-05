@@ -215,7 +215,9 @@ fn handle_did_change_notification(
         params: params_serialized
     };
     let mut result = Vec::<Message>::new();
-    result.push(Message::Notification(publish_diag));
+    // TODO do we need to publsh? looks like client automatically 
+    //  requests diag report when doc change, but previously it didn't update automatically?
+    // result.push(Message::Notification(publish_diag));
     return Ok(result)
 }
 

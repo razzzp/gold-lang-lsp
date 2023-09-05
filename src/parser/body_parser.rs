@@ -1,7 +1,7 @@
 
 use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, Range}, parser::take_until};
 
-use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match, parse_separated_list_allow_empty, parse_separated_list_w_context, alt_parse_w_context, parse_until_w_context, parse_until_no_match_w_context, opt_parse_w_context}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::AstArrayAccess, IParserContext, ParserContext};
+use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match, parse_separated_list_allow_empty, parse_separated_list_w_context, alt_parse_w_context, parse_until_w_context, parse_until_no_match_w_context, opt_parse_w_context}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::{AstArrayAccess, AstRepeatBlock}, IParserContext, ParserContext};
 
 /// expr = ident
 ///     | bin_op
@@ -252,6 +252,7 @@ fn parse_terms<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], 
         exp_token(TokenType::Plus),
         exp_token(TokenType::Minus),
         exp_token(TokenType::StringConcat),
+        exp_token(TokenType::StringConcat2),
     ];
     let op_parser = alt_parse(&op_token_parsers);
     return parse_binary_ops_w_context(input, &op_parser, &parse_factors, context);
@@ -364,7 +365,6 @@ fn parse_if_block_v3<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
         range: create_new_range(if_token.get_range(), if_cond_node.get_range()),
         if_block: Box::new(AstConditionalBlock{
             raw_pos: if_token.get_raw_pos(),
-            pos: if_token.get_pos(),
             range: create_new_range(if_token.get_range(), if_token.get_range()),
             condition: Some(if_cond_node),
             statements: Vec::new()
@@ -413,7 +413,6 @@ fn parse_if_block_v3<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
                 // create new block to append to
                 result.add_else_if_block(Box::new(AstConditionalBlock { 
                     raw_pos: t.get_raw_pos(), 
-                    pos: t.get_pos(),
                     range: t.get_range(), 
                     condition: cur_cond_node, 
                     statements: Vec::new() 
@@ -650,8 +649,7 @@ fn parse_while_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
         range: create_new_range(while_token.get_range(), end_pos_token.get_range()),
         cond_block: Box::new(AstConditionalBlock { 
             raw_pos: cond_node.get_raw_pos(), 
-            pos: cond_node.get_pos(), 
-            range: create_new_range(cond_node.get_range(), cond_block_end), 
+            range: create_new_range(while_token.get_range(), end_pos_token.get_range()), 
             condition: Some(cond_node), 
             statements: statement_nodes 
         }),
@@ -683,6 +681,42 @@ fn parse_loop_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
     return Ok((
         next, 
         Box::new(result)));
+}
+
+
+fn parse_repeat_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+    let (next, repeat_token) = exp_token(TokenType::Repeat)(input)?;
+    
+    let stop_parser = exp_token(TokenType::Until);
+    let (next, statement_nodes, end_token) = parse_until_w_context(next, &stop_parser, &parse_statement_v2, context);   
+    let (next, cond_node) = match &end_token {
+        Some(_t) =>{
+            match parse_expr(next, context) {
+                Ok((next, node)) => (next, Some(node)),
+                Err(e) => return Err(e),
+            }
+        }
+        _=> (next, None)
+    };
+    let end = match &cond_node {
+        Some(n) => n.get_range(),
+        _ => repeat_token.get_range()
+    };
+    let result = AstRepeatBlock{
+        raw_pos: repeat_token.get_raw_pos(),
+        range: create_new_range(repeat_token.get_range(), end.clone()),
+        cond_block: Box::new(AstConditionalBlock { 
+            raw_pos: repeat_token.get_raw_pos(), 
+            range: create_new_range(repeat_token.get_range(), end), 
+            condition: cond_node, 
+            statements: statement_nodes 
+        }),
+        end_token
+    };
+    return Ok((
+        next, 
+        Box::new(result)
+    ));
 }
 
 fn update_cond_block_range(cond_block: &mut AstConditionalBlock){
@@ -794,7 +828,10 @@ pub fn parse_statement_v2<'a, C: IParserContext<ParserDiagnostic>+'a>(input: &'a
         Ok(r) => return Ok(r),
         Err(e) => {if last_error.input.len() > e.input.len() {last_error=e}}
     };
-    
+    match parse_repeat_block(input, context) {
+        Ok(r) => return Ok(r),
+        Err(e) => {if last_error.input.len() > e.input.len() {last_error=e}}
+    };
     match alt_parse_w_context([
         parse_comment,
         parse_uses,
@@ -937,11 +974,11 @@ fn parse_binary_op_w_context<'a, C:IParserContext<ParserDiagnostic> +'a>(
 mod test{
 
     use crate::parser::{ParserContext, IParserContext};
-    use crate::parser::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstSetLiteral, AstSwitchBlock, AstArrayAccess};
+    use crate::parser::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstSetLiteral, AstSwitchBlock, AstArrayAccess, AstRepeatBlock};
     use crate::parser::test::{check_node_pos_and_range, create_context};
     use crate::utils::{ast_to_string_brief_recursive, ast_to_string_brief, dfs, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block, parse_loop_block, parse_local_var_decl, parse_literal_set, parse_switch_block};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block, parse_loop_block, parse_local_var_decl, parse_literal_set, parse_switch_block, parse_repeat_block};
 
     
 
@@ -1813,7 +1850,6 @@ mod test{
         let while_node = node.as_any().downcast_ref::<AstWhileBlock>().unwrap();
         // check counter var
         assert_eq!(while_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(while_node.cond_block.get_identifier(), format!("cond_block:{}",input.get(1).unwrap().get_pos().to_string_brief()));
         assert_eq!(while_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
         // bfs.iter().for_each(|n|{
@@ -1998,5 +2034,31 @@ mod test{
         assert_eq!(switch_node.get_children().unwrap().len(), 2);
         // check when expr
         assert_eq!(switch_node.get_children().unwrap().get(1).unwrap().get_children().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_repeat_block_with_statements(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::Repeat, Some("repeat".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::Equals, Some("=".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::Plus, Some("+".to_string())),
+            (TokenType::Identifier, Some("Temp3".to_string())),
+            (TokenType::Until, Some("until".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::LessThan, Some(">".to_string())),
+            (TokenType::Identifier, Some("Second".to_string())),  
+        ]);
+        let mut context = create_context();
+        let (next, node) = parse_repeat_block(&input, &mut context).unwrap();
+        assert_eq!(next.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
+        check_node_pos_and_range(node.as_ast_node(), &input);
+        let repeat_node = node.as_any().downcast_ref::<AstRepeatBlock>().unwrap();
+
+        assert_eq!(repeat_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
+        assert_eq!(repeat_node.cond_block.get_children().unwrap().len(), 2);
+     
     }
 }
