@@ -1,7 +1,7 @@
 
 use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range}, parser::take_until};
 
-use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match, parse_separated_list_allow_empty, parse_separated_list_v2}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::AstArrayAccess};
+use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match, parse_separated_list_allow_empty, parse_separated_list_w_context, alt_parse_w_context, parse_until_w_context, parse_until_no_match_w_context, opt_parse_w_context}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::AstArrayAccess, IParserContext, ParserContext};
 
 /// expr = ident
 ///     | bin_op
@@ -27,9 +27,10 @@ impl<'a> BlockParser<'a> {
     }
 }
 
-fn parse_literal_set<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
+
+fn parse_literal_set<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
     let (next, obracket_token) = exp_token(TokenType::OSqrBracket)(input)?;
-    let (next, set_items) = parse_separated_list_allow_empty(next, parse_primary, TokenType::Comma)?;
+    let (next, set_items) = parse_separated_list_w_context(parse_primary, TokenType::Comma)(next,context)?;
     let (next, cbracket_token) = exp_token(TokenType::CSqrBracket)(next)?;
     return Ok((next, Box::new(AstSetLiteral{
         raw_pos: obracket_token.get_raw_pos(),
@@ -38,7 +39,7 @@ fn parse_literal_set<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
     })))
 }
 
-pub fn parse_literal_basic<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
+pub fn parse_literal_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
     let (next, ident_token) = alt_parse(&[
         exp_token(TokenType::StringLiteral),
         exp_token(TokenType::NumericLiteral),
@@ -51,7 +52,7 @@ pub fn parse_literal_basic<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dy
     })))
 }
 
-pub fn parse_ident_token<'a>(input: &'a[Token]) -> Result<(&'a [Token], Token), ParseError> {
+pub fn parse_ident_token<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Token), ParseError<'a>> {
     return alt_parse(&[
         exp_token(TokenType::Identifier),
         exp_token(TokenType::MethodName),
@@ -92,25 +93,25 @@ pub fn parse_ident_token<'a>(input: &'a[Token]) -> Result<(&'a [Token], Token), 
     ])(input);
 }
 
-pub fn parse_identifier<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
+pub fn parse_identifier<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
     // reserved keywords can also be used a class members
-    let (next, ident_token) = parse_ident_token(input)?;
+    let (next, ident_token) = parse_ident_token(input, context)?;
     return Ok((next, Box::new(AstTerminal{
         token: ident_token
     })))
 }
 
-fn parse_literals<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
-    return alt_parse([
+fn parse_literals<'a, C: IParserContext<ParserDiagnostic> + 'a >(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+    return alt_parse_w_context([
         parse_literal_basic,
         parse_literal_set,
-    ].as_ref())(input);
+    ].as_ref())(input, context);
 }
 
-fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
-    let (next, ident_node) = parse_identifier(input)?;
+fn parse_method_call<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+    let (next, ident_node) = parse_identifier(input, context)?;
     let (next, _) = exp_token(TokenType::OBracket)(next)?;
-    let (next, (parameter_list, diagnostics)) = parse_separated_list_v2(parse_expr, TokenType::Comma)(next)?;
+    let (next, parameter_list) = parse_separated_list_w_context(parse_expr, TokenType::Comma)(next, context)?;
     let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
     return Ok((next, Box::new(AstMethodCall{
         raw_pos: ident_node.get_raw_pos(),
@@ -121,10 +122,15 @@ fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAst
     })))
 }
 
-fn parse_array_access<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
-    let (next, ident_node) = parse_identifier(input)?;
+fn _test_parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+    let mut collector = ParserContext::new();
+    return alt_parse_w_context([parse_method_call].as_ref())(input, &mut collector);
+}
+
+fn parse_array_access<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+    let (next, ident_node) = parse_identifier(input, context)?;
     let (next, _) = exp_token(TokenType::OSqrBracket)(next)?;
-    let (next, index_node) = parse_expr(next)?;
+    let (next, index_node) = parse_expr(next, context)?;
     let (next, cbracket_token) = exp_token(TokenType::CSqrBracket)(next)?;
     return Ok((next, Box::new(AstArrayAccess{
         raw_pos: ident_node.get_raw_pos(),
@@ -134,40 +140,39 @@ fn parse_array_access<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAs
     })))
 }
 
-#[allow(unused)]
-fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
-    let (next, ident_node) = parse_identifier(input)?;
-    return Ok((next, ident_node))
-}
+// fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
+//     let (next, ident_node) = parse_identifier(input)?;
+//     return Ok((next, ident_node))
+// }
 
-fn parse_dot_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
+fn parse_dot_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
     let parsers = [
         parse_method_call,
         parse_array_access,
         parse_identifier,
         ];
-    return alt_parse(&parsers)(input);
+    return alt_parse_w_context(&parsers)(input, context);;
 }
 
-fn parse_dot_ops<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_dot_ops<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_parser = exp_token(TokenType::Dot);
-    return parse_binary_ops(input, &op_parser, &parse_dot_op);
+    return parse_binary_ops_w_context(input, &op_parser, &parse_dot_op, context);
 } 
 
-fn parse_bracket_closure<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_bracket_closure<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     // should we make a separate node for this?
     let (next, _obracket_token) = exp_token(TokenType::OBracket)(input)?;
-    let (next, expr_node) = parse_expr(next)?;
+    let (next, expr_node) = parse_expr(next, context)?;
     let (next, _cbracket_token) = exp_token(TokenType::CBracket)(next)?;
     // TODO need to fix other pos also
     // expr_node.set_range(create_new_range_from_irange(obracket_token.as_range(), cbracket_token.as_range()));
     return Ok((next,expr_node))
 }
 
-fn parse_cast<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
-    let (next, type_node) = parse_type_basic(input)?;
+fn parse_cast<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+    let (next, type_node) = parse_type_basic(input, context)?;
     let (next, _) = exp_token(TokenType::OBracket)(next)?;
-    let (next, expr_node) = parse_expr(next)?;
+    let (next, expr_node) = parse_expr(next, context)?;
     let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
     return Ok((next, Box::new(AstCast{
         raw_pos: type_node.get_raw_pos(),
@@ -178,7 +183,7 @@ fn parse_cast<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>),
     })));
 }
 
-fn parse_unary_op_pre<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_unary_op_pre<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_parsers = [
         exp_token(TokenType::Not),
         exp_token(TokenType::BNot),
@@ -187,7 +192,7 @@ fn parse_unary_op_pre<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAs
         exp_token(TokenType::Minus),
     ];
     let (next, op_token) = alt_parse(&op_parsers)(input)?;
-    let (next, expr_node) = parse_primary(next)?;
+    let (next, expr_node) = parse_primary(next, context)?;
     return Ok((next, Box::new(AstUnaryOp{
         raw_pos: op_token.get_raw_pos(),
         pos: op_token.get_pos(),
@@ -197,12 +202,12 @@ fn parse_unary_op_pre<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAs
     })))
 }
 
-fn parse_unary_op_post<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_unary_op_post<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_parsers = [
         exp_token(TokenType::Increment),
         exp_token(TokenType::Decrement),
     ];
-    let (next, expr_node) = parse_dot_ops(input)?;
+    let (next, expr_node) = parse_dot_ops(input, context)?;
     let (next, op_token) = alt_parse(&op_parsers)(next)?;
     return Ok((next, Box::new(AstUnaryOp{
         raw_pos: expr_node.get_raw_pos(),
@@ -213,14 +218,14 @@ fn parse_unary_op_post<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IA
     })))
 }
 
-fn parse_unary_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
-    return alt_parse([
+fn parse_unary_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+    return alt_parse_w_context([
         parse_unary_op_pre,
         parse_unary_op_post,
-    ].as_ref())(input);
+    ].as_ref())(input,context);
 }
 
-fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_primary<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let parsers = [
         parse_bracket_closure,
         parse_unary_op,
@@ -228,58 +233,58 @@ fn parse_primary<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode
         parse_literals,
         parse_cast
     ];
-    let (next, node) = alt_parse(&parsers)(input)?;
+    let (next, node) = alt_parse_w_context(&parsers)(input,context)?;
     return Ok((next, node));
 }
 
-fn parse_factors<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_factors<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::Multiply),
         exp_token(TokenType::Divide),
         exp_token(TokenType::Modulus)
     ];
     let op_parser = alt_parse(&op_token_parsers);
-    return parse_binary_ops(input, &op_parser, &parse_primary);
+    return parse_binary_ops_w_context(input, &op_parser, &parse_primary, context);
 } 
 
-fn parse_terms<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_terms<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::Plus),
         exp_token(TokenType::Minus),
         exp_token(TokenType::StringConcat),
     ];
     let op_parser = alt_parse(&op_token_parsers);
-    return parse_binary_ops(input, &op_parser, &parse_factors);
+    return parse_binary_ops_w_context(input, &op_parser, &parse_factors, context);
 } 
 
-fn parse_bit_ops_1<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_bit_ops_1<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::BAnd),
     ];
     let op_parser = alt_parse(&op_token_parsers);
-    return parse_binary_ops(input, &op_parser, &parse_terms);
+    return parse_binary_ops_w_context(input, &op_parser, &parse_terms, context);
 } 
 
 
-fn parse_bit_ops_2<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_bit_ops_2<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::BOr),
         exp_token(TokenType::BXor),
     ];
     let op_parser = alt_parse(&op_token_parsers);
-    return parse_binary_ops(input, &op_parser, &parse_bit_ops_1);
+    return parse_binary_ops_w_context(input, &op_parser, &parse_bit_ops_1, context);
 } 
 
-fn parse_shifts<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_shifts<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::LeftShift),
         exp_token(TokenType::RightShift),
     ];
     let op_parser = alt_parse(&op_token_parsers);
-    return parse_binary_ops(input, &op_parser, &parse_bit_ops_2);
+    return parse_binary_ops_w_context(input, &op_parser, &parse_bit_ops_2, context);
 } 
 
-fn parse_compare<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_compare<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::Equals),
         exp_token(TokenType::NotEquals),
@@ -291,37 +296,37 @@ fn parse_compare<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode
         exp_token(TokenType::Like),
     ];
     let op_parser = alt_parse(&op_token_parsers);
-    return parse_binary_ops(input, &op_parser, &parse_shifts);
+    return parse_binary_ops_w_context(input, &op_parser, &parse_shifts, context);
 } 
 
-fn parse_logical_and<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_logical_and<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::And),
     ];
     let op_parser = alt_parse(&op_token_parsers);
-    return parse_binary_ops(input, &op_parser, &parse_compare);
+    return parse_binary_ops_w_context(input, &op_parser, &parse_compare, context);
 }
 
-fn parse_logical_or<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
+fn parse_logical_or<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::Or),
     ];
     let op_parser = alt_parse(&op_token_parsers);
-    return parse_binary_ops(input, &op_parser, &parse_logical_and);
+    return parse_binary_ops_w_context(input, &op_parser, &parse_logical_and, context);
 }
 
-fn parse_expr<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError> {
+fn parse_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
     let parser = [
         parse_logical_or,
     ];
-    let result= alt_parse(&parser)(input)?;
+    let result= alt_parse_w_context(&parser)(input, context)?;
     return Ok(result);
 }
 
 
 
-fn parse_assignment<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
-    let (next, left_node) = parse_dot_ops(input)?;
+fn parse_assignment<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+    let (next, left_node) = parse_dot_ops(input, context)?;
     let op_parsers = [
         exp_token(TokenType::Equals),
         exp_token(TokenType::DecrementAssign),
@@ -329,7 +334,7 @@ fn parse_assignment<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstN
         exp_token(TokenType::DeepAssign)
     ];
     let (next, op_token) = alt_parse(&op_parsers)(next)?;
-    let (next, right_node) = parse_expr(next)?;
+    let (next, right_node) = parse_expr(next, context)?;
     return Ok((next, Box::new(AstBinaryOp{
         raw_pos: left_node.get_raw_pos(),
         pos: left_node.get_pos(),
@@ -340,190 +345,7 @@ fn parse_assignment<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstN
     })));
 }
 
-#[deprecated]
-#[allow(deprecated, unused)]
-fn parse_if_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode + 'static>, Vec<ParseError>)), ParseError>{
-    let (next, if_token) = exp_token(TokenType::If)(input)?;
-    
-    let stop_tokens = [
-        TokenType::ElseIf,
-        TokenType::Else,
-        TokenType::EndIf, 
-        TokenType::End
-    ];
-    // parse main if block
-    let (mut next, if_block_tokens, mut end_token) = take_until(&stop_tokens)(next)?;
-    let (if_block_tokens, if_cond_node) = parse_expr(if_block_tokens)?;
-    let mut result: AstIfBlock;
-    let mut errors: Vec<ParseError> = Vec::new();
-    match parse_block(&if_block_tokens) {
-        Ok((nodes, errs)) => {
-            let end_node = match nodes.is_empty(){
-                true => {if_cond_node.as_ast_node()}
-                _=> {nodes.last().unwrap().as_ast_node()}
-            };
-            result=  AstIfBlock{
-                raw_pos: if_token.get_raw_pos(),
-                pos: if_token.get_pos(),
-                range: create_new_range_from_irange(if_token.as_range(), if_cond_node.as_range()),
-                if_block: Box::new(AstConditionalBlock{
-                    raw_pos: if_token.get_raw_pos(),
-                    pos: if_token.get_pos(),
-                    range: create_new_range_from_irange(if_token.as_range(), end_node.as_range()),
-                    condition: Some(if_cond_node),
-                    statements: nodes
-                }),
-                else_if_blocks: None,
-                end_token: None
-            };
-            errors.extend(errs.into_iter());
-        },
-        Err(e) => return Err(e)
-    }
-    // parse next else if/else block
-    let mut cur_end_token= end_token.clone();
-    let mut cur_next=next;
-    let mut cur_next_inner;
-    (next, end_token) = loop {
-        match cur_end_token.clone() {
-            Some(t) => {
-                if t.token_type == TokenType::End || t.token_type == TokenType::EndIf {break (cur_next, cur_end_token)} 
-                
-                // next blocks
-                let mut cur_block_tokens;
-                (cur_next_inner, cur_block_tokens, cur_end_token) = take_until(&stop_tokens)(cur_next)?;
-                let cur_cond_node: Box<dyn IAstNode>;
-                (cur_block_tokens, cur_cond_node) = if t.token_type == TokenType::ElseIf {
-                    // parse conditional id elseif
-                    parse_expr(cur_block_tokens)?
-                } else {
-                    // represents else block
-                    //  need to assign to tmp var first, or compiler error
-                    let tmp : Box<dyn IAstNode> = Box::new(AstEmpty::new(t.get_raw_pos(),t.get_pos(), t.get_range()));
-                    (cur_block_tokens, tmp)
-                };
-
-                match parse_block(&cur_block_tokens) {
-                    Ok((nodes, errs)) => {
-                        let end_node = match nodes.is_empty(){
-                            true => {cur_cond_node.as_ast_node()}
-                            _=> {nodes.last().unwrap().as_ast_node()}
-                        };
-                        result.add_else_if_block(Box::new(AstConditionalBlock{
-                            raw_pos: t.get_raw_pos(),
-                            pos: t.get_pos(),
-                            range: create_new_range_from_irange(t.as_range(), end_node.as_range()),
-                            condition: Some(cur_cond_node),
-                            statements: nodes
-                        }));
-                        errors.extend(errs.into_iter());
-                    },
-                    Err(e) => return Err(e)
-                }
-                cur_next= cur_next_inner;
-            },
-            None => break (cur_next, cur_end_token)
-        }
-    };
-    // set final range of if block
-    match end_token{
-        Some(t) => result.set_range(create_new_range_from_irange(&if_token.get_range(), &t.get_range())),
-        _ => ()
-    }
-    return Ok((next,(Box::new(result), errors)));
-}
-
-#[deprecated]
-#[allow(deprecated, unused)]
-fn parse_if_block_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParseError>)), ParseError>{
-    let (next, if_token) = exp_token(TokenType::If)(input)?;
-    
-    let stop_tokens = [
-        exp_token(TokenType::ElseIf),
-        exp_token(TokenType::Else),
-        exp_token(TokenType::EndIf), 
-        exp_token(TokenType::End)
-    ];
-    let (next, if_cond_node) = parse_expr(next)?;
-    // initialize the if node
-    let mut result: AstIfBlock = AstIfBlock{
-        raw_pos: if_token.get_raw_pos(),
-        pos: if_token.get_pos(),
-        range: create_new_range_from_irange(if_token.as_range(), if_cond_node.as_range()),
-        if_block: Box::new(AstConditionalBlock{
-            raw_pos: if_token.get_raw_pos(),
-            pos: if_token.get_pos(),
-            range: create_new_range_from_irange(if_token.as_range(), if_token.as_range()),
-            condition: Some(if_cond_node),
-            statements: Vec::new()
-        }),
-        else_if_blocks: None,
-        end_token: None
-    };
-    let mut errors: Vec<ParseError> = Vec::new();
-    let mut cur_cond_block = result.if_block.as_mut();
-    let mut next = next;
-    // parse statements until it reaches the stop tokens
-    let (next, end_token)  = loop {
-        if next.len() == 0 {break (next, None);}
-        // check if it sees a delimiting token
-        next = match alt_parse(&stop_tokens)(next) {
-            Ok((next, t)) => {            
-                let (next, cur_cond_node) = match t.token_type{
-                    TokenType::EndIf | TokenType::End => {
-                        // if endif finished parsing, break
-                        update_cond_block_range(cur_cond_block);
-                        break (next, Some(t));
-                    },
-                    // else create new block and continue parsing
-                    TokenType::ElseIf => {
-                        update_cond_block_range(cur_cond_block);
-                        parse_expr(next)?
-                    },
-                    TokenType::Else => {
-                        update_cond_block_range(cur_cond_block);
-                        let tmp : Box<dyn IAstNode> = Box::new(AstEmpty::new(t.get_raw_pos(),t.get_pos(), t.get_range()));
-                        (next, tmp)
-                    },
-                    _ => {
-                        return Err(ParseError { input: next, msg: "error while parsing if, something went wrong".to_string() })
-                    }
-                };
-                // create new block to append to
-                result.add_else_if_block(Box::new(AstConditionalBlock { 
-                    raw_pos: t.get_raw_pos(), 
-                    pos: t.get_pos(),
-                    range: t.get_range(), 
-                    condition: Some(cur_cond_node), 
-                    statements: Vec::new() 
-                }));
-                cur_cond_block = result.else_if_blocks.as_mut().unwrap().last_mut().unwrap();
-                next
-            },
-            Err(_) => {
-                // parse statements and adds to current block
-                let new_statement_node; let errs;
-                (next, (new_statement_node, errs)) = parse_statement(next)?;
-                errors.extend(errs.into_iter());
-                cur_cond_block.append_node(new_statement_node);
-                next
-            }
-        };
-    };
-    match end_token {
-        Some(t) => {
-            result.set_range(create_new_range(result.get_range(), t.get_range()));
-            result.end_token = Some(t);
-            return Ok((next,(Box::new(result), errors)));
-        },
-        None => {
-            return Err(ParseError { input: next, msg: "unclosed if block".to_string() })
-        }
-    }
-    
-}
-
-fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
+fn parse_if_block_v3<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let (next, if_token) = exp_token(TokenType::If)(input)?;
 
     let stop_tokens = [
@@ -535,7 +357,7 @@ fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
     let stop_parser = alt_parse(stop_tokens.as_ref());
 
     // parse first if conditional node
-    let (next, if_cond_node) = parse_expr(next)?;
+    let (next, if_cond_node) = parse_expr(next, context)?;
     // initialize the if node
     let mut result: AstIfBlock = AstIfBlock{
         raw_pos: if_token.get_raw_pos(),
@@ -551,19 +373,17 @@ fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
         else_if_blocks: None,
         end_token: None
     };
-    let mut errors: Vec<ParserDiagnostic> = Vec::new();
     let mut cur_cond_block = result.if_block.as_mut();
     let mut next = next;
     // parse statements until it reaches the stop tokens
     let (next, end_token)  = loop {
         if next.len() == 0 {break (next, None);}
         
-        let nodes; let errors_until; let end_token;
+        let nodes; let end_token;
         // parse statements until it sees an end token
-        (next, nodes, errors_until, end_token) = parse_until(next, &stop_parser, parse_statement_v2);
+        (next, nodes, end_token) = parse_until_w_context(next, &stop_parser, parse_statement_v2, context);
         // update cur block
         cur_cond_block.statements.extend(nodes.into_iter());
-        errors.extend(errors_until.into_iter());
 
         // decide what to do based on the end token found
         next = match end_token {
@@ -578,7 +398,7 @@ fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
                     // else create new block and continue parsing
                     TokenType::ElseIf => {
                         update_cond_block_range(cur_cond_block);
-                        match parse_expr(next) {
+                        match parse_expr(next, context) {
                             Ok((n, node)) => (n, Some(node)),
                             Err(e) => return Err(e)
                         }
@@ -604,7 +424,7 @@ fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
             },
             None => {
                 // add error: no end token found
-                errors.push(ParserDiagnostic { range: if_token.get_range(), msg: "no end token found".to_string()});
+                context.add_diagnostic(ParserDiagnostic { range: if_token.get_range(), msg: "no end token found".to_string()});
                 next
             }
         };
@@ -613,18 +433,18 @@ fn parse_if_block_v3<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
         Some(t) => {
             result.set_range(create_new_range(result.get_range(), t.get_range()));
             result.end_token = Some(t);
-            return Ok((next,(Box::new(result), errors)));
+            return Ok((next,Box::new(result)));
         },
         None => {
-            return Ok((next,(Box::new(result), errors)));
+            return Ok((next,Box::new(result)));
         }
     }
 }
 
-fn parse_to_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
-    let (next, left) = parse_literal_basic(input)?;
+fn parse_to_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+    let (next, left) = parse_literal_basic(input,context)?;
     let (next, op_tok) = exp_token(TokenType::To)(next)?;
-    let (next, right) = parse_literal_basic(next)?;
+    let (next, right) = parse_literal_basic(next,context)?;
     return Ok((
         next,
         Box::new(AstBinaryOp{
@@ -638,12 +458,12 @@ fn parse_to_op<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>)
     ))
 }
 
-fn parse_separated_values<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError>{
-    let parser = alt_parse([
+fn parse_separated_values<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+    let parser = alt_parse_w_context([
         parse_literal_basic,
         parse_identifier
     ].as_ref());
-    let (next, set_items) = parse_separated_list(input, parser, TokenType::Comma)?;
+    let (next, set_items) = parse_separated_list_w_context(parser, TokenType::Comma)(input, context)?;
     // TODO should we make seperate struct for this? for now reuse set literal
     let start; let end;
     if set_items.first().is_some() {
@@ -660,17 +480,17 @@ fn parse_separated_values<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn
     })))
 }
 
-fn parse_when_expr<'a>(input: &'a[Token]) -> Result<(&'a[Token], Box<dyn IAstNode>), ParseError>{
-    return alt_parse([
+fn parse_when_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a[Token], Box<dyn IAstNode>), ParseError<'a>>{
+    return alt_parse_w_context([
         parse_to_op,
         parse_separated_values,
-    ].as_ref())(input);
+    ].as_ref())(input, context);
 }
 
-fn parse_when_block<'a>(input: &'a[Token]) -> Result<(&'a[Token], Box<AstWhenBlock>, Vec<ParserDiagnostic>), ParseError>{
+fn parse_when_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a[Token], Box<AstWhenBlock>), ParseError<'a>>{
     let (next, when_tok) = exp_token(TokenType::When)(input)?;
-    let (next, when_expr) = parse_when_expr(next)?;
-    let (next, statements,errs, end_tok) = parse_until(next, exp_token(TokenType::EndWhen), parse_statement_v2);
+    let (next, when_expr) = parse_when_expr(next, context)?;
+    let (next, statements, end_tok) = parse_until_w_context(next, exp_token(TokenType::EndWhen), parse_statement_v2, context);
     let end = end_tok.as_ref().unwrap_or(&when_tok).get_range();
     return Ok((
         next,
@@ -678,22 +498,21 @@ fn parse_when_block<'a>(input: &'a[Token]) -> Result<(&'a[Token], Box<AstWhenBlo
             raw_pos: when_tok.get_raw_pos(), 
             range: create_new_range(when_tok.get_range(), end), 
             when_expr: Some(when_expr), 
-            statements: statements }),
-        errs
+            statements: statements })
     ));
 }
 
-fn parse_switch_else_block<'a>(input: &'a[Token]) -> Result<(&'a[Token], Option<Box<AstWhenBlock>>, Option<Vec<ParserDiagnostic>>, Option<Token>), ParseError>{
+fn parse_switch_else_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a[Token], Option<Box<AstWhenBlock>>, Option<Token>), ParseError<'a>>{
     let (next, else_tok) = match exp_token(TokenType::Else)(input){
         Ok((n, tok)) => (n, tok),
         Err(_e) => {
             // check end tok
             let (next, end_tok) = opt_parse(exp_token(TokenType::EndSwitch))(input)?;
-            return Ok((next, None, None, end_tok)) 
+            return Ok((next, None, end_tok)) 
         }
     };
     let mut end =  else_tok.get_range();
-    let (next, else_statements, else_statement_errs, end_tok) = parse_until(next, exp_token(TokenType::EndSwitch), parse_statement_v2);
+    let (next, else_statements, end_tok) = parse_until_w_context(next, exp_token(TokenType::EndSwitch), parse_statement_v2, context);
     if end_tok.is_some(){
         end = end_tok.as_ref().unwrap().get_range();
     }
@@ -705,25 +524,18 @@ fn parse_switch_else_block<'a>(input: &'a[Token]) -> Result<(&'a[Token], Option<
             when_expr: None,
             statements: else_statements,
         })),
-        Some(else_statement_errs),
         end_tok
     ))
 }
 
-fn parse_switch_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
+fn parse_switch_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token],Box<dyn IAstNode>), ParseError<'a>>{
     let (next, switch_tok) = exp_token(TokenType::Switch)(input)?;
-    let (next, switch_expr) = parse_expr(next)?;
+    let (next, switch_expr) = parse_expr(next, context)?;
 
     // parse when blocks
-    let mut errs = Vec::new();
-    let (next, mut when_blocks, when_block_errs) = parse_until_no_match(next, parse_when_block);
-    errs.extend(when_block_errs.into_iter());
+    let (next, mut when_blocks) = parse_until_no_match_w_context(next, parse_when_block, context);
     // else
-    let (next, else_block, else_errs, end_tok) = parse_switch_else_block(next)?;
-    match else_errs {
-        Some(e) => errs.extend(e.into_iter()),
-        _ => ()
-    };
+    let (next, else_block, end_tok) = parse_switch_else_block(next, context)?;
     match else_block {
         Some(node) => when_blocks.push(node),
         _ => ()
@@ -738,8 +550,7 @@ fn parse_switch_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IA
             switch_expr: switch_expr,
             when_blocks: when_blocks,
             end_token: end_tok
-            }),
-            errs
+            })
         )
     ))
 }
@@ -747,31 +558,31 @@ fn parse_switch_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IA
 // fn parse_for_block_condition<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
 // }
 
-fn parse_for_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
+fn parse_for_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let (next, for_token) = exp_token(TokenType::For)(input)?;
     let (next, var_token) = exp_token(TokenType::Identifier)(next)?;
     let (next, _eq_token) = exp_token(TokenType::Equals)(next)?;
 
     let range_op_tokens = [exp_token(TokenType::To), exp_token(TokenType::DownTo)];
     let range_op_parsers = alt_parse(&range_op_tokens);
-    let (next, range_node) = parse_binary_ops(next, &range_op_parsers, &parse_expr)?;
+    let (next, range_node) = parse_binary_ops_w_context(next, &range_op_parsers, &parse_expr, context)?;
     let (mut next, step_token) = opt_parse(exp_token(TokenType::Step))(next)?;
 
     let mut step_expr: Option<Box<dyn IAstNode>>= None;
     if step_token.is_some(){
-        (next, step_expr) = opt_parse(parse_expr)(next)?;
+        (next, step_expr) = opt_parse_w_context(parse_expr)(next, context)?;
     }
     
     let stop_tokens = [exp_token(TokenType::EndFor), exp_token(TokenType::End)];
     let stop_parser = alt_parse(&stop_tokens);
-    let (next, statement_nodes, errors, end_token) = parse_until(next, &stop_parser, &parse_statement_v2);
+    let (next, statement_nodes, end_token) = parse_until_w_context(next, &stop_parser, &parse_statement_v2, context);
     let end_pos_token = match &end_token {
         Some(t) => t.clone(),
         _ => for_token.clone()
     };
     return Ok((
         next, 
-        (Box::new(AstForBlock{
+        Box::new(AstForBlock{
             raw_pos: for_token.get_raw_pos(),
             pos: for_token.get_pos(),
             range: create_new_range(for_token.get_range(), end_pos_token.get_range()),
@@ -780,34 +591,34 @@ fn parse_for_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstN
             step_node: step_expr,
             statements: Some(statement_nodes),
             end_token
-        }),
-        errors)));
+        })
+    ));
 }
 
-fn parse_foreach_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
+fn parse_foreach_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let (next, foreach_token) = exp_token(TokenType::ForEach)(input)?;
     // curVar in List
     let in_op_parser = exp_token(TokenType::In);
-    let (next, in_expr_node) = parse_binary_ops(next, &in_op_parser, &parse_expr)?;
+    let (next, in_expr_node) = parse_binary_ops_w_context(next, &in_op_parser, &parse_expr, context)?;
     // using someVar
     let (mut next, using_token) = opt_parse(exp_token(TokenType::Using))(next)?;
     let mut using_var : Option<Box<dyn IAstNode>> = None;
     if using_token.is_some() {
-        (next, using_var) = match parse_identifier(next){
+        (next, using_var) = match parse_identifier(next, context){
             Ok((n, using_node)) => (n, Some(using_node)),
             Err(e) => return Err(e),
         };
     }
     let stop_tokens = [exp_token(TokenType::EndFor), exp_token(TokenType::End)];
     let stop_parser = alt_parse(&stop_tokens);
-    let (next, statement_nodes, errors, end_token) = parse_until(next, &stop_parser, &parse_statement_v2);
+    let (next, statement_nodes, end_token) = parse_until_w_context(next, &stop_parser, &parse_statement_v2, context);
     let end_pos_token = match &end_token {
         Some(t) => t.clone(),
         _ => foreach_token.clone()
     };
     return Ok((
         next, 
-        (Box::new(AstForEachBlock{
+        Box::new(AstForEachBlock{
             raw_pos: foreach_token.get_raw_pos(),
             pos: foreach_token.get_pos(),
             range: create_new_range(foreach_token.get_range(), end_pos_token.get_range()),
@@ -815,18 +626,18 @@ fn parse_foreach_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn I
             using_var: using_var,
             statements: Some(statement_nodes),
             end_token
-        }),
-        errors)));
+        })
+    ));
 }
 
-fn parse_while_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
+fn parse_while_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let (next, while_token) = exp_token(TokenType::While)(input)?;
-    let (next, cond_node) = parse_expr(next)?;
+    let (next, cond_node) = parse_expr(next, context)?;
     
     
     let stop_tokens = [exp_token(TokenType::EndWhile), exp_token(TokenType::End)];
     let stop_parser = alt_parse(&stop_tokens);
-    let (next, statement_nodes, errors, end_token) = parse_until(next, &stop_parser, &parse_statement_v2);
+    let (next, statement_nodes, end_token) = parse_until_w_context(next, &stop_parser, &parse_statement_v2, context);
     let end_pos_token = match &end_token {
         Some(t) => t.clone(),
         _ => while_token.clone()
@@ -850,16 +661,16 @@ fn parse_while_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAs
     };
     return Ok((
         next, 
-        (Box::new(result),
-        errors)));
+        Box::new(result)
+    ));
 }
 
-fn parse_loop_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
+fn parse_loop_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let (next, loop_token) = exp_token(TokenType::Loop)(input)?;
     
     let stop_tokens = [exp_token(TokenType::EndLoop), exp_token(TokenType::End)];
     let stop_parser = alt_parse(&stop_tokens);
-    let (next, statement_nodes, errors, end_token) = parse_until(next, &stop_parser, &parse_statement_v2);
+    let (next, statement_nodes, end_token) = parse_until_w_context(next, &stop_parser, &parse_statement_v2, context);
     let end_pos_token = match &end_token {
         Some(t) => t.clone(),
         _ => loop_token.clone()
@@ -873,8 +684,7 @@ fn parse_loop_block<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAst
     };
     return Ok((
         next, 
-        (Box::new(result),
-        errors)));
+        Box::new(result)));
 }
 
 fn update_cond_block_range(cond_block: &mut AstConditionalBlock){
@@ -889,36 +699,7 @@ fn update_cond_block_range(cond_block: &mut AstConditionalBlock){
     cond_block.set_range(create_new_range(cond_block.get_range(), end_node.get_range()))
 }
 
-#[deprecated]
-#[allow(deprecated, unused)]
-fn parse_statement<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParseError>)), ParseError>{
-    // try match block statements first
-    let last_error;
-    // TODO can't use alt_parse, why?
-    // match alt_parse([parse_if_block].as_ref())(input) {
-    //     Ok(r) => return Ok(r),
-    //     Err(e) => {last_error = e}
-    // };
-    match parse_if_block_v2(input) {
-        Ok(r) => return Ok(r),
-        Err(e) => {last_error = e}
-    };
-    match alt_parse([
-        parse_assignment,
-        parse_expr,
-    ].as_ref())(input) {
-        Ok(r) => return Ok((r.0, (r.1, Vec::new()))),
-        Err(e) => {
-            if e.input.len() < last_error.input.len() {
-                return Err(e)
-            } else {
-                return Err(last_error)
-            }
-        }
-    };
-}
-
-fn parse_local_var_decl<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_local_var_decl<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
     // var
     let (next, var_token) = exp_token(TokenType::Var)(input)?;
     // ident
@@ -926,13 +707,13 @@ fn parse_local_var_decl<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
     // colon token
     let (next, _) = exp_token(TokenType::Colon)(next)?;
     // parse type
-    let (next, type_node) = parse_type(next)?;
+    let (next, type_node) = parse_type(next, context)?;
     let mut end_range = type_node.get_range();
     // parse absolute
     let (mut next, abs_token) = opt_parse(exp_token(TokenType::Absolute))(next)?;
     let mut absolute_node : Option<Box<dyn IAstNode>>= None;
     if abs_token.is_some() {
-        (next, absolute_node) = match parse_identifier(next) {
+        (next, absolute_node) = match parse_identifier(next, context) {
             Ok((n, node)) => {
                 end_range = node.get_range();
                 (n, Some(node))
@@ -954,9 +735,9 @@ fn parse_local_var_decl<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dy
     ));
  }
 
-fn parse_return_statement<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_return_statement<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
     let (next, return_token) = exp_token(TokenType::Return)(input)?;
-    let (next, return_expr) = parse_expr(next)?;
+    let (next, return_expr) = parse_expr(next, context)?;
     return Ok((next, Box::new(AstReturnNode{
         raw_pos: return_token.get_raw_pos(),
         pos: return_token.get_pos(),
@@ -965,7 +746,7 @@ fn parse_return_statement<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<
     })));
 }
 
-fn _parse_control_statements<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+fn _parse_control_statements<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
     let (next, control_token) = alt_parse([
         exp_token(TokenType::Exit),
         exp_token(TokenType::Break),
@@ -976,14 +757,14 @@ fn _parse_control_statements<'a>(input : &'a [Token]) -> Result<(&'a [Token],  B
     })));
 }
 
-fn parse_control_statements<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
-    return alt_parse([
+fn parse_control_statements<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+    return alt_parse_w_context([
         _parse_control_statements,
         parse_return_statement,
-    ].as_ref())(input);
+    ].as_ref())(input,context);
 }
 
-pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>{
+pub fn parse_statement_v2<'a, C: IParserContext<ParserDiagnostic>+'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     // try match block statements first
     let mut last_error;
     // TODO can't use alt_parse, why?
@@ -991,32 +772,32 @@ pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dy
     //     Ok(r) => return Ok(r),
     //     Err(e) => {last_error = e}
     // };
-    match parse_if_block_v3(input) {
+    match parse_if_block_v3(input, context) {
         Ok(r) => return Ok(r),
         Err(e) => {last_error=e}
     };
-    match parse_for_block(input) {
+    match parse_for_block(input, context) {
         Ok(r) => return Ok(r),
         Err(e) => {if last_error.input.len() > e.input.len() {last_error=e}}
     };
-    match parse_foreach_block(input) {
+    match parse_foreach_block(input, context) {
         Ok(r) => return Ok(r),
         Err(e) => {if last_error.input.len() > e.input.len() {last_error=e}}
     };
-    match parse_while_block(input) {
+    match parse_while_block(input, context) {
         Ok(r) => return Ok(r),
         Err(e) => {if last_error.input.len() > e.input.len() {last_error=e}}
     };
-    match parse_loop_block(input) {
+    match parse_loop_block(input, context) {
         Ok(r) => return Ok(r),
         Err(e) => {if last_error.input.len() > e.input.len() {last_error=e}}
     };
-    match parse_switch_block(input) {
+    match parse_switch_block(input, context) {
         Ok(r) => return Ok(r),
         Err(e) => {if last_error.input.len() > e.input.len() {last_error=e}}
     };
     
-    match alt_parse([
+    match alt_parse_w_context([
         parse_comment,
         parse_uses,
         parse_constant_declaration,
@@ -1025,8 +806,8 @@ pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dy
         parse_assignment,
         parse_control_statements,
         parse_expr,
-    ].as_ref())(input) {
-        Ok(r) => return Ok((r.0, (r.1, Vec::new()))),
+    ].as_ref())(input, context) {
+        Ok(r) => return Ok(r),
         Err(e) => {
             let most_matched = if e.input.len() < last_error.input.len() {e} else {last_error};
             return Err(most_matched)
@@ -1034,33 +815,6 @@ pub fn parse_statement_v2<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dy
     }
 }
 
-#[deprecated]
-#[allow(deprecated, unused)]
-pub fn parse_block<'a>(input :&'a[Token]) -> Result<(Vec<Box<dyn IAstNode>>, Vec<ParseError>), ParseError>{
-    let mut result = Vec::<Box<dyn IAstNode>>::new();
-    let mut errors = Vec::<ParseError>::new();
-    if input.len() == 0 {
-        return Ok((result, errors));
-     }
-    let mut next = input;
-    while next.len() > 0 {
-        next = match parse_statement(next){
-            Ok((r,(n,e)))=> {
-                result.push(n);
-                errors.extend(e.into_iter());
-                r
-            },
-            Err(e)=> {
-                let mut it = e.input.iter();
-                // try parsing from next elem in next loop
-                it.next();
-                errors.push(e);
-                it.as_slice()
-            }
-        };
-    }
-    return Ok((result, errors));
-}
 
 pub fn parse_binary_ops<'a>(
     input: &'a[Token],
@@ -1107,15 +861,64 @@ fn parse_binary_op<'a>(
     })))
 }
 
+pub fn parse_binary_ops_w_context<'a, 'b, C:IParserContext<ParserDiagnostic> +'a>(
+    input: &'a[Token],
+    op_parser: &impl Fn(&'a [Token]) -> Result<(&'a[Token],  Token), ParseError<'a>>,
+    expr_parser: &impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token],  Box<dyn IAstNode>), ParseError<'a>>,
+    context : &mut C
+) 
+-> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+    let (mut next, left_node) = expr_parser(input, context)?;
+    let mut left_node = Some(left_node);
+    loop {
+        (next, left_node) = match parse_binary_op_w_context(next, left_node.unwrap(), op_parser, expr_parser, context) {
+            Ok((n, node)) => (n, Some(node)),
+            Err(ln)=> {
+                left_node = Some(ln);
+                break;
+            }
+        };
+    }
+    return Ok((next, left_node.unwrap()));
+} 
+
+fn parse_binary_op_w_context<'a, C:IParserContext<ParserDiagnostic> +'a>(
+    input: &'a[Token],
+    left_node: Box<dyn IAstNode>,
+    op_parser: &impl Fn(&'a [Token]) -> Result<(&[Token],  Token), ParseError>,
+    expr_parser: &impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token],  Box<dyn IAstNode>), ParseError<'a>>,
+    context : &mut C)
+-> Result<(&'a [Token], Box<dyn IAstNode>), Box<dyn IAstNode>>{
+
+    let (next, op_token) = match op_parser(input){
+        Ok(r) => r,
+        Err(_e) => return Err(left_node)
+    };
+    let (next, right_node) = match expr_parser(next, context){
+        Ok(r) => r,
+        Err(_e) => return Err(left_node)
+    };
+    return Ok((next, Box::new(AstBinaryOp{
+        raw_pos: left_node.get_raw_pos(),
+        pos: left_node.get_pos(),
+        range: create_new_range_from_irange(left_node.as_range(), right_node.as_range()),
+        op_token,
+        left_node,
+        right_node,
+    })))
+}
+
 #[cfg(test)]
 mod test{
 
+    use crate::parser::{ParserContext, IParserContext};
     use crate::parser::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstSetLiteral, AstSwitchBlock, AstArrayAccess};
-    use crate::parser::test::check_node_pos_and_range;
+    use crate::parser::test::{check_node_pos_and_range, create_context};
     use crate::utils::{ast_to_string_brief_recursive, ast_to_string_brief, dfs, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
     use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block, parse_loop_block, parse_local_var_decl, parse_literal_set, parse_switch_block};
 
+    
 
     #[test]
     fn test_parse_bracket_closure(){
@@ -1126,7 +929,8 @@ mod test{
             (TokenType::Identifier, Some("Second".to_string())),
             (TokenType::CBracket, Some(")".to_string())),
         ]);
-        let (next, node) = parse_bracket_closure(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_bracket_closure(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         // TODO what to do with pos and range?
         // check_node_pos_and_range(node.as_ast_node(), &input);
@@ -1145,7 +949,8 @@ mod test{
             (TokenType::Identifier, Some("Expression".to_string())),
             (TokenType::CBracket, Some(")".to_string())),
         ]);
-        let (next, node) = parse_cast(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_cast(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstCast>().unwrap();
@@ -1163,7 +968,8 @@ mod test{
             (TokenType::Identifier, Some("Third".to_string())),
             
         ]);
-        let (next, node) = parse_dot_ops(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_dot_ops(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
@@ -1191,7 +997,8 @@ mod test{
             (TokenType::Identifier, Some("Third".to_string())),
             
         ]);
-        let (next, node) = parse_factors(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_factors(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
@@ -1214,7 +1021,8 @@ mod test{
             (TokenType::Identifier, Some("Third".to_string())),
             
         ]);
-        let (next, node) = parse_terms(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_terms(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
@@ -1242,7 +1050,8 @@ mod test{
             (TokenType::Identifier, Some("Third".to_string())),
             
         ]);
-        let (next, node) = parse_bit_ops_2(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_bit_ops_2(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
@@ -1270,7 +1079,8 @@ mod test{
             (TokenType::Identifier, Some("Third".to_string())),
             
         ]);
-        let (next, node) = parse_shifts(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_shifts(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
@@ -1298,7 +1108,8 @@ mod test{
             (TokenType::Identifier, Some("Third".to_string())),
             
         ]);
-        let (next, node) = parse_compare(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_compare(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
@@ -1326,7 +1137,8 @@ mod test{
             (TokenType::Identifier, Some("Third".to_string())),
             
         ]);
-        let (next, node) = parse_logical_or(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_logical_or(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
@@ -1354,7 +1166,8 @@ mod test{
             (TokenType::Identifier, Some("Expression".to_string())),
             (TokenType::CBracket, Some(")".to_string())),
         ]);
-        let (next, node) = parse_unary_op(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_unary_op(&input, &mut context).unwrap();
         // print!("{:#?}", node.as_ref());
         // print!("{:#?}", input);
         // print!("{}",print_ast_brief_recursive(node.as_ref()));
@@ -1377,7 +1190,8 @@ mod test{
             (TokenType::Identifier, Some("Expression".to_string())),
             (TokenType::CBracket, Some(")".to_string())),
         ]);
-        let (next, node) = parse_unary_op(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_unary_op(&input, &mut context).unwrap();
         // print!("{:#?}", node.as_ref());
         // print!("{:#?}", input);
         // print!("{}",print_ast_brief_recursive(node.as_ref()));
@@ -1395,7 +1209,8 @@ mod test{
             (TokenType::Minus, Some("-".to_string())),
             (TokenType::NumericLiteral, Some("100".to_string())),
         ]);
-        let (next, node) = parse_unary_op(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_unary_op(&input, &mut context).unwrap();
         // print!("{:#?}", node.as_ref());
         // print!("{:#?}", input);
         // print!("{}",print_ast_brief_recursive(node.as_ref()));
@@ -1417,7 +1232,8 @@ mod test{
             (TokenType::Identifier, Some("Second".to_string())),
             (TokenType::Increment, Some("++".to_string())),
         ]);
-        let (next, node) = parse_unary_op(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_unary_op(&input, &mut context).unwrap();
         // print!("{:#?}", node.as_ref());
         // print!("{:#?}", input);
         // print!("{}",print_ast_brief_recursive(node.as_ref()));
@@ -1436,7 +1252,8 @@ mod test{
             (TokenType::Identifier, Some("First".to_string())),
             (TokenType::Increment, Some("++".to_string())),
         ]);
-        let (next, node) = parse_unary_op(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_unary_op(&input, &mut context).unwrap();
         // print!("{:#?}", node.as_ref());
         // print!("{:#?}", input);
         // print!("{}",print_ast_brief_recursive(node.as_ref()));
@@ -1453,7 +1270,8 @@ mod test{
         let input = gen_list_of_tokens(&[
             (TokenType::Identifier, Some("First".to_string())),
         ]);
-        let (next, node) = parse_terms(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_terms(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstTerminal>().unwrap();
@@ -1475,7 +1293,8 @@ mod test{
             (TokenType::Identifier, Some("Val2".to_string())),
             (TokenType::CBracket, Some(")".to_string())),
         ]);
-        let (next, node) = parse_method_call(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_method_call(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstMethodCall>().unwrap();
@@ -1498,7 +1317,8 @@ mod test{
             (TokenType::NumericLiteral, Some("10".to_string())),
             (TokenType::CSqrBracket, Some("]".to_string())),
         ]);
-        let (next, node) = parse_dot_ops(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_dot_ops(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
@@ -1528,7 +1348,8 @@ mod test{
             (TokenType::CBracket, Some(")".to_string())),
             
         ]);
-        let (next, node) = parse_dot_ops(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_dot_ops(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
@@ -1553,7 +1374,8 @@ mod test{
             (TokenType::Identifier, Some("Third".to_string())),
             
         ]);
-        let (next, node) = parse_assignment(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_assignment(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
@@ -1589,9 +1411,10 @@ mod test{
             (TokenType::EndIf, Some("endif".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_if_block_v3(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
         let bfs = bfs(if_node);
@@ -1629,9 +1452,10 @@ mod test{
             (TokenType::EndIf, Some("endif".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_if_block_v3(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
@@ -1655,9 +1479,10 @@ mod test{
             (TokenType::EndIf, Some("endif".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_if_block_v3(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
@@ -1679,9 +1504,10 @@ mod test{
             (TokenType::EndIf, Some("endif".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_if_block_v3(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
@@ -1715,11 +1541,12 @@ mod test{
             (TokenType::EndIf, Some("endif".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_if_block_v3(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_if_block_v3(&input, &mut context).unwrap();
         println!("{}", ast_to_string_brief_recursive(node.as_ast_node()));
         
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         
         let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
@@ -1746,9 +1573,10 @@ mod test{
             (TokenType::EndFor, Some("endfor".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_for_block(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_for_block(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let for_node = node.as_any().downcast_ref::<AstForBlock>().unwrap();
         // check counter var
@@ -1792,9 +1620,10 @@ mod test{
             (TokenType::Identifier, Some("Temp3".to_string())),
             (TokenType::EndFor, Some("endfor".to_string())),     
         ]);
-        let (next, (node, errors)) = parse_for_block(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_for_block(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let for_node = node.as_any().downcast_ref::<AstForBlock>().unwrap();
         // check counter var
@@ -1841,9 +1670,10 @@ mod test{
             (TokenType::EndFor, Some("endfor".to_string())),
             (TokenType::EndFor, Some("endfor".to_string())),
         ]);
-        let (next, (node, errors)) = parse_for_block(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_for_block(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let for_node = node.as_any().downcast_ref::<AstForBlock>().unwrap();
         // check counter var
@@ -1884,9 +1714,10 @@ mod test{
             (TokenType::Identifier, Some("Temp3".to_string())),
             (TokenType::EndFor, Some("endfor".to_string())),     
         ]);
-        let (next, (node, errors)) = parse_foreach_block(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_foreach_block(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let foreach_node = node.as_any().downcast_ref::<AstForEachBlock>().unwrap();
         // check counter var
@@ -1917,9 +1748,10 @@ mod test{
             (TokenType::Identifier, Some("SomeVar".to_string())),
             (TokenType::EndFor, Some("endfor".to_string())),     
         ]);
-        let (next, (node, errors)) = parse_foreach_block(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_foreach_block(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let foreach_node = node.as_any().downcast_ref::<AstForEachBlock>().unwrap();
         // check counter var
@@ -1948,9 +1780,10 @@ mod test{
             (TokenType::Identifier, Some("Temp3".to_string())),
             (TokenType::EndWhile, Some("endwhile".to_string())),     
         ]);
-        let (next, (node, errors)) = parse_while_block(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_while_block(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let while_node = node.as_any().downcast_ref::<AstWhileBlock>().unwrap();
         // check counter var
@@ -1974,9 +1807,10 @@ mod test{
             (TokenType::Identifier, Some("Temp3".to_string())),
             (TokenType::EndLoop, Some("endloop".to_string())),     
         ]);
-        let (next, (node, errors)) = parse_loop_block(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_loop_block(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let while_node = node.as_any().downcast_ref::<AstLoopBlock>().unwrap();
         // check counter var
@@ -1998,7 +1832,8 @@ mod test{
             (TokenType::Colon, Some(":".to_string())),
             (TokenType::Identifier, Some("SomeType".to_string())), 
         ]);
-        let (next, node) = parse_local_var_decl(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_local_var_decl(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let var_decl = node.as_any().downcast_ref::<AstLocalVariableDeclaration>().unwrap();
@@ -2018,7 +1853,8 @@ mod test{
             (TokenType::Absolute, Some("absolute".to_string())),
             (TokenType::Identifier, Some("OtheVar".to_string())), 
         ]);
-        let (next, node) = parse_local_var_decl(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_local_var_decl(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let var_decl = node.as_any().downcast_ref::<AstLocalVariableDeclaration>().unwrap();
@@ -2041,10 +1877,13 @@ mod test{
             (TokenType::Identifier, Some("Third".to_string())),
             (TokenType::CSqrBracket, Some("]".to_string())),
         ]);
-        let (next, node) = parse_literal_set(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_literal_set(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
-        
+
+        print!("{}",ast_to_string_brief_recursive(node.as_ast_node()));
+
         let node = node.as_any().downcast_ref::<AstSetLiteral>().unwrap();
         assert_eq!(node.set_items.len(), 3);
     }
@@ -2055,7 +1894,8 @@ mod test{
             (TokenType::OSqrBracket, Some("[".to_string())),
             (TokenType::CSqrBracket, Some("]".to_string())),
         ]);
-        let (next, node) = parse_literal_set(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_literal_set(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         
@@ -2070,7 +1910,8 @@ mod test{
             (TokenType::Identifier, Some("First".to_string())),
             (TokenType::CSqrBracket, Some("]".to_string())),
         ]);
-        let (next, node) = parse_literal_set(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_literal_set(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         
@@ -2094,9 +1935,10 @@ mod test{
             (TokenType::EndSwitch, Some("endswitch".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_switch_block(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_switch_block(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
@@ -2120,9 +1962,10 @@ mod test{
             (TokenType::EndSwitch, Some("endswitch".to_string())),
             
         ]);
-        let (next, (node, errors)) = parse_switch_block(&input).unwrap();
+        let mut context = create_context();
+        let (next, node) = parse_switch_block(&input, &mut context).unwrap();
         assert_eq!(next.len(), 0);
-        assert_eq!(errors.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
