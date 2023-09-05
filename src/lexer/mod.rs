@@ -213,7 +213,7 @@ impl GoldLexer{
         } else if  first_op == '&'{
             result = match next {
                 Some((_,'&')) => Ok(self.create_token(pos, TokenType::StringConcat, Some("&&".to_string()))),
-                _ => {is_double_op = false; Err(GoldLexerError { range: self.create_range(pos, 1), msg: "& is not a valid symbol".to_string() })}
+                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::StringConcat2, Some("&".to_string())))}
             };
         } else if  first_op == '+'{
             result = match next{
@@ -478,11 +478,11 @@ mod test {
         let mut lexer = GoldLexer::new();
         let input = String::from(
             "* / % + - && << >> < <= > >=
-= <> @ . ++ += -- -= := #100");
+= <> @ . ++ += -- -= := #100 &");
         let result = lexer.lex(&input);
         let token = result.0;
         assert_eq!(result.1.len(), 0);
-        assert_eq!(token.len(), 22);
+        assert_eq!(token.len(), 23);
         assert_eq!(token[0].token_type, TokenType::Multiply);
         assert_eq!(token[1].token_type, TokenType::Divide);
         assert_eq!(token[2].token_type, TokenType::Modulus);
@@ -510,6 +510,7 @@ mod test {
         assert_eq!(token[19].token_type, TokenType::DecrementAssign);
         assert_eq!(token[20].token_type, TokenType::DeepAssign);
         assert_eq!(token[21].token_type, TokenType::StringLiteral);
+        assert_eq!(token[22].token_type, TokenType::StringConcat2);
     }
 
     #[test]

@@ -103,6 +103,8 @@ pub enum TokenType {
     Divide,
     Modulus,
     StringConcat,
+    // single &, concat without space (not documented?)
+    StringConcat2,
     LeftShift,
     RightShift,
     NotEquals,
