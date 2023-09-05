@@ -1,7 +1,7 @@
 use crate::{
     parser::ast::IAstNode,
     lexer::tokens::{Token, TokenType},
-    utils::IRange,
+    utils::{IRange, Range, create_new_range},
 };
 
 use super::{ParseError, ParserDiagnostic};
@@ -9,6 +9,69 @@ use super::{ParseError, ParserDiagnostic};
 pub fn prepend_msg_to_error<'a>(s: &str, mut error: ParseError<'a>) -> ParseError<'a> {
     error.msg.insert_str(0, s);
     return error;
+}
+
+/// this version doesn't fail if one item fails to parse
+///  collect the errors instead
+pub fn parse_separated_list_v2<'a, T: IAstNode + ?Sized>(
+    parser: impl Fn(&[Token]) -> Result<(&[Token], Box<T>), ParseError>,
+    separator: TokenType,
+) -> impl Fn(&[Token]) -> Result<(&[Token], (Vec<Box<T>>, Vec<ParserDiagnostic>)), ParseError> {
+
+    move |input : &[Token]| {
+        let mut identifiers = Vec::<Box<T>>::new();
+        let mut diagnostics = Vec::<ParserDiagnostic>::new();
+        // match first identifier
+        let r = _parse_seperated_list_recursive_v2(input, &parser, &separator, &mut identifiers, &mut diagnostics);
+        match r {
+            Ok(r) => return Ok((r, (identifiers, diagnostics))),
+            Err(e) => return Err(e),
+        };
+    }
+}
+
+fn _parse_seperated_list_recursive_v2<'a, 'b, T: IAstNode + ?Sized>(
+    input: &'a [Token],
+    parser: &'b impl Fn(&[Token]) -> Result<(&[Token], Box<T>), ParseError>,
+    sep: &'b TokenType,
+    result: &'b mut Vec<Box<T>>,
+    diagnostics: &'b mut Vec<ParserDiagnostic>
+) -> Result<&'a [Token], ParseError<'a>> {
+    // match first identifier
+    let next = match parser(input) {
+        Ok((next, node)) => {
+            result.push(node);
+            next
+        }
+        Err(e) => {
+            let start : Range = match input.first(){
+                Some(t) => {t.get_range()},
+                _=>{
+                    Range::default()
+                }
+            };
+            let end : Range = match e.input.first(){
+                Some(t) => {t.get_range()},
+                _=> {
+                    match input.first(){
+                        Some(t) => {t.get_range()},
+                        _=>{
+                            Range::default()
+                        }
+                    }
+                }
+            };
+            diagnostics.push(ParserDiagnostic { 
+                range: create_new_range(start, end), 
+                msg: e.msg});
+            e.input
+        }
+    };
+    let next = match exp_token(sep.clone())(next) {
+        Ok((r, _)) => r,
+        Err(e) => return Ok(e.input),
+    };
+    return _parse_seperated_list_recursive(next, parser, sep, result);
 }
 
 pub fn parse_separated_list_allow_empty<'a, T: IAstNode + ?Sized>(

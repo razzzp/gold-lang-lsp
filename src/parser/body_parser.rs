@@ -1,7 +1,7 @@
 
 use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range}, parser::take_until};
 
-use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match, parse_separated_list_allow_empty}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::AstArrayAccess};
+use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match, parse_separated_list_allow_empty, parse_separated_list_v2}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::AstArrayAccess};
 
 /// expr = ident
 ///     | bin_op
@@ -110,7 +110,7 @@ fn parse_literals<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNod
 fn parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
     let (next, ident_node) = parse_identifier(input)?;
     let (next, _) = exp_token(TokenType::OBracket)(next)?;
-    let (next, parameter_list) = parse_separated_list(next, parse_expr, TokenType::Comma)?;
+    let (next, (parameter_list, diagnostics)) = parse_separated_list_v2(parse_expr, TokenType::Comma)(next)?;
     let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
     return Ok((next, Box::new(AstMethodCall{
         raw_pos: ident_node.get_raw_pos(),
