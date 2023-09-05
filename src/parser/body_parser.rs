@@ -1,7 +1,7 @@
 
 use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range}, parser::take_until};
 
-use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::AstArrayAccess};
+use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match, parse_separated_list_allow_empty}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::AstArrayAccess};
 
 /// expr = ident
 ///     | bin_op
@@ -29,7 +29,7 @@ impl<'a> BlockParser<'a> {
 
 fn parse_literal_set<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
     let (next, obracket_token) = exp_token(TokenType::OSqrBracket)(input)?;
-    let (next, set_items) = parse_separated_list(next, parse_primary, TokenType::Comma)?;
+    let (next, set_items) = parse_separated_list_allow_empty(next, parse_primary, TokenType::Comma)?;
     let (next, cbracket_token) = exp_token(TokenType::CSqrBracket)(next)?;
     return Ok((next, Box::new(AstSetLiteral{
         raw_pos: obracket_token.get_raw_pos(),
@@ -134,6 +134,7 @@ fn parse_array_access<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAs
     })))
 }
 
+#[allow(unused)]
 fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
     let (next, ident_node) = parse_identifier(input)?;
     return Ok((next, ident_node))
@@ -286,7 +287,8 @@ fn parse_compare<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode
         exp_token(TokenType::LessThanOrEqual),
         exp_token(TokenType::GreaterThan),
         exp_token(TokenType::GreaterThanOrEqual),
-        exp_token(TokenType::In)
+        exp_token(TokenType::In),
+        exp_token(TokenType::Like),
     ];
     let op_parser = alt_parse(&op_token_parsers);
     return parse_binary_ops(input, &op_parser, &parse_shifts);
@@ -2045,6 +2047,35 @@ mod test{
         
         let node = node.as_any().downcast_ref::<AstSetLiteral>().unwrap();
         assert_eq!(node.set_items.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_literal_set_empty(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::OSqrBracket, Some("[".to_string())),
+            (TokenType::CSqrBracket, Some("]".to_string())),
+        ]);
+        let (next, node) = parse_literal_set(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        check_node_pos_and_range(node.as_ast_node(), &input);
+        
+        let node = node.as_any().downcast_ref::<AstSetLiteral>().unwrap();
+        assert_eq!(node.set_items.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_literal_set_one_item(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::OSqrBracket, Some("[".to_string())),
+            (TokenType::Identifier, Some("First".to_string())),
+            (TokenType::CSqrBracket, Some("]".to_string())),
+        ]);
+        let (next, node) = parse_literal_set(&input).unwrap();
+        assert_eq!(next.len(), 0);
+        check_node_pos_and_range(node.as_ast_node(), &input);
+        
+        let node = node.as_any().downcast_ref::<AstSetLiteral>().unwrap();
+        assert_eq!(node.set_items.len(), 1);
     }
 
     #[test]

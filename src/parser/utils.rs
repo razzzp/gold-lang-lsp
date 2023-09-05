@@ -11,6 +11,34 @@ pub fn prepend_msg_to_error<'a>(s: &str, mut error: ParseError<'a>) -> ParseErro
     return error;
 }
 
+pub fn parse_separated_list_allow_empty<'a, T: IAstNode + ?Sized>(
+    input: &'a [Token],
+    parser: impl Fn(&[Token]) -> Result<(&[Token], Box<T>), ParseError>,
+    separator: TokenType,
+) -> Result<(&'a [Token], Vec<Box<T>>), ParseError<'a>> {
+    let mut identifiers = Vec::<Box<T>>::new();
+    // match first identifier, if doesn't match return empty vec
+    let next = match parser(input) {
+        Ok((next, node)) => {
+            identifiers.push(node);
+            let next = match exp_token(separator.clone())(next) {
+                Ok((r, _)) => r,
+                Err(e) => return Ok((e.input, identifiers))
+            };
+            next
+        }
+        Err(e) => {
+            return Ok((e.input, identifiers))
+        }
+    };
+    
+    let r = _parse_seperated_list_recursive(next, &parser, &separator, &mut identifiers);
+    match r {
+        Ok(r) => return Ok((r, identifiers)),
+        Err(e) => return Err(e),
+    };
+}
+
 pub fn parse_separated_list<'a, T: IAstNode + ?Sized>(
     input: &'a [Token],
     parser: impl Fn(&[Token]) -> Result<(&[Token], Box<T>), ParseError>,
@@ -38,10 +66,7 @@ fn _parse_seperated_list_recursive<'a, 'b, T: IAstNode + ?Sized>(
             r
         }
         Err(e) => {
-            return Err(ParseError {
-                input: e.input,
-                msg: e.msg,
-            })
+            return Err(e)
         }
     };
     let next = match exp_token(sep.clone())(next) {
