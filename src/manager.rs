@@ -3,7 +3,7 @@ use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzer::{AnalyzerDiagnostic, ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer}};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{AnalyzerDiagnostic, ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, varybytearray_param_checker::VarByteArrayParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
 
 // pub trait IDocument {
 //     fn get_symbols(&self)-> Vec<&'static DocumentSymbol>;
@@ -66,8 +66,6 @@ impl GoldDocumentInfo{
 
 #[derive(Debug)]
 pub struct GoldProjectManager{
-    documents_map: HashMap<String, Rc<GoldDocument>>,
-    open_documents_map: HashMap<String, Rc<GoldDocument>>,
     documents: HashMap<String, Arc<Mutex<GoldDocumentInfo>>>
 }
 
@@ -80,8 +78,6 @@ pub struct GoldProjectManagerError{
 impl GoldProjectManager{
     pub fn new() -> GoldProjectManager{
         GoldProjectManager{
-            documents_map: HashMap::new(),
-            open_documents_map: HashMap::new(),
             documents: HashMap::new(),
         }
     }
@@ -156,9 +152,10 @@ impl GoldProjectManager{
     pub fn notify_document_saved(&mut self, uri: &Url) -> Result<Rc<RefCell<GoldDocument>>, GoldProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
-        doc_info.lock().unwrap().saved = Some(Rc::new(RefCell::new(new_doc)));
+        let rc_doc = Rc::new(RefCell::new(new_doc));
+        doc_info.lock().unwrap().saved = Some(rc_doc.clone());
         doc_info.lock().unwrap().opened = None;
-        return Ok(doc_info.lock().unwrap().saved.as_ref().unwrap().clone());
+        return Ok(rc_doc);
     }
 
     pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String) -> Result<Rc<RefCell<GoldDocument>>, GoldProjectManagerError>{
@@ -219,6 +216,8 @@ impl GoldProjectManager{
         // let result = Vec::new();
         let mut analyzer = AstWalker::new();
         analyzer.register_analyzer(Box::new(UnusedVarAnalyzer::new()));
+        analyzer.register_analyzer(Box::new(VarByteArrayParamChecker::new()));
+        analyzer.register_analyzer(Box::new(FunctionReturnTypeChecker::new()));
 
         return analyzer.analyze(ast_nodes);
     }
@@ -236,8 +235,9 @@ impl GoldProjectManager{
             }
         }
         if class_symbol.is_some(){result.push(class_symbol.unwrap())}
-        doc.borrow_mut().symbols = Some(Rc::new(result));
-        return Ok(doc.borrow().symbols.as_ref().unwrap().clone());
+        let rc_result = Rc::new(result);
+        doc.borrow_mut().symbols = Some(rc_result.clone());
+        return Ok(rc_result);
     }
 
     fn generate_document_diagnostic_report(&self, doc: Rc<RefCell<GoldDocument>>)
@@ -402,7 +402,7 @@ impl GoldProjectManager{
 mod test{
     use std::{fs::File, io::Read};
 
-    use crate::{lexer::{GoldLexer, tokens::Token}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::ast_to_string_brief_recursive, analyzer::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer}};
+    use crate::{lexer::{GoldLexer, tokens::Token}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::ast_to_string_brief_recursive, analyzers::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, varybytearray_param_checker::VarByteArrayParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
 
     use super::GoldProjectManager;
 
@@ -425,7 +425,6 @@ mod test{
 
     fn create_ast_walker()->AstWalker{
         let mut result = AstWalker::new();
-        result.register_analyzer(Box::new(UnusedVarAnalyzer::new()));
         return result;
     }
 
@@ -483,13 +482,38 @@ mod test{
     }
 
     #[test]
-    fn test_read_file_unused_var() {
+    fn test_unused_var_file() {
         let (asts, _) = parse_and_analyze("./test/aTestUnusedVar.god");
         let mut walker = create_ast_walker();
+        walker.register_analyzer(Box::new(UnusedVarAnalyzer::new()));
         let diags = walker.analyze(&asts);
         // for diag in diags{
         //     print!("{:#?}",diag);
         // }
         assert_eq!(diags.len(), 1);
+    }
+
+    #[test]
+    fn test_varbytearray_param_checker_file() {
+        let (asts, _) = parse_and_analyze("./test/aTestVarByteArrayParamChecker.god");
+        let mut walker = create_ast_walker();
+        walker.register_analyzer(Box::new(VarByteArrayParamChecker::new()));
+        let diags = walker.analyze(&asts);
+        // for diag in diags{
+        //     print!("{:#?}",diag);
+        // }
+        assert_eq!(diags.len(), 2);
+    }
+
+    #[test]
+    fn test_func_return_type_checker_param_file() {
+        let (asts, _) = parse_and_analyze("./test/aTestFunctionReturnTypeChecker.god");
+        let mut walker = create_ast_walker();
+        walker.register_analyzer(Box::new(FunctionReturnTypeChecker::new()));
+        let diags = walker.analyze(&asts);
+        // for diag in diags{
+        //     print!("{:#?}",diag);
+        // }
+        assert_eq!(diags.len(), 3);
     }
 }

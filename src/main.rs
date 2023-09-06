@@ -21,7 +21,7 @@ pub mod lexer;
 pub mod parser;
 pub mod utils;
 pub mod manager;
-pub mod analyzer;
+pub mod analyzers;
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Note that  we must have our logging only write out to stderr.
