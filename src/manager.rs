@@ -345,7 +345,7 @@ impl GoldProjectManager{
     fn generate_proc_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
         match ast_node.as_any().downcast_ref::<AstProcedure>(){
             Some(n) => Some(DocumentSymbol { 
-                    name: n.identifier.value.as_ref().unwrap().to_string(), 
+                    name: n.identifier.get_identifier(), 
                     detail: None, 
                     kind: SymbolKind::METHOD, 
                     range: n.get_range().as_lsp_type_range(), 
@@ -361,7 +361,7 @@ impl GoldProjectManager{
     fn generate_func_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
         match ast_node.as_any().downcast_ref::<AstFunction>(){
             Some(n) => Some(DocumentSymbol { 
-                    name: n.identifier.value.as_ref().unwrap().to_string(), 
+                    name: n.identifier.get_identifier(), 
                     detail: None, 
                     kind: SymbolKind::FUNCTION, 
                     range: n.get_range().as_lsp_type_range(), 

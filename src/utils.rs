@@ -15,15 +15,6 @@ pub struct Range {
     pub start: Position,
     pub end: Position
 }
-impl IRange for Range{
-    fn get_range(&self) -> Range {
-        self.clone()
-    }
-
-    fn as_range(&self) -> &dyn IRange {
-        self
-    }
-}
 impl Range{
     pub fn as_lsp_type_range(&self) -> lsp_types::Range{
         lsp_types::Range {start: self.start.as_lsp_type_pos(), end: self.end.as_lsp_type_pos()}

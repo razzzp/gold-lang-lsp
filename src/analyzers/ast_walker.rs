@@ -2,7 +2,6 @@ use crate::parser::ast::IAstNode;
 use crate::utils::DynamicChild;
 
 use super::{IAstWalker, IAnalyzer};
-use super::AnalyzerDiagnostic;
 
 pub struct AstWalker{
     analyzers: Vec<Box<dyn IAnalyzer>>,

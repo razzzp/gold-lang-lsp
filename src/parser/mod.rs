@@ -1,14 +1,11 @@
 
-use std::f32::consts::E;
-
-use lsp_types::lsif::Item;
 
 use crate::lexer::tokens::{Token, TokenType};
 use crate::parser::body_parser::parse_identifier;
 use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange, create_new_range};
 use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstBinaryOp, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
 
-use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf};
+use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent};
 use self::body_parser::{parse_statement_v2, parse_literal_basic, parse_ident_token, parse_binary_ops_w_context};
 use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, parse_separated_list, opt_token, parse_repeat, parse_until, parse_until_strict, create_closure, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context};
 
@@ -693,29 +690,43 @@ fn parse_global_variable_declaration<'a, C: IParserContext<ParserDiagnostic> + '
    ));
 }
 
+fn parse_method_name_uievent<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+   let (next, method_name) = parse_identifier(input, context)?;
+   let (next, _pound) = exp_token(TokenType::Pound)(next)?;
+   let (next, event) = parse_identifier(next, context)?;
+   return Ok((
+      next,
+      Box::new(AstMethodNameWithEvent{
+         raw_pos: method_name.get_raw_pos(),
+         range: create_new_range(method_name.get_range(), event.get_range()),
+         method_name,
+         event,
+      })
+   ));
+}
+
+fn parse_method_name<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+   return alt_parse_w_context([
+      parse_method_name_uievent,
+      parse_identifier,
+   ].as_ref())(input, context);
+}
 
 fn parse_procedure_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
    // parse proc [ident]
-   let (next, first_tokens) = match seq_parse(&[
-      exp_token(TokenType::Proc),
-      exp_token(TokenType::Identifier),
-   ]) (input){
-      Ok(r) => r,
-      Err(e) => return Err(e)
-   };
-   let mut end = first_tokens.get(1).unwrap().range.end.clone();
+   let (next, first_token) = exp_token(TokenType::Proc)(input)?;
+
+   // ident
+   let (next, identifier) = parse_method_name(next, context)?;
+
+   // keep track of last end node
+   let mut end = identifier.as_ast_node();
    // parse params
-   let (next, param_nodes) = match parse_parameter_declaration_list(next, context){
-      Ok(r) => r,
-      Err(e) => return Err(prepend_msg_to_error("Failed to parse proc decl: ", e))
-   };
-   end = if param_nodes.is_some() {get_end_pos(param_nodes.as_ref().unwrap())} else {end};
+   let (next, param_nodes) = parse_parameter_declaration_list(next, context)?;
+   end = if param_nodes.is_some() {param_nodes.as_ref().unwrap().as_ast_node()} else {end};
    // modifiers (private, protected, etc.)
-   let (mut next, modifier_node) = match parse_method_modifiers(next, context) {
-      Ok((n, node)) => (n, node),
-      Err(e) => return Err(prepend_msg_to_error("Failed to parse proc decl: ", e))
-   };
-   end = if modifier_node.is_some() {get_end_pos(modifier_node.as_ref().unwrap())} else {end};
+   let (mut next, modifier_node) =  parse_method_modifiers(next, context)?;
+   end = if modifier_node.is_some() {modifier_node.as_ref().unwrap().as_ast_node()} else {end};
 
    // if proc is not forward and not external, parse body
    let mut method_body: Option<AstMethodBody> = None;
@@ -727,33 +738,30 @@ fn parse_procedure_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(inp
          Ok((_, mut node)) => {
             if node.is_none() {
                node = Some(AstMethodBody{
-                  raw_pos: first_tokens.get(0).unwrap().get_raw_pos(),
-                  pos: first_tokens.get(0).unwrap().get_pos(),
-                  range: first_tokens.get(0).unwrap().get_range(),
+                  raw_pos: end.get_raw_pos(),
+                  range: end.get_range(),
                   statements: Vec::new()
                });
             }
             method_body = node;
          },
-         // TODO improve structure for error handling
-         Err(_) => ()
+         Err(e) => return Err(e)
       }
       if end_method_token.is_none(){
       context.add_diagnostic(ParserDiagnostic { 
-         range: first_tokens.get(0).unwrap().get_range(), 
+         range: first_token.get_range(), 
          msg: "proc end token not found".to_string() }
       )
    }
    }
-   end = if end_method_token.is_some() {end_method_token.as_ref().unwrap().get_range().end} else {end};
+   let end = if end_method_token.is_some() {end_method_token.as_ref().unwrap().get_range()} else {end.get_range()};
 
    return Ok((
       next, 
       Box::new(AstProcedure{
-         raw_pos: first_tokens[0].raw_pos,
-         pos: first_tokens[0].pos.clone(),
-         range: Range { start: first_tokens[0].pos.clone(), end: end},
-         identifier: first_tokens[1].clone(),
+         raw_pos: first_token.get_raw_pos(),
+         range: create_new_range(first_token.get_range(), end),
+         identifier,
          parameter_list: param_nodes,
          modifiers: modifier_node,
          body: method_body,
@@ -765,39 +773,25 @@ fn parse_procedure_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(inp
 
 fn parse_function_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
    // parse func [ident]
-   let (next, first_tokens) = match seq_parse(&[
-      exp_token(TokenType::Func),
-      exp_token(TokenType::Identifier),
-   ]) (input){
-      Ok(r) => r,
-      Err(e) => return Err(e)
-   };
+   let (next, first_token) = exp_token(TokenType::Func)(input)?;
+
+   // ident
+   let (next, identifier) = parse_method_name(next, context)?;
    
    // parse params
-   let (next, param_nodes) = match parse_parameter_declaration_list(next, context){
-      Ok(r) => r,
-      Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: ", e))
-   };
+   let (next, param_nodes) = parse_parameter_declaration_list(next, context)?;
    // return 
-   let (next, _) = match exp_token(TokenType::Return)(next){
-      Ok(r) => r,
-      Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: ", e))
-   };
+   let (next, _) =  exp_token(TokenType::Return)(next)?;
    // return type
    let return_type_parsers = [
       parse_type_basic
    ];
-   let (next, return_type_node) = match alt_parse_w_context(&return_type_parsers)(next, context){
-      Ok(r) => r,
-      Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: failed to parse return type: ", e))
-   };
-   let mut end = get_end_pos(return_type_node.as_range());
+   let (next, return_type_node) =  alt_parse_w_context(&return_type_parsers)(next, context)?;
+
+   let mut end = return_type_node.as_ast_node();
    // modifiers (private, protected, etc.)
-   let (mut next, modifier_node) = match parse_method_modifiers(next, context) {
-      Ok((n, node)) => (n, node),
-      Err(e) => return Err(prepend_msg_to_error("Failed to parse func decl: ", e))
-   };
-   end = if modifier_node.is_some() {get_end_pos(modifier_node.as_ref().unwrap())} else {end};
+   let (mut next, modifier_node) = parse_method_modifiers(next, context)?;
+   end = if modifier_node.is_some() {modifier_node.as_ref().unwrap().as_ast_node()} else {end};
 
    // if proc is not forward and not external, parse body
    let mut method_body: Option<AstMethodBody> = None;
@@ -809,33 +803,30 @@ fn parse_function_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(inpu
          Ok((_, mut node)) => {
             if node.is_none() {
                node = Some(AstMethodBody{
-                  raw_pos: first_tokens.get(0).unwrap().get_raw_pos(),
-                  pos: first_tokens.get(0).unwrap().get_pos(),
-                  range: first_tokens.get(0).unwrap().get_range(),
+                  raw_pos: end.get_raw_pos(),
+                  range: end.get_range(),
                   statements: Vec::new()
                });
             }
             method_body = node;
          },
-         // TODO improve structure for error handling
-         Err(_) => ()
+         Err(e) => return Err(e)
       }
       if end_method_token.is_none(){
          context.add_diagnostic(ParserDiagnostic { 
-            range: first_tokens.get(0).unwrap().get_range(), 
-            msg: "proc end token not found".to_string() }
+            range: first_token.get_range(), 
+            msg: "func end token not found".to_string() }
          )
       }
    }
-   end = if end_method_token.is_some() {end_method_token.as_ref().unwrap().get_range().end} else {end};
+   let end = if end_method_token.is_some() {end_method_token.as_ref().unwrap().get_range()} else {end.get_range()};
    
    return Ok((
       next, 
       Box::new(AstFunction{
-         raw_pos: first_tokens[0].raw_pos,
-         pos: first_tokens[0].pos.clone(),
-         range: Range { start: first_tokens[0].pos.clone(), end: end},
-         identifier: first_tokens[1].clone(),
+         raw_pos: first_token.get_raw_pos(),
+         range: create_new_range(first_token.get_range(), end),
+         identifier,
          parameter_list: param_nodes,
          return_type: return_type_node,
          modifiers: modifier_node,
@@ -1109,7 +1100,6 @@ fn parse_method_body<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [
       next, 
       Some(AstMethodBody{
          raw_pos,
-         pos: start_pos,
          range,
          statements,
       })
@@ -1120,7 +1110,7 @@ fn parse_method_body<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf}, IParserContext}, utils::{ast_to_string_brief, ast_to_string_brief_recursive}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent}, IParserContext}, utils::{ast_to_string_brief, ast_to_string_brief_recursive}};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type, ParserContext};
 
@@ -1479,7 +1469,7 @@ mod test {
       let (_, node) = parse_procedure_declaration(next, &mut context).unwrap();
       let downcasted = cast_and_unwrap::<AstProcedure>(&node);
       check_node_pos_and_range(downcasted, &input);
-      assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "FirstMethod");
+      assert_eq!(downcasted.identifier.get_identifier(), "FirstMethod");
       assert_eq!(context.get_diagnostics().len(), 0);
 
       // test params
@@ -1532,7 +1522,7 @@ mod test {
       let (_, node) = parse_function_declaration(next, &mut context).unwrap();
       let downcasted = cast_and_unwrap::<AstFunction>(&node);
       check_node_pos_and_range(downcasted, &input);
-      assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "FirstMethod");
+      assert_eq!(downcasted.identifier.get_identifier(), "FirstMethod");
       assert_eq!(context.get_diagnostics().len(), 0);
 
       // test params
@@ -1850,6 +1840,25 @@ mod test {
       let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeInstanceOf>().unwrap();
 
       assert_eq!(downcasted.instance_type.get_identifier(), "SomeType");
+   }
+
+   #[test]
+   fn test_parse_method_with_event(){
+      let input = gen_list_of_tokens(&[
+         (TokenType::Proc, Some("procedure".to_string())),
+         (TokenType::Identifier, Some("Method".to_string())),
+         (TokenType::Pound, Some("#".to_string())),
+         (TokenType::Identifier, Some("SomeEvent".to_string())),
+         (TokenType::EndProc, Some("endproc".to_string())),
+      ]);
+      let mut context = create_context();
+      let (next, node) = parse_procedure_declaration(&input, &mut context).unwrap();
+      assert!(next.is_empty());
+      check_node_pos_and_range(node.as_ref(), &input);
+
+      let downcasted = node.as_ref().as_any().downcast_ref::<AstProcedure>().unwrap();
+      let method_name = downcasted.identifier.as_any().downcast_ref::<AstMethodNameWithEvent>().unwrap();
+      assert_eq!(method_name.get_identifier(), "Method#SomeEvent");
    }
 
 }

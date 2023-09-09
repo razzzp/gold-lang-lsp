@@ -1,4 +1,5 @@
 
+#[macro_use]
 use crate::utils::{IRange, Position, Range};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -203,11 +204,11 @@ pub struct Token {
 }
 
 impl IRange for Token {
-    fn get_range(&self) -> Range{
+    fn get_range(&self) -> Range {
         self.range.clone()
     }
     fn set_range(&mut self, new_range: Range) {
-        self.range = new_range
+        self.range=new_range
     }
     fn as_range(&self) -> &dyn IRange {
         self
