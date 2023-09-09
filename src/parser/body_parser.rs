@@ -53,43 +53,12 @@ pub fn parse_literal_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: 
 }
 
 pub fn parse_ident_token<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Token), ParseError<'a>> {
+    // keywords can also me used as member identifiers
     return alt_parse(&[
         exp_token(TokenType::Identifier),
-        exp_token(TokenType::MethodName),
-        exp_token(TokenType::ModuleName),
         exp_token(TokenType::TSelf),
         exp_token(TokenType::Result),
         exp_token(TokenType::Type),
-        exp_token(TokenType::Scenario),
-        exp_token(TokenType::Member),
-        exp_token(TokenType::MetaModelEntity),
-        exp_token(TokenType::New),
-        exp_token(TokenType::Dispose),
-        exp_token(TokenType::Concat),
-        exp_token(TokenType::Write),
-        exp_token(TokenType::WriteLn),
-        exp_token(TokenType::Length),
-        exp_token(TokenType::SizeOf),
-        exp_token(TokenType::Upcase),
-        exp_token(TokenType::BooleanTrue),
-        exp_token(TokenType::BooleanFalse),
-        exp_token(TokenType::Nil),
-        exp_token(TokenType::Int1),
-        exp_token(TokenType::Int2),
-        exp_token(TokenType::Int4),
-        exp_token(TokenType::Int8),
-        exp_token(TokenType::Boolean),
-        exp_token(TokenType::Char),
-        exp_token(TokenType::Num4),
-        exp_token(TokenType::Num8),
-        exp_token(TokenType::Num10),
-        exp_token(TokenType::Decimal),
-        exp_token(TokenType::CString),
-        exp_token(TokenType::String),
-        exp_token(TokenType::Text),
-        exp_token(TokenType::Fetch),
-        exp_token(TokenType::Select),
-        exp_token(TokenType::Sequence),
     ])(input);
 }
 
