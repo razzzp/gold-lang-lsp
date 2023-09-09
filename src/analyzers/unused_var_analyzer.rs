@@ -1,10 +1,10 @@
-use std::{collections::HashMap, string};
+use std::collections::HashMap;
 
 use lsp_types::{DiagnosticSeverity, DiagnosticTag};
 
 use crate::{parser::ast::{AstProcedure, IAstNode, AstFunction, AstTerminal, AstLocalVariableDeclaration, AstBinaryOp}, utils::{IRange, DynamicChild}, lexer::tokens::{Token, TokenType}};
 
-use super::{IAnalyzer, AnalyzerDiagnostic};
+use super::IAnalyzer;
 
 #[derive(Debug)]
 struct VarInfo{
@@ -102,7 +102,7 @@ impl IAnalyzer for UnusedVarAnalyzer{
             _=> ()
         }
         match node.data.as_any().downcast_ref::<AstTerminal>() {
-            Some(data) =>{
+            Some(_data) =>{
                 self.notify_terminal_node(node)
             }
             _=>()
