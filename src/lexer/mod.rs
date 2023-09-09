@@ -249,7 +249,9 @@ impl GoldLexer{
                 Some((_ , '0'..='1')) => {
                     int_char.push(buf.next().unwrap().1);
                 },
-                Some((_, ' '| '\n'| '\r'| '\t')) => break,
+                Some((_, ' '| '\n'| '\r'| '\t')) => {
+                    break
+                },
                 Some((_,_)) => {
                     contains_invalid_char = true;
                     int_char.push(buf.next().unwrap().1);},
@@ -261,13 +263,9 @@ impl GoldLexer{
                 msg: "int char literal should only contain digits".to_string(),
                 range: self.create_range(pos, int_char.len())
             })
-        } else if int_char.len() == 1 {
-            self.errors.push(GoldLexerError{
-                msg: "digits expected".to_string(),
-                range: self.create_range(pos, int_char.len())
-            })
-        };
-        return self.create_token(pos, TokenType::StringLiteral, Some(int_char));
+        }
+        let token_type = if int_char.len() == 1 {TokenType::Pound} else {TokenType::StringLiteral};
+        return self.create_token(pos, token_type, Some(int_char));
     }
 
     fn create_word_token(&self, pos: usize, word : String) -> Token {
@@ -478,39 +476,39 @@ mod test {
         let mut lexer = GoldLexer::new();
         let input = String::from(
             "* / % + - && << >> < <= > >=
-= <> @ . ++ += -- -= := #100 &");
-        let result = lexer.lex(&input);
-        let token = result.0;
-        assert_eq!(result.1.len(), 0);
-        assert_eq!(token.len(), 23);
-        assert_eq!(token[0].token_type, TokenType::Multiply);
-        assert_eq!(token[1].token_type, TokenType::Divide);
-        assert_eq!(token[2].token_type, TokenType::Modulus);
-        assert_eq!(token[3].token_type, TokenType::Plus);
-        assert_eq!(token[4].token_type, TokenType::Minus);
-        assert_eq!(token[5].token_type, TokenType::StringConcat);
-        assert_eq!(token[6].token_type, TokenType::LeftShift);
-        assert_eq!(token[7].token_type, TokenType::RightShift);
-        assert_eq!(token[8].token_type, TokenType::LessThan);
-        assert_eq!(token[9].token_type, TokenType::LessThanOrEqual);
-        assert_eq!(token[10].token_type, TokenType::GreaterThan);
-        assert_eq!(token[11].token_type, TokenType::GreaterThanOrEqual);
+= <> @ . ++ += -- -= := #100 & #");
+        let (tokens, errors) = lexer.lex(&input);
+        assert_eq!(errors.len(), 0);
+        assert_eq!(tokens.len(), 24);
+        assert_eq!(tokens[0].token_type, TokenType::Multiply);
+        assert_eq!(tokens[1].token_type, TokenType::Divide);
+        assert_eq!(tokens[2].token_type, TokenType::Modulus);
+        assert_eq!(tokens[3].token_type, TokenType::Plus);
+        assert_eq!(tokens[4].token_type, TokenType::Minus);
+        assert_eq!(tokens[5].token_type, TokenType::StringConcat);
+        assert_eq!(tokens[6].token_type, TokenType::LeftShift);
+        assert_eq!(tokens[7].token_type, TokenType::RightShift);
+        assert_eq!(tokens[8].token_type, TokenType::LessThan);
+        assert_eq!(tokens[9].token_type, TokenType::LessThanOrEqual);
+        assert_eq!(tokens[10].token_type, TokenType::GreaterThan);
+        assert_eq!(tokens[11].token_type, TokenType::GreaterThanOrEqual);
 
-        assert_eq!(token[12].token_type, TokenType::Equals);
-        assert_eq!(token[12].raw_pos, 29);
-        assert_eq!(token[12].pos.line, 1);
-        assert_eq!(token[12].pos.character, 0);
+        assert_eq!(tokens[12].token_type, TokenType::Equals);
+        assert_eq!(tokens[12].raw_pos, 29);
+        assert_eq!(tokens[12].pos.line, 1);
+        assert_eq!(tokens[12].pos.character, 0);
 
-        assert_eq!(token[13].token_type, TokenType::NotEquals);
-        assert_eq!(token[14].token_type, TokenType::AddressOf);
-        assert_eq!(token[15].token_type, TokenType::Dot);
-        assert_eq!(token[16].token_type, TokenType::Increment);
-        assert_eq!(token[17].token_type, TokenType::IncrementAssign);
-        assert_eq!(token[18].token_type, TokenType::Decrement);
-        assert_eq!(token[19].token_type, TokenType::DecrementAssign);
-        assert_eq!(token[20].token_type, TokenType::DeepAssign);
-        assert_eq!(token[21].token_type, TokenType::StringLiteral);
-        assert_eq!(token[22].token_type, TokenType::StringConcat2);
+        assert_eq!(tokens[13].token_type, TokenType::NotEquals);
+        assert_eq!(tokens[14].token_type, TokenType::AddressOf);
+        assert_eq!(tokens[15].token_type, TokenType::Dot);
+        assert_eq!(tokens[16].token_type, TokenType::Increment);
+        assert_eq!(tokens[17].token_type, TokenType::IncrementAssign);
+        assert_eq!(tokens[18].token_type, TokenType::Decrement);
+        assert_eq!(tokens[19].token_type, TokenType::DecrementAssign);
+        assert_eq!(tokens[20].token_type, TokenType::DeepAssign);
+        assert_eq!(tokens[21].token_type, TokenType::StringLiteral);
+        assert_eq!(tokens[22].token_type, TokenType::StringConcat2);
+        assert_eq!(tokens[23].token_type, TokenType::Pound);
     }
 
     #[test]

@@ -184,6 +184,7 @@ pub enum TokenType {
     Comment,
     Identifier,
     Comma,
+    Pound,
 
     // lterals
     StringLiteral,
