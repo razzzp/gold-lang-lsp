@@ -2,7 +2,7 @@ use crate::{parser::ast::IAstNode, utils::DynamicChild};
 
 pub mod ast_walker;
 pub mod unused_var_analyzer;
-pub mod varybytearray_param_checker;
+pub mod inout_param_checker;
 pub mod function_return_type_checker;
 
 pub trait IAstWalker{

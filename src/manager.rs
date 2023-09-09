@@ -3,7 +3,7 @@ use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{AnalyzerDiagnostic, ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, varybytearray_param_checker::VarByteArrayParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{AnalyzerDiagnostic, ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
 
 // pub trait IDocument {
 //     fn get_symbols(&self)-> Vec<&'static DocumentSymbol>;
@@ -216,26 +216,16 @@ impl GoldProjectManager{
         // let result = Vec::new();
         let mut analyzer = AstWalker::new();
         analyzer.register_analyzer(Box::new(UnusedVarAnalyzer::new()));
-        analyzer.register_analyzer(Box::new(VarByteArrayParamChecker::new()));
+        analyzer.register_analyzer(Box::new(InoutParamChecker::new()));
         analyzer.register_analyzer(Box::new(FunctionReturnTypeChecker::new()));
 
         return analyzer.analyze(ast_nodes);
     }
 
     fn generate_document_symbols(&self, doc: Rc<RefCell<GoldDocument>>) -> Result<Rc<Vec<DocumentSymbol>>, GoldProjectManagerError>{
-        let mut result = Vec::<DocumentSymbol>::new();
-        let mut class_symbol = self.find_and_generate_class_symbol(&doc.borrow().ast_nodes);
-        for node in &doc.borrow().ast_nodes {
-            let symbol = self.generate_symbol_for_node(node.as_ref());
-            if symbol.is_some(){
-                match &mut class_symbol {
-                    Some(class_sym) => class_sym.children.as_mut().unwrap().push(symbol.unwrap()),
-                    None => result.push(symbol.unwrap())
-                };
-            }
-        }
-        if class_symbol.is_some(){result.push(class_symbol.unwrap())}
-        let rc_result = Rc::new(result);
+        let symbol_generator = DocumentSymbolGenerator::new();
+        let symbols = symbol_generator.generate_symbols(&doc.borrow().ast_nodes);
+        let rc_result = Rc::new(symbols);
         doc.borrow_mut().symbols = Some(rc_result.clone());
         return Ok(rc_result);
     }
@@ -267,6 +257,31 @@ impl GoldProjectManager{
         let analyzer_diags = self.get_analyzer_diagnostics(doc)?;
         analyzer_diags.iter().for_each(|d|{result.push(d.clone())});
         return Ok(result);
+    }
+}
+
+struct DocumentSymbolGenerator{
+
+}
+impl DocumentSymbolGenerator{
+    pub fn new() -> DocumentSymbolGenerator{
+        return DocumentSymbolGenerator {  }
+    }
+
+    pub fn generate_symbols(&self, ast_nodes: &Vec<Box<dyn IAstNode>>)-> Vec<DocumentSymbol> {
+        let mut result = Vec::<DocumentSymbol>::new();
+        let mut class_symbol = self.find_and_generate_class_symbol(ast_nodes);
+        for node in ast_nodes {
+            let symbol = self.generate_symbol_for_node(node.as_ref());
+            if symbol.is_some(){
+                match &mut class_symbol {
+                    Some(class_sym) => class_sym.children.as_mut().unwrap().push(symbol.unwrap()),
+                    None => result.push(symbol.unwrap())
+                };
+            }
+        }
+        if class_symbol.is_some(){result.push(class_symbol.unwrap())}
+        return result;
     }
 
     fn generate_symbol_for_node(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
@@ -330,7 +345,7 @@ impl GoldProjectManager{
         match ast_node.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
             Some(n) => Some(DocumentSymbol { 
                     name: n.identifier.value.as_ref().unwrap().to_string(), 
-                    detail: None, 
+                    detail: Some(n.type_node.get_identifier()), 
                     kind: SymbolKind::FIELD, 
                     range: n.get_range().as_lsp_type_range(), 
                     selection_range: n.identifier.get_range().as_lsp_type_range(), 
@@ -362,7 +377,7 @@ impl GoldProjectManager{
         match ast_node.as_any().downcast_ref::<AstFunction>(){
             Some(n) => Some(DocumentSymbol { 
                     name: n.identifier.get_identifier(), 
-                    detail: None, 
+                    detail: Some(n.return_type.get_identifier()), 
                     kind: SymbolKind::FUNCTION, 
                     range: n.get_range().as_lsp_type_range(), 
                     selection_range: n.identifier.get_range().as_lsp_type_range(), 
@@ -402,7 +417,7 @@ impl GoldProjectManager{
 mod test{
     use std::{fs::File, io::Read};
 
-    use crate::{lexer::{GoldLexer, tokens::Token}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::ast_to_string_brief_recursive, analyzers::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, varybytearray_param_checker::VarByteArrayParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
+    use crate::{lexer::{GoldLexer, tokens::Token}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::ast_to_string_brief_recursive, analyzers::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
 
     use super::GoldProjectManager;
 
@@ -497,7 +512,7 @@ mod test{
     fn test_varbytearray_param_checker_file() {
         let (asts, _) = parse_and_analyze("./test/aTestVarByteArrayParamChecker.god");
         let mut walker = create_ast_walker();
-        walker.register_analyzer(Box::new(VarByteArrayParamChecker::new()));
+        walker.register_analyzer(Box::new(InoutParamChecker::new()));
         let diags = walker.analyze(&asts);
         // for diag in diags{
         //     print!("{:#?}",diag);

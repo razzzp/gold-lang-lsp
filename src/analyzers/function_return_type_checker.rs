@@ -1,5 +1,5 @@
 
-use crate::{parser::{ast::{IAstNode, AstFunction, AstTypeBasic}}, utils::{DynamicChild, IRange}, lexer::tokens::TokenType};
+use crate::{parser::ast::{IAstNode, AstFunction, AstTypeBasic}, utils::DynamicChild, lexer::tokens::TokenType};
 
 use super::IAnalyzer;
 
