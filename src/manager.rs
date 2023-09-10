@@ -531,4 +531,10 @@ mod test{
         // }
         assert_eq!(diags.len(), 3);
     }
+
+    #[test]
+    fn test_read_file_event_method() {
+        let (_, parser_diags) = parse_and_analyze("./test/aTestEventMethod.god");
+        assert_eq!(parser_diags.len(), 0);
+    }
 }

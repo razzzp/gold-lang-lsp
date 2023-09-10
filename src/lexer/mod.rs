@@ -242,7 +242,6 @@ impl GoldLexer{
 
     fn read_int_char_literal(&mut self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token{
         let mut int_char = String::new();
-        let mut contains_invalid_char : bool = false;
         int_char.push('#');
         loop {
             match buf.peek() {
@@ -252,17 +251,8 @@ impl GoldLexer{
                 Some((_, ' '| '\n'| '\r'| '\t')) => {
                     break
                 },
-                Some((_,_)) => {
-                    contains_invalid_char = true;
-                    int_char.push(buf.next().unwrap().1);},
-                None => break
+                _ => break,
             }
-        }
-        if contains_invalid_char{
-            self.errors.push(GoldLexerError{
-                msg: "int char literal should only contain digits".to_string(),
-                range: self.create_range(pos, int_char.len())
-            })
         }
         let token_type = if int_char.len() == 1 {TokenType::Pound} else {TokenType::StringLiteral};
         return self.create_token(pos, token_type, Some(int_char));
