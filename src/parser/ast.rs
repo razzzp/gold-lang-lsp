@@ -1102,7 +1102,8 @@ pub struct AstForEachBlock {
     pub in_expr_node: Box<dyn IAstNode>,
     pub using_var: Option<Box<dyn IAstNode>>,
     pub statements: Option<Vec<Box<dyn IAstNode>>>,
-    pub end_token: Option<Token>
+    pub end_token: Option<Token>,
+    pub is_downto: bool
 }
 impl AstForEachBlock {
     

@@ -566,6 +566,8 @@ fn parse_foreach_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[
     // curVar in List
     let in_op_parser = exp_token(TokenType::In);
     let (next, in_expr_node) = parse_binary_ops_w_context(next, &in_op_parser, &parse_expr, context)?;
+    // downto
+    let (next, downto_token) = opt_parse(exp_token(TokenType::DownTo))(next)?;
     // using someVar
     let (mut next, using_token) = opt_parse(exp_token(TokenType::Using))(next)?;
     let mut using_var : Option<Box<dyn IAstNode>> = None;
@@ -589,9 +591,10 @@ fn parse_foreach_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[
             pos: foreach_token.get_pos(),
             range: create_new_range(foreach_token.get_range(), end_pos_token.get_range()),
             in_expr_node,
-            using_var: using_var,
+            using_var,
             statements: Some(statement_nodes),
-            end_token
+            end_token,
+            is_downto: downto_token.is_some()
         })
     ));
 }
@@ -1769,12 +1772,13 @@ mod test{
     }
 
     #[test]
-    fn test_foreach_block_with_using(){
+    fn test_foreach_block_downto_with_using(){
         let input = gen_list_of_tokens(&[
             (TokenType::ForEach, Some("foreach".to_string())),
             (TokenType::Identifier, Some("LoopVar".to_string())),
             (TokenType::In, Some("in".to_string())),
             (TokenType::Identifier, Some("List".to_string())),
+            (TokenType::DownTo, Some("downto".to_string())),
             (TokenType::Using, Some("using".to_string())),
             (TokenType::Identifier, Some("SomeVar".to_string())),
             (TokenType::EndFor, Some("endfor".to_string())),     
@@ -1790,11 +1794,8 @@ mod test{
         assert_eq!(foreach_node.using_var.as_ref().unwrap().get_identifier(), "SomeVar".to_string());
         assert_eq!(foreach_node.in_expr_node.to_string_ident_pos(), format!("in:{}", input.get(1).unwrap().get_pos().to_string_brief()));
         assert_eq!(foreach_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
-        assert_eq!(foreach_node.statements.as_ref().unwrap().len(), 0);
-        // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
-        // bfs.iter().for_each(|n|{
-        //     println!("{}", print_ast_brief(n.data))
-        // });      
+        assert_eq!(foreach_node.statements.as_ref().unwrap().len(), 0);   
+        assert!(foreach_node.is_downto);
     }
 
     #[test]
