@@ -5,7 +5,7 @@ use crate::parser::body_parser::parse_identifier;
 use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange, create_new_range};
 use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstBinaryOp, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
 
-use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent};
+use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent, AstTerminal};
 use self::body_parser::{parse_statement_v2, parse_literal_basic, parse_ident_token, parse_binary_ops_w_context};
 use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, parse_separated_list, opt_token, parse_repeat, parse_until, parse_until_strict, create_closure, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context};
 
@@ -543,7 +543,22 @@ fn parse_type_record_field<'a, C: IParserContext<ParserDiagnostic> + 'a>(input :
 
 fn parse_type_record<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
    let (next, record_token) = exp_token(TokenType::Record)(input)?;
+   // parent record
+   let (next, mut parent_tokens) = opt_parse(seq_parse([
+      exp_token(TokenType::OBracket),
+      exp_token(TokenType::Identifier),
+      exp_token(TokenType::CBracket)
+   ].as_ref()))(next)?;
+   let parent_node = match &mut parent_tokens {
+      Some(tokens)=> {
+         let boxed_node : Box<dyn IAstNode> = Box::new(AstTerminal{token: tokens.remove(1)});
+         Some(boxed_node)
+      },
+      _=> None
+   };
+
    let (next, fields, endrecord_token) = parse_until_strict_w_context(next, exp_token(TokenType::EndRecord), parse_type_record_field, context)?;
+
    let end = match endrecord_token {
       Some(tok) => tok.get_range(),
       _=> match fields.last() {
@@ -554,7 +569,8 @@ fn parse_type_record<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [
    return Ok((next, Box::new(AstTypeRecord{
       raw_pos: record_token.get_raw_pos(),
       range: create_new_range(record_token.get_range(), end),
-      fields
+      fields,
+      parent: parent_node
    })))
 }
 
@@ -1739,6 +1755,9 @@ mod test {
    fn test_parse_type_record() {
       let input = gen_list_of_tokens(&[
          (TokenType::Record, Some("'record'".to_string())),
+         (TokenType::OBracket, Some("(".to_string())),
+         (TokenType::Identifier, Some("Parent".to_string())),
+         (TokenType::CBracket, Some(")".to_string())),
          (TokenType::Identifier, Some("First".to_string())),
          (TokenType::Colon, Some(":".to_string())),
          (TokenType::Identifier, Some("tType".to_string())),
@@ -1754,7 +1773,8 @@ mod test {
 
       let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeRecord>().unwrap();
 
-      assert_eq!(downcasted.get_children().unwrap().len(), 2);
+      assert_eq!(downcasted.get_children().unwrap().len(), 3);
+      assert_eq!(downcasted.parent.as_ref().unwrap().get_identifier(), "Parent");
    }
 
    #[test]

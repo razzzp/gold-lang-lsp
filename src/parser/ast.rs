@@ -1506,35 +1506,25 @@ impl IAstNode for AstTypeRecordField {
 pub struct AstTypeRecord{
     pub raw_pos: usize,
     pub range: Range,
-    pub fields : Vec<Box<dyn IAstNode>>
+    pub fields : Vec<Box<dyn IAstNode>>,
+    pub parent : Option<Box<dyn IAstNode>>
 }
 implem_irange!(AstTypeRecord);
 impl IAstNode for AstTypeRecord {
-    fn get_type(&self) -> &'static str {
-        "Type Record"
-    }
-
-    fn get_raw_pos(&self) -> usize {
-        self.raw_pos
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
+    implem_iastnode_common!(AstTypeRecord,"type_record");
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
+        match &self.parent {
+            Some(p) => result.push(p.as_ast_node()),
+            _=> ()
+        };
         self.fields.iter().for_each(|field| {
             result.push(field.as_ref());
         });
         return Some(result);
     }
-    fn as_ast_node(&self) -> &dyn IAstNode{
-        self
-    }
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
-    }
-    fn to_string_type(&self) -> String {
-        "type_record".to_string()
     }
 }
 
