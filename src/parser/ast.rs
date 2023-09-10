@@ -243,7 +243,8 @@ impl IAstNode for AstEmpty {
 pub struct AstEnumVariant{
     pub raw_pos: usize,
     pub range: Range,
-    pub identifier: Token
+    pub identifier: Token,
+    pub value_token: Option<Token>
 }
 implem_irange!(AstEnumVariant);
 impl IAstNode for AstEnumVariant {

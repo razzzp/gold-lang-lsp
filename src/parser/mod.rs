@@ -151,7 +151,7 @@ fn parse_comment<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Toke
    })))
 }
 
-fn parse_annotations<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError> {
+fn parse_annotations<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
    // TODO for now annotations ignored
    let (next, _) = exp_token(TokenType::OSqrBracket)(input)?;
    let (next, _, _) = take_until([TokenType::CSqrBracket].as_ref())(next)?;
@@ -162,7 +162,8 @@ fn parse_annotations<'a>(input : &'a [Token]) -> Result<(&'a [Token],  Box<dyn I
 }
 
 fn parse_class<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
-   let (next, _) = opt_parse(parse_annotations)(input)?;
+   // annotations
+   let (next, _) = opt_parse_w_context(parse_annotations)(input, context)?;
    // class keyword
    let (next, class_token) = match exp_token(TokenType::Class)(next) {
       Ok(r)=> (r.0, r.1),
@@ -276,15 +277,14 @@ fn parse_uses<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token],
 
 
 fn parse_type_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+   // annotations
+   let (next, _) = opt_parse_w_context(parse_annotations)(input, context)?;
    // type keyword, identifier, then colon
-   let (next, tokens) = match seq_parse(&[
+   let (next, tokens) = seq_parse(&[
       exp_token(TokenType::Type),
       exp_token(TokenType::Identifier),
       exp_token(TokenType::Colon)
-   ])(input){
-      Ok(r) => r,
-      Err(e) => return Err(e)
-   };
+   ])(next)?;
    // parse the type
    let (next, type_node) = match  parse_type(next, context){
        Ok(r) => r,
@@ -368,14 +368,25 @@ fn parse_type_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [T
 }
 
 fn parse_enum_variant<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<AstEnumVariant>), ParseError<'a>>{
-   let (next, _) = opt_parse(parse_annotations)(input)?;
+   // annotations
+   let (next, _) = opt_parse_w_context(parse_annotations)(input, context)?;
    let (next, variant_ident) = exp_token(TokenType::Identifier)(next)?;
+   // optional assign to int
+   let (next, assign_tokens) = opt_parse(seq_parse([
+      exp_token(TokenType::Equals),
+      exp_token(TokenType::NumericLiteral),
+   ].as_ref()))(next)?;
+   let value_token = match assign_tokens{
+      Some(toks) => Some(toks[1].clone()),
+      _=> None
+   };
    return Ok((
       next,
       Box::new(AstEnumVariant{
          raw_pos: variant_ident.get_raw_pos(),
          range: variant_ident.get_range(),
-         identifier: variant_ident
+         identifier: variant_ident,
+         value_token
       })
    ))
 }
@@ -516,7 +527,10 @@ fn parse_type_set<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Tok
 }
 
 fn parse_type_record_field<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
-   let (next, ident_token) = exp_token(TokenType::Identifier)(input)?;
+   // annotations
+   let (next, _) = opt_parse_w_context(parse_annotations)(input, context)?;
+   // ident
+   let (next, ident_token) = exp_token(TokenType::Identifier)(next)?;
    let (next, _) = exp_token(TokenType::Colon)(next)?;
    let (next, type_node) = parse_type(next,context)?;
    return Ok((next, Box::new(AstTypeRecordField{
@@ -645,7 +659,8 @@ fn parse_type_instanceof<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &
 }
 
 fn parse_global_variable_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
-   let (next, _) = opt_parse(parse_annotations)(input)?;
+   // annotations
+   let (next, _) = opt_parse_w_context(parse_annotations)(input, context)?;
    // memory?
    let (next, memory_token) = match exp_token(TokenType::Memory)(next){
       Ok((n, t)) => (n,Some(t)),
@@ -1110,7 +1125,7 @@ fn parse_method_body<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent}, IParserContext}, utils::{ast_to_string_brief, ast_to_string_brief_recursive}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant}, IParserContext}, utils::{ast_to_string_brief, ast_to_string_brief_recursive}};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type, ParserContext};
 
@@ -1277,6 +1292,8 @@ mod test {
          (TokenType::Identifier, Some("Variant1".to_string())),
          (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("Variant2".to_string())),
+         (TokenType::Equals, Some("=".to_string())),
+         (TokenType::NumericLiteral, Some("10".to_string())),
          (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("Variant3".to_string())),
          (TokenType::CBracket, Some(")".to_string())),
@@ -1291,6 +1308,11 @@ mod test {
       let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeEnum>().unwrap();
       check_node_pos_and_range(downcasted, &input);
       assert_eq!(downcasted.get_children().unwrap().len(), 3);
+      let second_node = downcasted
+         .get_children().unwrap()
+         .get(1).unwrap()
+         .as_any().downcast_ref::<AstEnumVariant>().unwrap();
+      assert_eq!(second_node.value_token.as_ref().unwrap().get_value(), "10");
    }
 
    #[test]
