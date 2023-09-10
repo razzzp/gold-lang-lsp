@@ -5,7 +5,7 @@ use crate::parser::body_parser::parse_identifier;
 use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange, create_new_range};
 use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstBinaryOp, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
 
-use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent, AstTerminal};
+use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent, AstTerminal, AstModule};
 use self::body_parser::{parse_statement_v2, parse_literal_basic, parse_ident_token, parse_binary_ops_w_context};
 use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, parse_separated_list, opt_token, parse_repeat, parse_until, parse_until_strict, create_closure, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context};
 
@@ -76,6 +76,7 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
    let parsers = [
       parse_comment,
       parse_class,
+      parse_module,
       parse_uses,
       parse_type_declaration,
       parse_constant_declaration,
@@ -189,21 +190,28 @@ fn parse_class<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token]
       Ok(r)=> (r.0, r.1),
       Err(e) => return Err(e)
    };
-   // TODO change behaviour when class name empty
+
    return Ok((next, Box::new(AstClass{
       raw_pos: class_token.raw_pos,
-      pos: class_token.pos.clone(),
       range: create_new_range_from_irange(&class_token, &end_token),
-      name: class_name_token.value.unwrap().to_owned(),
-      parent_class: parent_class_name.value.unwrap().to_owned()
-   })));
+      name: class_name_token.get_value(),
+      parent_class: parent_class_name.get_value()
+   }))); 
+}
 
-   // let (i,r) = take(1)(input);
-   // if input.peek().unwrap().token_type == TokenType::Identifier{
-   //    return Ok((input, Box::new(AST{})));
-   // } else {
-   //    return Err(Err::Error(Error::new(input, ErrorKind::Tag)))
-   // }   
+fn parse_module<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
+   // annotations
+   let (next, _) = opt_parse_w_context(parse_annotations)(input, context)?;
+   // module 
+   let (next, module_token) = exp_token(TokenType::Module)(next)?;
+   // module name
+   let (next, module_name) =  exp_token(TokenType::Identifier)(next)?;
+   
+   return Ok((next, Box::new(AstModule{
+      raw_pos: module_token.raw_pos,
+      range: create_new_range_from_irange(&module_token, &module_name),
+      name: module_name.get_value(),
+   }))); 
 }
 
 
@@ -1141,7 +1149,7 @@ fn parse_method_body<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant}, IParserContext}, utils::{ast_to_string_brief, ast_to_string_brief_recursive}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant, AstModule}, IParserContext, parse_module}, utils::{ast_to_string_brief, ast_to_string_brief_recursive}};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type, ParserContext};
 
@@ -1190,6 +1198,21 @@ mod test {
       assert_eq!(class.name, "aTestClass");
       assert_eq!(class.raw_pos, 0);
       assert_eq!(class.parent_class, "aParentClass");
+   }
+
+   #[test]
+   fn test_parse_module(){
+      let input = gen_list_of_tokens(&[
+         (TokenType::Module, Some("module".to_string())),
+         (TokenType::Identifier, Some(String::from("SomeModule"))),
+      ]);
+      let mut context = create_context();
+      let r = parse_module(&input, &mut context).unwrap();
+      let class = r.1.as_any().downcast_ref::<AstModule>().unwrap();
+      check_node_pos_and_range(class, &input);
+      assert_eq!(r.0.len(), 0);
+      assert_eq!(class.name, "SomeModule");
+      assert_eq!(class.raw_pos, 0);
    }
 
    #[test]
@@ -1669,7 +1692,7 @@ mod test {
       assert_eq!(ident, "SecondParam");
       assert_eq!(type_ident, "SecondParamType");
 
-   }
+   } 
 
    #[test]
    fn test_parse_method_modifiers() {

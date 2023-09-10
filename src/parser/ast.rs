@@ -123,34 +123,29 @@ impl IAstNode for AstTerminal {
 #[derive(Debug)]
 pub struct AstClass {
     pub raw_pos: usize,
-    pub pos: Position,
     pub range: Range,
     pub name: String,
     pub parent_class: String,
 }
 implem_irange!(AstClass);
 impl IAstNode for AstClass {
-    fn get_type(&self) -> &'static str {
-        return "Class";
-    }
-    fn get_raw_pos(&self) -> usize {
-        return self.raw_pos;
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn get_pos(&self) -> Position {
-        self.pos.clone()
-    }
-    fn as_ast_node(&self) -> &dyn IAstNode{
-        self
-    }
+    implem_iastnode_common!(AstClass, "class");
     fn get_identifier(&self) -> String {
         self.name.clone()
     }
-    fn to_string_type(&self) -> String {
-        "class".to_string()
+}
+
+#[derive(Debug)]
+pub struct AstModule {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub name: String,
+}
+implem_irange!(AstModule);
+impl IAstNode for AstModule {
+    implem_iastnode_common!(AstModule, "module");
+    fn get_identifier(&self) -> String {
+        self.name.clone()
     }
 }
 
