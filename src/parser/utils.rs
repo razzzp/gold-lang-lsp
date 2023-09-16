@@ -149,6 +149,38 @@ pub fn exp_token(
     }
 }
 
+/// Returns parser that expects the given token
+pub fn exp_ident_with_value(
+    value : &'static str
+) -> impl Fn(&[Token]) -> Result<(&[Token], Token), ParseError> {
+    move |input: &[Token]| -> Result<(&[Token], Token), ParseError> {
+        let mut it = input.iter();
+        loop{
+            match it.next() {
+                Some(t) if t.token_type == TokenType::Identifier && t.get_value().as_str().to_uppercase() == value.to_uppercase() => 
+                    return Ok((it.as_slice(), t.clone())),
+                Some(t) => {
+                    if t.token_type == TokenType::Comment{
+                        // ignore comments
+                        continue;
+                    }
+                    return Err(ParseError {
+                        input: input,
+                        msg: String::from(format!(
+                            "Unexpected {:?} token found",
+                            t.get_value()
+                        )),
+                    })
+                },
+                None => return Err(ParseError {
+                    input: input,
+                    msg: String::from(format!("Unexpected EOF")),
+                }),
+            }
+        }
+    }
+}
+
 /// Wraps the parser so that it doesn't throw error
 pub fn opt_token(
     token_type: TokenType,

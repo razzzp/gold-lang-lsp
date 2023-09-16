@@ -179,6 +179,7 @@ pub enum TokenType {
     PhantomsToo,
     Where,
     Top,
+    Conditional,
 
     // others
     SingleQuote,

@@ -1,7 +1,7 @@
 
 use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, Range}, parser::take_until};
 
-use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match, parse_separated_list_allow_empty, parse_separated_list_w_context, alt_parse_w_context, parse_until_w_context, parse_until_no_match_w_context, opt_parse_w_context}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::{AstArrayAccess, AstRepeatBlock}, IParserContext, ParserContext};
+use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match, parse_separated_list_allow_empty, parse_separated_list_w_context, alt_parse_w_context, parse_until_w_context, parse_until_no_match_w_context, opt_parse_w_context}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::{AstArrayAccess, AstRepeatBlock}, IParserContext, ParserContext, oql_parser::parse_oql_expr};
 
 /// expr = ident
 ///     | bin_op
@@ -64,6 +64,13 @@ pub fn parse_ident_token<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'
         exp_token(TokenType::Select),
         exp_token(TokenType::Top),
         exp_token(TokenType::Using),
+        exp_token(TokenType::Where),
+        exp_token(TokenType::AllVersionsOf),
+        exp_token(TokenType::PhantomsToo),
+        exp_token(TokenType::Conditional),
+        exp_token(TokenType::Descending),
+        exp_token(TokenType::Order),
+        exp_token(TokenType::By),
     ])(input);
 }
 
@@ -125,10 +132,10 @@ fn parse_dot_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token],
         parse_array_access,
         parse_identifier,
         ];
-    return alt_parse_w_context(&parsers)(input, context);;
+    return alt_parse_w_context(&parsers)(input, context);
 }
 
-fn parse_dot_ops<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+pub fn parse_dot_ops<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_parser = exp_token(TokenType::Dot);
     return parse_binary_ops_w_context(input, &op_parser, &parse_dot_op, context);
 } 
@@ -259,7 +266,7 @@ fn parse_shifts<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token],
     return parse_binary_ops_w_context(input, &op_parser, &parse_bit_ops_2, context);
 } 
 
-fn parse_compare<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+pub fn parse_compare<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::Equals),
         exp_token(TokenType::NotEquals),
@@ -290,9 +297,10 @@ fn parse_logical_or<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
     return parse_binary_ops_w_context(input, &op_parser, &parse_logical_and, context);
 }
 
-fn parse_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
+pub fn parse_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
     let parser = [
         parse_logical_or,
+        parse_oql_expr
     ];
     let result= alt_parse_w_context(&parser)(input, context)?;
     return Ok(result);
@@ -950,7 +958,7 @@ fn parse_binary_op_w_context<'a, C:IParserContext<ParserDiagnostic> +'a>(
 #[cfg(test)]
 mod test{
 
-    use crate::parser::{ParserContext, IParserContext};
+    use crate::parser::IParserContext;
     use crate::parser::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstSetLiteral, AstSwitchBlock, AstArrayAccess, AstRepeatBlock};
     use crate::parser::test::{check_node_pos_and_range, create_context};
     use crate::utils::{ast_to_string_brief_recursive, ast_to_string_brief, dfs, bfs};

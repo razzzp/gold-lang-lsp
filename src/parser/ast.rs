@@ -1808,11 +1808,16 @@ pub struct AstOQLSelect {
     pub raw_pos: usize,
     pub range: Range,
     pub limit_node: Option<Box<dyn IAstNode>>,
-    pub select_nodes: Vec<Box<dyn IAstNode>>
+    pub select_nodes: Vec<Box<dyn IAstNode>>,
+    pub from_nodes: Vec<Box<dyn IAstNode>>,
+    pub where_node: Option<Box<dyn IAstNode>>,
+    pub order_by_nodes: Option<Vec<Box<dyn IAstNode>>>,
+    pub using_node: Option<Box<dyn IAstNode>>,
+    pub is_distinct : bool,
 }
 implem_irange!(AstOQLSelect);
 impl IAstNode for AstOQLSelect {
-    implem_iastnode_common!(AstOQLSelect, "owl_select");
+    implem_iastnode_common!(AstOQLSelect, "oql_select");
     fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         match &self.limit_node{
@@ -1820,6 +1825,85 @@ impl IAstNode for AstOQLSelect {
             _=> ()
         }
         result.extend(self.select_nodes.iter().map(|n| {n.as_ast_node()}));
+        result.extend(self.from_nodes.iter().map(|n| {n.as_ast_node()}));
+        match &self.where_node{
+            Some(n) => {result.push(n.as_ast_node());}
+            _=> ()
+        }
+        match &self.order_by_nodes{
+            Some(nodes)=>result.extend(nodes.iter().map(|n| {n.as_ast_node()})),
+            _=>()
+        }
+        match &self.using_node{
+            Some(n)=>result.push(n.as_ast_node()),
+            _=>()
+        }
+        return Some(result);
+    }
+    fn get_identifier(&self) -> String {
+        self.to_string_type_pos()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstOQLFromNode {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub alias_token : Token,
+    pub source_node: Box<dyn IAstNode>,
+    pub join_nodes: Vec<Box<dyn IAstNode>>,
+    pub is_conditional : bool,
+    pub is_all_versions: bool,
+    pub is_phantoms_too:bool,
+    pub includes_subclasses: bool
+}
+implem_irange!(AstOQLFromNode);
+impl IAstNode for AstOQLFromNode {
+    implem_iastnode_common!(AstOQLFromNode, "oql_from_node");
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.source_node.as_ast_node());
+        result.extend(self.join_nodes.iter().map(|n| {n.as_ast_node()}));
+        return Some(result);
+    }
+    fn get_identifier(&self) -> String {
+        self.alias_token.get_value()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstOQLJoin {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub join_token : Token,
+    pub cond_node: Box<dyn IAstNode>,
+}
+implem_irange!(AstOQLJoin);
+impl IAstNode for AstOQLJoin {
+    implem_iastnode_common!(AstOQLJoin, "oql_join_node");
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.cond_node.as_ast_node());
+        return Some(result);
+    }
+    fn get_identifier(&self) -> String {
+        self.join_token.get_value()
+    }
+}
+
+#[derive(Debug)]
+pub struct AstOQLOrderBy {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub field_node: Box<dyn IAstNode>,
+    pub is_descending: bool
+}
+implem_irange!(AstOQLOrderBy);
+impl IAstNode for AstOQLOrderBy {
+    implem_iastnode_common!(AstOQLOrderBy, "oql_order_by_node");
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.push(self.field_node.as_ast_node());
         return Some(result);
     }
     fn get_identifier(&self) -> String {

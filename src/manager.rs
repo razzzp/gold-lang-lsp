@@ -537,4 +537,10 @@ mod test{
         let (_, parser_diags) = parse_and_analyze("./test/aTestEventMethod.god");
         assert_eq!(parser_diags.len(), 0);
     }
+
+    #[test]
+    fn test_read_file_oql() {
+        let (_, parser_diags) = parse_and_analyze("./test/aTestOQL.god");
+        assert_eq!(parser_diags.len(), 0);
+    }
 }
