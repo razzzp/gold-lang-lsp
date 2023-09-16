@@ -59,6 +59,11 @@ pub fn parse_ident_token<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'
         exp_token(TokenType::TSelf),
         exp_token(TokenType::Result),
         exp_token(TokenType::Type),
+        exp_token(TokenType::Distinct),
+        exp_token(TokenType::From),
+        exp_token(TokenType::Select),
+        exp_token(TokenType::Top),
+        exp_token(TokenType::Using),
     ])(input);
 }
 
@@ -194,7 +199,7 @@ fn parse_unary_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token
     ].as_ref())(input,context);
 }
 
-fn parse_primary<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+pub fn parse_primary<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let parsers = [
         parse_bracket_closure,
         parse_unary_op,
@@ -208,7 +213,7 @@ fn parse_primary<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token]
 
 fn parse_factors<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
-        exp_token(TokenType::Multiply),
+        exp_token(TokenType::Asterisk),
         exp_token(TokenType::Divide),
         exp_token(TokenType::Modulus)
     ];
@@ -1025,9 +1030,9 @@ mod test{
     fn test_parse_factors(){
         let input = gen_list_of_tokens(&[
             (TokenType::Identifier, Some("First".to_string())),
-            (TokenType::Multiply, Some("*".to_string())),
+            (TokenType::Asterisk, Some("*".to_string())),
             (TokenType::Identifier, Some("Second".to_string())),
-            (TokenType::Multiply, Some("/".to_string())),
+            (TokenType::Asterisk, Some("/".to_string())),
             (TokenType::Identifier, Some("Third".to_string())),
             
         ]);
@@ -1051,7 +1056,7 @@ mod test{
             (TokenType::Identifier, Some("First".to_string())),
             (TokenType::Plus, Some("+".to_string())),
             (TokenType::Identifier, Some("Second".to_string())),
-            (TokenType::Multiply, Some("/".to_string())),
+            (TokenType::Asterisk, Some("/".to_string())),
             (TokenType::Identifier, Some("Third".to_string())),
             
         ]);
@@ -1323,7 +1328,7 @@ mod test{
             (TokenType::Identifier, Some("Param2".to_string())),
             (TokenType::Comma, Some(",".to_string())),
             (TokenType::Identifier, Some("Val1".to_string())),
-            (TokenType::Multiply, Some("*".to_string())),
+            (TokenType::Asterisk, Some("*".to_string())),
             (TokenType::Identifier, Some("Val2".to_string())),
             (TokenType::CBracket, Some(")".to_string())),
         ]);

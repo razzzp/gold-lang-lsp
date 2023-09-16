@@ -125,7 +125,7 @@ impl GoldLexer{
             ']' => Ok(self.create_token(pos, TokenType::CSqrBracket, Some(next.1.to_string()))),
             '{' => Ok(self.create_token(pos, TokenType::OCurBracket, Some(next.1.to_string()))),
             '}' => Ok(self.create_token(pos, TokenType::CCurBracket, Some(next.1.to_string()))),
-            '*' => Ok(self.create_token(pos, TokenType::Multiply, Some(next.1.to_string()))),
+            '*' => Ok(self.create_token(pos, TokenType::Asterisk, Some(next.1.to_string()))),
             '/' => Ok(self.create_token(pos, TokenType::Divide, Some(next.1.to_string()))),
             '%' => Ok(self.create_token(pos, TokenType::Modulus, Some(next.1.to_string()))),
             '@' => Ok(self.create_token(pos, TokenType::AddressOf, Some(next.1.to_string()))),
@@ -370,17 +370,18 @@ impl GoldLexer{
             // "SUCC" =>self.create_token(pos, TokenType::Succ, Some(word)),
             // "UPCASE" =>self.create_token(pos, TokenType::Upcase, Some(word)),
             "USES" =>self.create_token(pos, TokenType::Uses, Some(word)),
-            "USING" =>self.create_token(pos, TokenType::Using, Some(word)),
             // "WRITE" =>self.create_token(pos, TokenType::Write, Some(word)),
             // "WRITELN" =>self.create_token(pos, TokenType::WriteLn, Some(word)),
-            // "DISTINCT" =>self.create_token(pos, TokenType::Distinct, Some(word)),
-            // "FROM" =>self.create_token(pos, TokenType::From, Some(word)),
             "OQL" =>self.create_token(pos, TokenType::OQL, Some(word)),
+            "TOP" =>self.create_token(pos, TokenType::Using, Some(word)),
+            "DISTINCT" =>self.create_token(pos, TokenType::Distinct, Some(word)),
+            "FROM" =>self.create_token(pos, TokenType::From, Some(word)),
+            "USING" =>self.create_token(pos, TokenType::Using, Some(word)),
             // commented because words can be used as member names too
             // "FETCH" =>self.create_token(pos, TokenType::Fetch, Some(word)),
             // "DESCENDING" =>self.create_token(pos, TokenType::Descending, Some(word)),
             // "ALLVERSIONSOF" =>self.create_token(pos, TokenType::AllVersionsOf, Some(word)),
-            // "SELECT" =>self.create_token(pos, TokenType::Select, Some(word)),
+            "SELECT" =>self.create_token(pos, TokenType::Select, Some(word)),
             // "OQLCLASSID" =>self.create_token(pos, TokenType::OQLClassId, Some(word)),
             // "OQLCOUNT" =>self.create_token(pos, TokenType::OQLCount, Some(word)),
             // "OQLMAX" =>self.create_token(pos, TokenType::OQLMax, Some(word)),
@@ -471,7 +472,7 @@ mod test {
         let (tokens, errors) = lexer.lex(&input);
         assert_eq!(errors.len(), 0);
         assert_eq!(tokens.len(), 24);
-        assert_eq!(tokens[0].token_type, TokenType::Multiply);
+        assert_eq!(tokens[0].token_type, TokenType::Asterisk);
         assert_eq!(tokens[1].token_type, TokenType::Divide);
         assert_eq!(tokens[2].token_type, TokenType::Modulus);
         assert_eq!(tokens[3].token_type, TokenType::Plus);

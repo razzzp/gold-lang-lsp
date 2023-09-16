@@ -100,7 +100,7 @@ pub enum TokenType {
     LessThanOrEqual,
     GreaterThan,
     GreaterThanOrEqual,
-    Multiply,
+    Asterisk,
     Divide,
     Modulus,
     StringConcat,
@@ -178,6 +178,7 @@ pub enum TokenType {
     By,
     PhantomsToo,
     Where,
+    Top,
 
     // others
     SingleQuote,

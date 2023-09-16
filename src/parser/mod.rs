@@ -11,7 +11,8 @@ use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_pa
 
 pub mod utils;
 pub mod body_parser;
-pub mod  ast;
+pub mod ast;
+pub mod oql_parser;
 
 #[derive(Debug, Clone)]
 pub struct ParseError<'a>{

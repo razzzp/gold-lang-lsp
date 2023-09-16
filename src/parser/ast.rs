@@ -85,6 +85,11 @@ pub trait IAstNode: std::fmt::Debug + IRange {
 pub struct AstTerminal {
     pub token: Token,
 }
+impl AstTerminal{
+    pub fn new(token: Token)->AstTerminal{
+        return AstTerminal { token, }
+    }
+}
 impl IRange for AstTerminal {
     fn get_range(&self) -> Range {
         self.token.get_range()
@@ -1795,5 +1800,29 @@ impl IAstNode for AstMethodNameWithEvent {
     }
     fn get_identifier(&self) -> String {
         format!("{}#{}", self.method_name.get_identifier(), self.event.get_identifier())
+    }
+}
+
+#[derive(Debug)]
+pub struct AstOQLSelect {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub limit_node: Option<Box<dyn IAstNode>>,
+    pub select_nodes: Vec<Box<dyn IAstNode>>
+}
+implem_irange!(AstOQLSelect);
+impl IAstNode for AstOQLSelect {
+    implem_iastnode_common!(AstOQLSelect, "owl_select");
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        match &self.limit_node{
+            Some(n) => {result.push(n.as_ast_node());}
+            _=> ()
+        }
+        result.extend(self.select_nodes.iter().map(|n| {n.as_ast_node()}));
+        return Some(result);
+    }
+    fn get_identifier(&self) -> String {
+        self.to_string_type_pos()
     }
 }
