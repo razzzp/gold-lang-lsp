@@ -451,6 +451,26 @@ mod test{
     }
 
     #[test]
+    fn test_read_file() {
+        let  mut f = File::open("./test/aTestClass.god").expect("file not found");
+        let mut file_contents = String::new();
+        match f.read_to_string(&mut file_contents){
+            Ok(_)=>(),
+            Err(msg) => panic!("{msg}")
+        };
+        // println!("{file_contents}");
+        let mut lexer = GoldLexer::new();
+        let tokens = lexer.lex(&file_contents).0;
+        // println!("{:#?}", tokens);
+        let ast = parse_gold(&tokens);
+        // println!("{:#?}", ast.0.0);
+        for node in ast.0.1{
+            println!("{}",ast_to_string_brief_recursive(node.as_ref()));
+        }
+        // println!("{:#?}", ast.1.len());
+    }
+
+    #[test]
     fn test_read_file_proc1() {
         let  mut f = File::open("./test/aTestProc1.god").expect("file not found");
         let mut file_contents = String::new();

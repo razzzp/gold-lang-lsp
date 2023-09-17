@@ -298,6 +298,12 @@ pub fn create_closure<T>(
     move |input: &[Token]| -> Result<(&[Token], T), ParseError> { func(input) }
 }
 
+pub fn create_closure_w_context<'a, 'b, T, C: IParserContext<ParserDiagnostic> + 'a>(
+    func: &impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], T), ParseError<'a>>,
+) -> impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], T), ParseError<'a>> + '_{
+    move |input: &'a[Token], context: & mut C| -> Result<(&'a[Token], T), ParseError<'a>> { func(input, context) }
+}
+
 /// parses using the parser until the stop parser matches
 pub fn parse_until<'a, T: IAstNode + ?Sized>(
     input: &'a [Token],
@@ -564,7 +570,9 @@ fn _parse_seperated_list_recursive_w_context<'a, 'b, T:?Sized, C: IParserContext
     return _parse_seperated_list_recursive_w_context(next, context, parser, sep, result);
 }
 
-
+/// parses until the tokens are finished,
+///  if error found it will be added to context,
+///  then move iter by 1 until all the tokens are consumed
 pub fn parse_repeat_w_context<'a, T:?Sized, C: IParserContext<ParserDiagnostic> + 'a>(
     input: &'a [Token],
     parser: impl Fn(&'a[Token], &mut C)
@@ -663,12 +671,14 @@ pub fn parse_until_w_context<'a, T: ?Sized,  C: IParserContext<ParserDiagnostic>
 
 
 /// parses using the parser until it doesn't match
-pub fn parse_until_no_match_w_context<'a, T: ?Sized, C:IParserContext<ParserDiagnostic>>(
+///  difference with parse_repeat is that it returns on the
+///  first non-match
+pub fn parse_until_no_match_w_context<'a, T, C:IParserContext<ParserDiagnostic>>(
     input: &'a [Token],
-    parser: impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token], Box<T>), ParseError<'a>>,
+    parser: impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token], T), ParseError<'a>>,
     context: &mut C
-) -> (&'a [Token], Vec<Box<T>>) {
-    let mut result: Vec<Box<T>> = Vec::new();
+) -> (&'a [Token], Vec<T>) {
+    let mut result: Vec<T> = Vec::new();
     let mut next = input;
     loop {
         if next.len() == 0 {
@@ -736,4 +746,62 @@ pub fn parse_until_strict_w_context<'a, T: ?Sized, C: IParserContext<ParserDiagn
     }
     // end token not found
     return Ok((next, result, None));
+}
+
+/// parses using the parser until it doesn't match
+///  difference with parse_repeat is that it returns on the
+///  first non-match
+pub fn parse_collect_until_no_match_w_context<'a, I, T: IntoIterator<Item = I>, C:IParserContext<ParserDiagnostic>>(
+    input: &'a [Token],
+    parser: impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token], T), ParseError<'a>>,
+    context: &mut C
+) -> (&'a [Token], Vec<I>) {
+    let mut result: Vec<I> = Vec::new();
+    let mut next = input;
+    loop {
+        if next.len() == 0 {
+            break;
+        }
+
+        // parse statements and adds to current block
+        next = match parser(next,context) {
+            Ok((next, new_statement_node)) => {
+                result.extend(new_statement_node.into_iter());
+                next
+            }
+            Err(_e) => {
+                // not matching anymore, return
+                return (next, result);
+            }
+        };
+    }
+
+    return (next, result);
+}
+
+/// Returns parser which parses with the given sequence of parsers.
+pub fn seq_parse_w_context<'a, T, C: IParserContext<ParserDiagnostic> + 'a>(
+    list_of_parsers: &[impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], T), ParseError<'a>>],
+) -> impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], Vec<T>), ParseError<'a>> + '_ {
+    move |input: &'a[Token], context: & mut C| -> Result<(&'a[Token], Vec<T>), ParseError<'a>> {
+        let mut i = 0;
+        let mut next = input;
+        let mut nodes = Vec::<T>::new();
+        while i < list_of_parsers.len() {
+            next = match list_of_parsers[i](next,context) {
+                Ok(r) => {
+                    nodes.push(r.1);
+                    r.0
+                }
+                Err(e) => {
+                    return Err(ParseError {
+                        input: e.input,
+                        msg: e.msg,
+                    })
+                }
+            };
+            i += 1;
+        }
+        return Ok((next, nodes));
+    }
 }

@@ -200,7 +200,6 @@ pub enum TokenType {
 #[derive(Debug,Clone,PartialEq)]
 pub struct Token {
     pub raw_pos: usize,
-    pub pos: Position,
     pub range: Range,
     pub token_type: TokenType,
     pub value: Option<String>
@@ -223,7 +222,7 @@ impl Token{
         self.raw_pos
     }
     pub fn get_pos(&self) -> Position{
-        self.pos.clone()
+        self.get_range().start
     }
     pub fn get_value(&self) -> String {
         match &self.value {

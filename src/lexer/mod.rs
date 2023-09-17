@@ -412,7 +412,6 @@ impl GoldLexer{
         let range = self.create_range(pos, value.as_ref().unwrap_or(&"".to_string()).len());
         return Token {
             raw_pos: pos,
-            pos: range.start.clone(),
             range: range,
             token_type,
             value 
@@ -459,8 +458,8 @@ mod test {
         let token = result.unwrap();
 
         assert_eq!(token.raw_pos, 0);
-        assert_eq!(token.pos.line, 0);
-        assert_eq!(token.pos.character, 0);
+        assert_eq!(token.get_pos().line, 0);
+        assert_eq!(token.get_pos().character, 0);
         assert_eq!(token.token_type, TokenType::Plus);
         assert_eq!(token.value.unwrap().as_str(), "+");
     }
@@ -489,8 +488,8 @@ mod test {
 
         assert_eq!(tokens[12].token_type, TokenType::Equals);
         assert_eq!(tokens[12].raw_pos, 29);
-        assert_eq!(tokens[12].pos.line, 1);
-        assert_eq!(tokens[12].pos.character, 0);
+        assert_eq!(tokens[12].get_pos().line, 1);
+        assert_eq!(tokens[12].get_pos().character, 0);
 
         assert_eq!(tokens[13].token_type, TokenType::NotEquals);
         assert_eq!(tokens[14].token_type, TokenType::AddressOf);
@@ -549,17 +548,17 @@ mod test {
         // first
         assert_eq!(token[0].token_type, TokenType::StringLiteral);
         assert_eq!(token[0].raw_pos, 0);
-        assert_eq!(token[0].pos, Position {line:0,character:0});
+        assert_eq!(token[0].get_pos(), Position {line:0,character:0});
         assert_eq!(token[0].value.as_ref().unwrap().as_str(), "first string constant");
         // second
         assert_eq!(token[1].token_type, TokenType::StringLiteral);
         assert_eq!(token[1].raw_pos, 27);
-        assert_eq!(token[1].pos, Position {line:0,character:27});
+        assert_eq!(token[1].get_pos(), Position {line:0,character:27});
         assert_eq!(token[1].value.as_ref().unwrap().as_str(), "b");
         // third
         assert_eq!(token[2].token_type, TokenType::StringLiteral);
         assert_eq!(token[2].raw_pos, 32);
-        assert_eq!(token[2].pos, Position {line:1,character:1});
+        assert_eq!(token[2].get_pos(), Position {line:1,character:1});
         assert_eq!(token[2].value.as_ref().unwrap().as_str(), "double quote of newline");
     }
 
@@ -575,22 +574,22 @@ mod test {
         // first
         assert_eq!(token[0].token_type, TokenType::NumericLiteral);
         assert_eq!(token[0].raw_pos, 0);
-        assert_eq!(token[0].pos, Position {line:0,character:0});
+        assert_eq!(token[0].get_pos(), Position {line:0,character:0});
         assert_eq!(token[0].value.as_ref().unwrap().as_str(), "10");
         // second
         assert_eq!(token[1].token_type, TokenType::NumericLiteral);
         assert_eq!(token[1].raw_pos, 3);
-        assert_eq!(token[1].pos, Position {line:0,character:3});
+        assert_eq!(token[1].get_pos(), Position {line:0,character:3});
         assert_eq!(token[1].value.as_ref().unwrap().as_str(), "12.55");
         // third
         assert_eq!(token[2].token_type, TokenType::NumericLiteral);
         assert_eq!(token[2].raw_pos, 9);
-        assert_eq!(token[2].pos, Position {line:0,character:9});
+        assert_eq!(token[2].get_pos(), Position {line:0,character:9});
         assert_eq!(token[2].value.as_ref().unwrap().as_str(), "10000");
         // fourth
         assert_eq!(token[3].token_type, TokenType::NumericLiteral);
         assert_eq!(token[3].raw_pos, 16);
-        assert_eq!(token[3].pos, Position {line:1,character:1});
+        assert_eq!(token[3].get_pos(), Position {line:1,character:1});
         assert_eq!(token[3].value.as_ref().unwrap().as_str(), "77.1234134141412424");
     }
 }

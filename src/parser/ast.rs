@@ -654,81 +654,41 @@ impl IAstNode for AstParameterDeclaration {
     }
 }
 
-
 #[derive(Debug,Default)]
-pub struct AstMemberModifiers {
-    pub raw_pos: usize,
-    pub range: Range,
+pub struct MemberModifiers{
     pub is_private: bool,
     pub is_protected: bool,
     pub is_final: bool,
     pub is_override: bool,
 }
+#[derive(Debug,Default)]
+pub struct AstMemberModifiers {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub modifier_tokens: Vec<Token>,
+    pub modifiers: MemberModifiers,
+}
 implem_irange!(AstMemberModifiers);
 impl IAstNode for AstMemberModifiers {
-    fn get_type(&self) -> &'static str {
-        "Member Modifiers"
-    }
-
-    fn get_raw_pos(&self) -> usize {
-        self.raw_pos
-    }
-
-    fn get_pos(&self) -> Position {
-        self.get_range().start.clone()
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_ast_node(&self) -> &dyn IAstNode{
-        self
-    }
+    implem_iastnode_common!(AstMemberModifiers, "member_modifiers");
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
-    }
-    fn to_string_type(&self) -> String {
-        "member_mod".to_string()
     }
 }
 #[derive(Debug,Default)]
 pub struct AstMethodModifiers {
     pub raw_pos: usize,
     pub range: Range,
-    pub modifiers: Option<Box<AstMemberModifiers>>,
+    pub modifier_tokens: Vec<Token>,
+    pub member_modifiers: MemberModifiers,
     pub external_dll_name: Option<String>,
     pub is_forward: bool
 }
 implem_irange!(AstMethodModifiers);
 impl IAstNode for AstMethodModifiers {
-    fn get_type(&self) -> &'static str {
-        "Method Modifiers"
-    }
-
-    fn get_raw_pos(&self) -> usize {
-        self.raw_pos
-    }
-
-    fn get_pos(&self) -> Position {
-        self.get_range().start.clone()
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_ast_node(&self) -> &dyn IAstNode{
-        self
-    }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
-        let mut result = Vec::new();
-        if let Some(modifers_node) = self.modifiers.as_ref() {
-            result.push(modifers_node.as_ast_node());
-        }
-        return Some(result);
-    }
+    implem_iastnode_common!(AstMethodModifiers, "method_modifiers");
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
-    }
-    fn to_string_type(&self) -> String {
-        "method_mod".to_string()
     }
 }
 

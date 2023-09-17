@@ -5,9 +5,9 @@ use crate::parser::body_parser::parse_identifier;
 use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange, create_new_range};
 use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstBinaryOp, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
 
-use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent, AstTerminal, AstModule};
+use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent, AstTerminal, AstModule, MemberModifiers};
 use self::body_parser::{parse_statement_v2, parse_literal_basic, parse_ident_token, parse_binary_ops_w_context};
-use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, parse_separated_list, opt_token, parse_repeat, parse_until, parse_until_strict, create_closure, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context};
+use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, parse_separated_list, opt_token, parse_repeat, parse_until, parse_until_strict, create_closure, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context, parse_until_no_match_w_context, seq_parse_w_context};
 
 pub mod utils;
 pub mod body_parser;
@@ -147,7 +147,7 @@ fn parse_comment<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Toke
    let (next, comment_token) = exp_token(TokenType::Comment)(input)?;
    return Ok((next, Box::new(AstComment{
       raw_pos: comment_token.raw_pos,
-      pos: comment_token.pos.clone(),
+      pos: comment_token.get_pos(),
       range: comment_token.range.clone(),
       comment: comment_token.value.unwrap()
    })))
@@ -251,7 +251,7 @@ fn parse_constant_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(inpu
       next,
       Box::new(AstConstantDeclaration {
          raw_pos: const_token.raw_pos,
-         pos: const_token.pos.clone(),
+         pos: const_token.get_pos(),
          identifier: ident_token,
          value: value_token.clone(),
          range: create_new_range_from_irange(&const_token, &value_token),
@@ -276,9 +276,9 @@ fn parse_uses<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token],
       next, 
       Box::new(AstUses { 
          raw_pos: uses_token.raw_pos,
-         pos: uses_token.pos.clone(),
+         pos: uses_token.get_pos(),
          range: Range { 
-            start: uses_token.pos, 
+            start: uses_token.get_pos(), 
             end: if idents.last().is_some() {idents.last().unwrap().range.end.clone()} else {uses_token.range.end.clone()}},
          list_of_uses: idents })
    ));
@@ -301,8 +301,8 @@ fn parse_type_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : 
    };
    let type_declaration_node = AstTypeDeclaration {
       raw_pos: tokens[0].raw_pos,
-      pos: tokens[0].pos.clone(),
-      range: Range { start: tokens[0].pos.clone(), end: type_node.get_range().end },
+      pos: tokens[0].get_pos(),
+      range: Range { start: tokens[0].get_pos(), end: type_node.get_range().end },
       identifier: tokens[1].clone(),
       type_node: type_node
    };
@@ -369,7 +369,7 @@ fn parse_type_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [T
    return match parse_result {
       Ok((r, t)) => Ok((r, Box::new(AstTypeBasic{
          raw_pos:t.raw_pos,
-         pos: t.pos.clone(),
+         pos: t.get_pos(),
          range: t.range.clone(),
          type_token: t}))),
       Err(e) => Err(e)
@@ -418,7 +418,7 @@ fn parse_type_enum<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [To
    };
    return Ok((next, Box::new(AstTypeEnum{
       raw_pos: obracket_token.raw_pos,
-      pos: obracket_token.pos.clone(),
+      pos: obracket_token.get_pos(),
       range: create_new_range_from_irange(&obracket_token, &cbracket_token),
       variants: variants
    })));
@@ -477,7 +477,7 @@ fn parse_type_reference<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'
 
    return Ok((next, Box::new(AstTypeReference{
       raw_pos: ref_token.raw_pos,
-      pos: ref_token.pos.clone(),
+      pos: ref_token.get_pos(),
       ref_type: ref_token.clone(),
       range: create_new_range(ref_token.get_range(), end_range),
       options: option_tokens,
@@ -904,8 +904,8 @@ fn parse_parameter_declaration_list<'a, C: IParserContext<ParserDiagnostic> + 'a
 
    return Ok((next, Some(AstParameterDeclarationList{
       raw_pos: obracket_token.raw_pos,
-      pos: obracket_token.pos.clone(),
-      range: Range{start: obracket_token.pos, end: cbracket_token.range.end},
+      pos: obracket_token.get_pos(),
+      range: Range{start: obracket_token.get_pos(), end: cbracket_token.range.end},
       parameter_list: param_decl_list,
    })));
 }
@@ -927,13 +927,13 @@ fn parse_parameter_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(inp
    let pos;
    if modifier_token.is_some() {
       raw_pos = modifier_token.as_ref().unwrap().raw_pos;
-      pos = Some(modifier_token.as_ref().unwrap().pos.clone());
+      pos = Some(modifier_token.as_ref().unwrap().get_pos());
    } else {
       raw_pos = ident_token.raw_pos;
-      pos = Some(ident_token.pos.clone());
+      pos = Some(ident_token.get_pos());
    };
    let pos = pos.unwrap();
-   let mut range = Range{start: pos.clone(), end: ident_token.pos.clone()};
+   let mut range = Range{start: pos.clone(), end: ident_token.get_pos()};
    // colon
    let (next, colon) = match exp_token(TokenType::Colon)(next) {
       Ok((n, t)) => (n, Some(t)),
@@ -965,108 +965,114 @@ fn parse_parameter_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(inp
    }
 }
 
+fn parse_member_modifier_tokens<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Token), ParseError<'a>>{
+   return alt_parse([
+      exp_token(TokenType::Private),
+      exp_token(TokenType::Protected),
+      exp_token(TokenType::Final),
+      exp_token(TokenType::Override),
+   ].as_ref())(input);
+}
+
+fn get_member_modifers(tokens: &Vec<Token>) -> MemberModifiers{
+   let (mut is_private,mut is_protected,mut is_final,mut is_override) 
+   = (false,false,false,false);
+   tokens.iter().for_each(|t|{
+      match t.token_type {
+            TokenType::Private => {is_private=true},
+            TokenType::Protected => {is_protected=true},
+            TokenType::Final => {is_final=true},
+            TokenType::Override => {is_override=true},
+            _ => (),
+      }
+   });
+   return MemberModifiers { is_private
+      , is_protected, is_final, is_override }
+}
+
 /// parsers all modifiers, whether it is valid will be done in sematic analysis
 fn parse_member_modifiers<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Option<Box<AstMemberModifiers>>), ParseError<'a>>{
-   // private
-   let mut start = None;
-   let mut end = None;
-   let mut raw_pos : Option<usize>= None;
-   let (next, private_token) = match opt_token(TokenType::Private)(input) {
-      Ok((n,t)) => (n, t),
-      Err(e) => (e.input, None)
-   };
-   start = if start == None && private_token.is_some() {Some(private_token.as_ref().unwrap().pos.clone())} else {start};
-   end = if private_token.is_some() {Some(get_end_pos(private_token.as_ref().unwrap()))} else {end};
-   raw_pos = if raw_pos == None && private_token.is_some() {Some(private_token.as_ref().unwrap().raw_pos)} else {raw_pos};
-   
-   // protected
-   let (next, protected_token) = match opt_token(TokenType::Protected)(next) {
-      Ok((n,t)) => (n, t),
-      Err(e) => (e.input, None)
-   };
-   start = if start == None && protected_token.is_some() {Some(protected_token.as_ref().unwrap().pos.clone())} else {start};
-   end = if protected_token.is_some() {Some(get_end_pos(protected_token.as_ref().unwrap()))} else {end};
-   raw_pos = if raw_pos == None && protected_token.is_some() {Some(protected_token.as_ref().unwrap().raw_pos)} else {raw_pos};
-   
-   // final
-   let (next, final_token) = match opt_token(TokenType::Final)(next) {
-      Ok((n,t)) => (n, t),
-      Err(e) => (e.input, None)
-   };
-   start = if start == None && final_token.is_some() {Some(final_token.as_ref().unwrap().pos.clone())} else {start};
-   end = if final_token.is_some() {Some(get_end_pos(final_token.as_ref().unwrap()))} else {end};
-   raw_pos = if raw_pos == None && final_token.is_some() {Some(final_token.as_ref().unwrap().raw_pos)} else {raw_pos};
-   
-   // override
-   let (next, override_token) = match opt_token(TokenType::Override)(next) {
-      Ok((n,t)) => (n, t),
-      Err(e) => (e.input, None)
-   };
-   start = if start == None && override_token.is_some() {Some(override_token.as_ref().unwrap().pos.clone())} else {start};
-   end = if override_token.is_some() {Some(get_end_pos(override_token.as_ref().unwrap()))} else {end};
-   raw_pos = if raw_pos == None && override_token.is_some() {Some(override_token.as_ref().unwrap().raw_pos)} else {raw_pos};
-   
-   
-   if private_token.is_none() && protected_token.is_none() && final_token.is_none() &&
-   override_token.is_none(){
+   // private/protected/final/override
+   let(next, modifier_tokens) = parse_until_no_match_w_context(input, parse_member_modifier_tokens, context);
+   if modifier_tokens.len()==0{
       return Ok((input, None))
-   } else {
-      return Ok((next, Some(Box::new(AstMemberModifiers{
-         raw_pos: raw_pos.unwrap(),
-         range: Range { start: start.unwrap(), end: end.unwrap()},
-         is_private: private_token.is_some(),
-         is_protected: protected_token.is_some(),
-         is_final: final_token.is_some(),
-         is_override: override_token.is_some(),
-      }))))
    }
+   
+   let raw_pos = modifier_tokens.first().unwrap().get_raw_pos();
+   let start = modifier_tokens.first().unwrap().get_range();
+   let end = modifier_tokens.last().unwrap().get_range();
+   let modifiers = get_member_modifers(&modifier_tokens);
+   return Ok((next, Some(Box::new(AstMemberModifiers{
+      raw_pos: raw_pos,
+      range: create_new_range(start, end),
+      modifier_tokens,
+      modifiers,
+   }))))
 } 
 
-/// parsers all modifiers, whether it is valid will be done in sematic analysis
-fn parse_method_modifiers<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Option<AstMethodModifiers>), ParseError<'a>>{
-   // private
-   let mut start = None;
-   let mut end = None;
-   let mut raw_pos : Option<usize>= None;
-   let (next, member_modifiers) = parse_member_modifiers(input, context)?;
-   start = if start == None && member_modifiers.is_some() {Some(member_modifiers.as_ref().unwrap().get_pos())} else {start};
-   end = if member_modifiers.is_some() {Some(get_end_pos(member_modifiers.as_ref().unwrap().as_range()))} else {end};
-   raw_pos = if raw_pos == None && member_modifiers.is_some() {Some(member_modifiers.as_ref().unwrap().raw_pos)} else {raw_pos};
-   
-   // external
-   let (next, external_token_list) = match seq_parse(&[
+fn parse_method_external<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Token), ParseError<'a>>{
+   match seq_parse(&[
       exp_token(TokenType::External),
       exp_token(TokenType::StringLiteral)
-   ])(next) {
-      Ok((n, token_list)) => (n, Some(token_list)),
-      Err(e) => (e.input, None)
+   ])(input) {
+      Ok((n, mut token_list)) => {
+         let str_t = token_list.pop().unwrap();
+         let ext_t = token_list.pop().unwrap();
+         // TODO dirty but returning both tokens will require too much changes/addtions to utils api,
+         //  not worth it for now
+         return Ok((n, Token{
+            raw_pos: ext_t.get_raw_pos(),
+            range: create_new_range(ext_t.get_range(), str_t.get_range()),
+            token_type: str_t.token_type,
+            value: Some(str_t.get_value()),
+         }))
+      },
+      Err(e) => return Err(e)
    };
-   start = if start == None && external_token_list.is_some() {Some(external_token_list.as_ref().unwrap()[1].pos.clone())} else {start};
-   end = if external_token_list.is_some() {Some(get_end_pos(external_token_list.as_ref().unwrap().get(1).unwrap()))} else {end};
-   raw_pos = if raw_pos == None && external_token_list.is_some() {Some(external_token_list.as_ref().unwrap()[1].raw_pos)} else {raw_pos};
+}
 
-   // forward
-   let (next, forward_token) = match opt_token(TokenType::Forward)(next) {
-      Ok((n,t)) => (n, t),
-      Err(e) => (e.input, None)
-   };
-   start = if start == None && forward_token.is_some() {Some(forward_token.as_ref().unwrap().pos.clone())} else {start};
-   end = if forward_token.is_some() {Some(get_end_pos(forward_token.as_ref().unwrap()))} else {end};
-   raw_pos = if raw_pos == None && forward_token.is_some() {Some(forward_token.as_ref().unwrap().raw_pos)} else {raw_pos};
+fn parse_method_forward<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Token), ParseError<'a>>{
+   return exp_token(TokenType::Forward)(input);
+}
 
-   if member_modifiers.is_none()&& external_token_list.is_none() && forward_token.is_none(){
+/// parsers all modifiers, whether it is valid will be done in semantic analysis
+fn parse_method_modifiers<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Option<AstMethodModifiers>), ParseError<'a>>{
+   let method_modifier_parser = alt_parse_w_context([
+      parse_member_modifier_tokens,
+      parse_method_external,
+      parse_method_forward,
+   ].as_ref());
+   
+   
+   let(next, modifier_tokens) = parse_until_no_match_w_context(input, method_modifier_parser, context);
+   if modifier_tokens.len()==0{
+      return Ok((input, None))
+   }
+
+   let raw_pos = modifier_tokens.first().unwrap().get_raw_pos();
+   let start = modifier_tokens.first().unwrap().get_range();
+   let end = modifier_tokens.last().unwrap().get_range();
+   let member_modifiers = get_member_modifers(&modifier_tokens);
+
+   let (mut external_dll_name,mut is_forward) = (None,false);
+   modifier_tokens.iter().for_each(|t|{
+      match t.token_type {
+            TokenType::Forward => {is_forward=true},
+            TokenType::StringLiteral => {external_dll_name=Some(t.get_value())},
+            _ => (),
+      }
+   });
+
+   if modifier_tokens.len()==0{
       return Ok((input, None))
    } else {
       return Ok((next, Some(AstMethodModifiers{
-         raw_pos: raw_pos.unwrap(),
-         range: Range { start: start.unwrap(), end: end.unwrap()},
-         modifiers: member_modifiers,
-         external_dll_name: if external_token_list.is_some() {
-            external_token_list.as_ref().unwrap()[1].value.clone()
-         } else {
-            None
-         },
-         is_forward: forward_token.is_some()
+         raw_pos,
+         range: create_new_range(start, end),
+         modifier_tokens,
+         member_modifiers,
+         external_dll_name,
+         is_forward,
       })))
    }
 } 
@@ -1166,7 +1172,6 @@ mod test {
          let end_pos = Position{line:start_pos.line, character: start_pos.character+val.as_ref().unwrap_or(&"".to_string()).len()};
          result.push(Token { 
             raw_pos: raw_pos, 
-            pos: start_pos.clone(), 
             range: Range{start:start_pos, end:end_pos},
             token_type: tok_type, 
             value: val.clone() 
@@ -1178,7 +1183,7 @@ mod test {
 
    pub fn check_node_pos_and_range(node: &dyn IAstNode,input: &Vec<Token>){
       assert_eq!(node.get_raw_pos(), input.first().unwrap().raw_pos);
-      assert_eq!(node.get_pos(), input.first().unwrap().pos);
+      assert_eq!(node.get_pos(), input.first().unwrap().get_pos());
       assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
    }
 
@@ -1310,7 +1315,7 @@ mod test {
          };
          let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeBasic>().unwrap();
          assert_eq!(downcasted.raw_pos,input[count].raw_pos);
-         assert_eq!(downcasted.pos,input[count].pos);
+         assert_eq!(downcasted.pos,input[count].get_pos());
          assert_eq!(downcasted.range,input[count].range);
          assert_eq!(
             downcasted.type_token.token_type,
@@ -1492,8 +1497,8 @@ mod test {
       let downcasted = node.as_ref().as_any().downcast_ref::<AstGlobalVariableDeclaration>().unwrap();
       check_node_pos_and_range(downcasted, &input);
       assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "aVariable");
-      assert!(downcasted.modifiers.as_ref().unwrap().is_override);
-      assert!(downcasted.modifiers.as_ref().unwrap().is_protected);
+      assert!(downcasted.modifiers.as_ref().unwrap().modifiers.is_override);
+      assert!(downcasted.modifiers.as_ref().unwrap().modifiers.is_protected);
 
       // test refto type
       let downcasted = downcasted.type_node.as_any().downcast_ref::<AstTypeReference>().unwrap();
@@ -1518,13 +1523,13 @@ mod test {
          (TokenType::Colon, Some(":".to_string())),
          (TokenType::Identifier, Some("SecondParamType".to_string())),
          (TokenType::CBracket, Some(")".to_string())),
+         (TokenType::External, Some("external".to_string())),
+         (TokenType::StringLiteral, Some("SomeDLL.Method".to_string())),
+         (TokenType::Forward, Some("forward".to_string())),
          (TokenType::Private, Some("private".to_string())),
          (TokenType::Protected, Some("protected".to_string())),
          (TokenType::Final, Some("final".to_string())),
          (TokenType::Override, Some("override".to_string())),
-         (TokenType::External, Some("external".to_string())),
-         (TokenType::StringLiteral, Some("SomeDLL.Method".to_string())),
-         (TokenType::Forward, Some("forward".to_string())),
       ]);
       let next : &[Token] = &input;
       let mut context = create_context();
@@ -1549,10 +1554,10 @@ mod test {
       }
       // test modifiers
       let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
-      assert!(modifiers_node.modifiers.as_ref().unwrap().is_private);
-      assert!(modifiers_node.modifiers.as_ref().unwrap().is_protected);
-      assert!(modifiers_node.modifiers.as_ref().unwrap().is_final);
-      assert!(modifiers_node.modifiers.as_ref().unwrap().is_override);
+      assert!(modifiers_node.member_modifiers.is_private);
+      assert!(modifiers_node.member_modifiers.is_protected);
+      assert!(modifiers_node.member_modifiers.is_final);
+      assert!(modifiers_node.member_modifiers.is_override);
       assert_eq!(modifiers_node.external_dll_name.as_ref().unwrap().as_str(), "SomeDLL.Method");
       assert!(modifiers_node.is_forward);
    }
@@ -1605,10 +1610,10 @@ mod test {
       assert_eq!(return_node.type_token.value.as_ref().unwrap().as_str(), "aReturnType");
       // test modifiers
       let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
-      assert!(!modifiers_node.modifiers.as_ref().unwrap().is_private);
-      assert!(modifiers_node.modifiers.as_ref().unwrap().is_protected);
-      assert!(!modifiers_node.modifiers.as_ref().unwrap().is_final);
-      assert!(modifiers_node.modifiers.as_ref().unwrap().is_override);
+      assert!(!modifiers_node.member_modifiers.is_private);
+      assert!(modifiers_node.member_modifiers.is_protected);
+      assert!(!modifiers_node.member_modifiers.is_final);
+      assert!(modifiers_node.member_modifiers.is_override);
       assert!(modifiers_node.external_dll_name.is_none());
       assert!(!modifiers_node.is_forward);
    }
@@ -1698,13 +1703,13 @@ mod test {
    #[test]
    fn test_parse_method_modifiers() {
       let input = gen_list_of_tokens(&[
+         (TokenType::External, Some("external".to_string())),
+         (TokenType::StringLiteral, Some("SomeDLL.Method".to_string())),
+         (TokenType::Forward, Some("forward".to_string())),
          (TokenType::Private, Some("private".to_string())),
          (TokenType::Protected, Some("protected".to_string())),
          (TokenType::Final, Some("final".to_string())),
          (TokenType::Override, Some("override".to_string())),
-         (TokenType::External, Some("external".to_string())),
-         (TokenType::StringLiteral, Some("SomeDLL.Method".to_string())),
-         (TokenType::Forward, Some("forward".to_string())),
       ]);
       // test pos
       let next : &[Token] = &input;
@@ -1714,10 +1719,10 @@ mod test {
       check_node_pos_and_range(&node, &input);
 
       // test modifiers
-      assert!(node.modifiers.as_ref().unwrap().is_private);
-      assert!(node.modifiers.as_ref().unwrap().is_protected);
-      assert!(node.modifiers.as_ref().unwrap().is_override);
-      assert!(node.modifiers.as_ref().unwrap().is_final);
+      assert!(node.member_modifiers.is_private);
+      assert!(node.member_modifiers.is_protected);
+      assert!(node.member_modifiers.is_override);
+      assert!(node.member_modifiers.is_final);
       assert_eq!(node.external_dll_name.unwrap(), "SomeDLL.Method".to_string());
       assert!(node.is_forward);
    }
