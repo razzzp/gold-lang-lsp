@@ -6,17 +6,16 @@ proc TestOQL
         WriteLn(curPerson)
     endFor
 
-    ; TODO not implemented yet
-    ; theCursor = Motor.OpenOQLCursor
-    ; OQL select OQLMax(thePers.Salary), OQLMin(thePers.Salary), OQLSum(thePers.Salary),
-    ;     OQLCount(*) from thePers in aPerson where thePers.Division = ForDivision using theCursor
-    ; Error = Motor.OQLError
-    ; if Error = 0
-    ;     OQL Fetch into MaxPay, MinPay, TotalPay, NumEmployees using theCursor
-    ; else
-    ;     Alert('OQL Select error ' + IaS(Error))
-    ; endIf
-    ; Motor.CloseOQLCursor(theCursor)
+    theCursor = Motor.OpenOQLCursor
+    OQL select OQLMax(thePers.Salary), OQLMin(thePers.Salary), OQLSum(thePers.Salary),
+        OQLCount(*) from thePers in aPerson where thePers.Division = ForDivision using theCursor
+    Error = Motor.OQLError
+    if Error = 0
+        OQL Fetch into MaxPay, MinPay, TotalPay, NumEmployees using theCursor
+    else
+        Alert('OQL Select error ' + IaS(Error))
+    endIf
+    Motor.CloseOQLCursor(theCursor)
 
     forEach curCompany in OQL select * from x in aCompany where (x.Name like self.Name) and
         OQLConditionalWhere(self.City <> '', x.City = self.City) and

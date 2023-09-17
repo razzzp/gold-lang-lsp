@@ -1,12 +1,13 @@
 use crate::{lexer::tokens::{Token, TokenType}, utils::{IRange, create_new_range}};
 
-use super::{IParserContext, ParserDiagnostic, ast::{IAstNode, AstTerminal, AstOQLSelect, AstOQLFromNode, AstOQLJoin, AstOQLOrderBy}, ParseError, utils::{exp_token, alt_parse_w_context, opt_parse, seq_parse, opt_parse_w_context, parse_separated_list_w_context, exp_ident_with_value, alt_parse, parse_until_no_match_w_context}, body_parser::{parse_literal_basic, parse_identifier, parse_primary, parse_compare, parse_expr, parse_dot_ops}};
+use super::{IParserContext, ParserDiagnostic, ast::{IAstNode, AstTerminal, AstOQLSelect, AstOQLFromNode, AstOQLJoin, AstOQLOrderBy, AstMethodCall, AstOQLFetch}, ParseError, utils::{exp_token, alt_parse_w_context, opt_parse, opt_parse_w_context, parse_separated_list_w_context, exp_ident_with_value, alt_parse, parse_until_no_match_w_context}, body_parser::{parse_literal_basic, parse_identifier, parse_compare, parse_expr, parse_dot_ops}};
 
 
 
 pub fn parse_oql_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     return alt_parse_w_context([
         parse_oql_select,
+        parse_oql_fetch
     ].as_ref())(input, context);
 }
 
@@ -91,11 +92,28 @@ fn parse_top_n<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], 
 fn parse_select_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     return alt_parse_w_context([
         parse_asterisk,
-        parse_primary,
+        parse_oql_method_call,
+        parse_dot_ops
     ].as_ref())(input, context);
 }
 
-fn parse_asterisk<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_oql_method_call<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+    // to handle asterisk in method calls
+    //  e.g. OQLCount(*)
+    let (next, ident_node) = parse_identifier(input, context)?;
+    let (next, _) = exp_token(TokenType::OBracket)(next)?;
+    let (next, parameter_list) = parse_separated_list_w_context(parse_asterisk, TokenType::Comma)(next, context)?;
+    let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
+    return Ok((next, Box::new(AstMethodCall{
+        raw_pos: ident_node.get_raw_pos(),
+        pos: ident_node.get_pos(),
+        range: create_new_range(ident_node.get_range(), cbracket_token.get_range()),
+        identifier: ident_node,
+        parameter_list,
+    })))
+}
+
+fn parse_asterisk<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], _context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
     let (next, top_token) = exp_token(TokenType::Asterisk)(input)?;
     return Ok((
         next,
@@ -205,7 +223,34 @@ fn parse_order_by_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[
             }
         )
     ))
+}
 
+fn parse_oql_fetch<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+    let(next, oql_token) = exp_token(TokenType::OQL)(input)?;
+    let(next, _fetch_token) = exp_token(TokenType::Fetch)(next)?;
+    let(next, _into_token) = exp_token(TokenType::Into)(next)?;
+
+    let(next, into_nodes) = parse_separated_list_w_context(parse_dot_ops, TokenType::Comma)(next, context)?;
+
+    let(next, using_node) = opt_parse_w_context(parse_using)(next, context)?;
+    let end = match &using_node{
+        Some(n) => n.get_range(),
+        _=> {
+            match into_nodes.last() {
+                Some(n) => n.get_range(),
+                _=> _into_token.get_range()
+            }
+        }
+    };
+    return Ok((
+        next,
+        Box::new(AstOQLFetch{
+            raw_pos: oql_token.get_raw_pos(),
+            range: create_new_range(oql_token.get_range(), end),
+            into_field_nodes: into_nodes,
+            using_node,
+        })
+    ))
 }
 
 fn parse_using<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
@@ -220,7 +265,6 @@ mod test{
     use crate::parser::ast::*;
     use crate::parser::oql_parser::*;
     use crate::parser::test::*;
-    use crate::utils::ast_to_string_brief_recursive;
 
     #[test]
     fn test_oql_select(){
@@ -310,5 +354,36 @@ mod test{
         assert!(downcasted.is_all_versions);
         assert!(downcasted.is_phantoms_too);
         assert!(downcasted.includes_subclasses);
+    }
+
+    #[test]
+    fn test_oql_fetch(){
+        let input = gen_list_of_tokens(&[
+            (TokenType::OQL, Some("oql".to_string())),
+            (TokenType::Fetch, Some("fetch".to_string())),
+            (TokenType::Into, Some("into".to_string())),
+            (TokenType::Identifier, Some("var1".to_string())),
+            (TokenType::Comma, Some(",".to_string())),
+            (TokenType::Identifier, Some("var2".to_string())),
+            (TokenType::Comma, Some(",".to_string())),
+            (TokenType::Identifier, Some("object.".to_string())),
+            (TokenType::Dot, Some(".".to_string())),
+            (TokenType::Identifier, Some("var3".to_string())),
+            (TokenType::Using, Some("using".to_string())),
+            (TokenType::Identifier, Some("cursor".to_string())),
+            
+        ]);
+        let mut context = create_context();
+        let (next, node) = parse_oql_expr(&input, &mut context).unwrap();
+        // print!("{}",ast_to_string_brief_recursive(node.as_ast_node()));
+        assert_eq!(next.len(), 0);
+        assert_eq!(context.get_diagnostics().len(), 0);
+        check_node_pos_and_range(node.as_ast_node(), &input);
+        assert_eq!(node.get_children_dynamic().unwrap().len(), 4);
+        let downcasted = node.as_any().downcast_ref::<AstOQLFetch>().unwrap();
+
+        assert_eq!(downcasted.into_field_nodes.len(), 3);
+        assert_eq!(downcasted.into_field_nodes.last().unwrap().get_identifier(), ".");
+        assert_eq!(downcasted.using_node.as_ref().unwrap().get_identifier(), "cursor");
     }
 }

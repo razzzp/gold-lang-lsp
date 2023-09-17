@@ -180,6 +180,7 @@ pub enum TokenType {
     Where,
     Top,
     Conditional,
+    Into,
 
     // others
     SingleQuote,

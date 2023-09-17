@@ -1910,3 +1910,27 @@ impl IAstNode for AstOQLOrderBy {
         self.to_string_type_pos()
     }
 }
+
+#[derive(Debug)]
+pub struct AstOQLFetch {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub into_field_nodes: Vec<Box<dyn IAstNode>>,
+    pub using_node: Option<Box<dyn IAstNode>>,
+}
+implem_irange!(AstOQLFetch);
+impl IAstNode for AstOQLFetch {
+    implem_iastnode_common!(AstOQLFetch, "oql_fetch");
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        result.extend(self.into_field_nodes.iter().map(|n| {n.as_ast_node()}));
+        match &self.using_node{
+            Some(n) => {result.push(n.as_ast_node());}
+            _=> ()
+        }
+        return Some(result);
+    }
+    fn get_identifier(&self) -> String {
+        self.to_string_type_pos()
+    }
+}
