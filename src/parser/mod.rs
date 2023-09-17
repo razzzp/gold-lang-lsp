@@ -5,7 +5,7 @@ use crate::parser::body_parser::parse_identifier;
 use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange, create_new_range};
 use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstBinaryOp, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
 
-use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent, AstTerminal, AstModule, MemberModifiers};
+use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent, AstTerminal, AstModule, MemberModifiers, AstTypeSized};
 use self::body_parser::{parse_statement_v2, parse_literal_basic, parse_ident_token, parse_binary_ops_w_context};
 use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, parse_separated_list, opt_token, parse_repeat, parse_until, parse_until_strict, create_closure, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context, parse_until_no_match_w_context, seq_parse_w_context};
 
@@ -312,6 +312,7 @@ fn parse_type_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : 
 fn parse_type<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
    //
    let parsers = [
+      parse_type_sized,
       parse_type_composed,
       parse_type_basic,
       parse_type_reference,
@@ -351,25 +352,26 @@ fn parse_type_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [T
 -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
    // basic fixed size
    let parse_result = alt_parse(&[
-      exp_token(TokenType::Int1),
-      exp_token(TokenType::Int2),
-      exp_token(TokenType::Int4),
-      exp_token(TokenType::Int8),
-      exp_token(TokenType::Boolean),
-      exp_token(TokenType::Char),
-      exp_token(TokenType::Num4),
-      exp_token(TokenType::Num8),
-      exp_token(TokenType::Num10),
-      exp_token(TokenType::Decimal),
-      exp_token(TokenType::CString),
-      exp_token(TokenType::String),
-      exp_token(TokenType::Text),
+      // treat native types as identifiers
+      //  handle later in semantic analyzer
+      // exp_token(TokenType::Int1),
+      // exp_token(TokenType::Int2),
+      // exp_token(TokenType::Int4),
+      // exp_token(TokenType::Int8),
+      // exp_token(TokenType::Boolean),
+      // exp_token(TokenType::Char),
+      // exp_token(TokenType::Num4),
+      // exp_token(TokenType::Num8),
+      // exp_token(TokenType::Num10),
+      // exp_token(TokenType::Decimal),
+      // exp_token(TokenType::CString),
+      // exp_token(TokenType::String),
+      // exp_token(TokenType::Text),
       exp_token(TokenType::Identifier),
    ])(input);
    return match parse_result {
       Ok((r, t)) => Ok((r, Box::new(AstTypeBasic{
          raw_pos:t.raw_pos,
-         pos: t.get_pos(),
          range: t.range.clone(),
          type_token: t}))),
       Err(e) => Err(e)
@@ -396,6 +398,24 @@ fn parse_enum_variant<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a 
          range: variant_ident.get_range(),
          identifier: variant_ident,
          value_token
+      })
+   ))
+}
+
+fn parse_type_sized<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+   // int(3), cstring(4)
+   let(next, ident_token) = exp_token(TokenType::Identifier)(input)?;
+   let(next, _obracket) = exp_token(TokenType::OBracket)(next)?;
+   let(next, size_token) = exp_token(TokenType::NumericLiteral)(next)?;
+   let(next, cbracket) = exp_token(TokenType::CBracket)(next)?;
+
+   return Ok((
+      next,
+      Box::new(AstTypeSized{
+         raw_pos: ident_token.get_raw_pos(),
+         range: create_new_range(ident_token.get_range(), cbracket.get_range()),
+         type_token: ident_token,
+         size_token,
       })
    ))
 }
@@ -1156,7 +1176,7 @@ fn parse_method_body<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant, AstModule}, IParserContext, parse_module}, utils::{ast_to_string_brief, ast_to_string_brief_recursive}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant, AstModule, AstTypeSized}, IParserContext, parse_module, parse_type_sized}, utils::{ast_to_string_brief, ast_to_string_brief_recursive}};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type, ParserContext};
 
@@ -1289,19 +1309,19 @@ mod test {
    #[test]
    fn test_parse_type_basic() {
       let input = gen_list_of_tokens(&[
-         (TokenType::Int1, Some("int1".to_string())),
-         (TokenType::Int2, Some("int2".to_string())),
-         (TokenType::Int4, Some("Int4".to_string())),
-         (TokenType::Int8, Some("Int8".to_string())),
-         (TokenType::Boolean, Some("Boolean".to_string())),
-         (TokenType::Char, Some("Char".to_string())),
-         (TokenType::Num4, Some("Num4".to_string())),
-         (TokenType::Num8, Some("Num8".to_string())),
-         (TokenType::Num10, Some("Num10".to_string())),
-         (TokenType::Decimal, Some("Decimal".to_string())),
-         (TokenType::CString, Some("CString".to_string())),
-         (TokenType::String, Some("String".to_string())),
-         (TokenType::Text, Some("Text".to_string())),
+         (TokenType::Identifier, Some("int1".to_string())),
+         (TokenType::Identifier, Some("int2".to_string())),
+         (TokenType::Identifier, Some("Int4".to_string())),
+         (TokenType::Identifier, Some("Int8".to_string())),
+         (TokenType::Identifier, Some("Boolean".to_string())),
+         (TokenType::Identifier, Some("Char".to_string())),
+         (TokenType::Identifier, Some("Num4".to_string())),
+         (TokenType::Identifier, Some("Num8".to_string())),
+         (TokenType::Identifier, Some("Num10".to_string())),
+         (TokenType::Identifier, Some("Decimal".to_string())),
+         (TokenType::Identifier, Some("CString".to_string())),
+         (TokenType::Identifier, Some("String".to_string())),
+         (TokenType::Identifier, Some("Text".to_string())),
          (TokenType::Identifier, Some("tCustomType".to_string())),
       ]);
 
@@ -1315,7 +1335,7 @@ mod test {
          };
          let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeBasic>().unwrap();
          assert_eq!(downcasted.raw_pos,input[count].raw_pos);
-         assert_eq!(downcasted.pos,input[count].get_pos());
+         assert_eq!(downcasted.get_pos(),input[count].get_pos());
          assert_eq!(downcasted.range,input[count].range);
          assert_eq!(
             downcasted.type_token.token_type,
@@ -1767,7 +1787,7 @@ mod test {
    fn test_parse_type_set() {
       let input = gen_list_of_tokens(&[
          (TokenType::OSqrBracket, Some("'['".to_string())),
-         (TokenType::CString, Some("CString".to_string())),
+         (TokenType::Identifier, Some("CString".to_string())),
          (TokenType::CSqrBracket, Some("]".to_string())),
       ]);
       let mut context = create_context();
@@ -1792,7 +1812,7 @@ mod test {
          (TokenType::Identifier, Some("tType".to_string())),
          (TokenType::Identifier, Some("Second".to_string())),
          (TokenType::Colon, Some(":".to_string())),
-         (TokenType::CString, Some("cstring".to_string())),
+         (TokenType::Identifier, Some("cstring".to_string())),
          (TokenType::EndRecord, Some("endrecord".to_string())),
       ]);
       let mut context = create_context();
@@ -1857,7 +1877,7 @@ mod test {
          (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("Param1".to_string())),
          (TokenType::Colon, Some(":".to_string())),
-         (TokenType::Int4, Some("Int4".to_string())),
+         (TokenType::Identifier, Some("Int4".to_string())),
          (TokenType::CBracket, Some(")".to_string())),
       ]);
       let mut context = create_context();
@@ -1880,7 +1900,7 @@ mod test {
          (TokenType::Comma, Some(",".to_string())),
          (TokenType::Identifier, Some("Param1".to_string())),
          (TokenType::Colon, Some(":".to_string())),
-         (TokenType::Int4, Some("Int4".to_string())),
+         (TokenType::Identifier, Some("Int4".to_string())),
          (TokenType::CBracket, Some(")".to_string())),
          (TokenType::Return, Some("return".to_string())),
          (TokenType::Identifier, Some("Type".to_string())),
@@ -1930,6 +1950,24 @@ mod test {
       let downcasted = node.as_ref().as_any().downcast_ref::<AstProcedure>().unwrap();
       let method_name = downcasted.identifier.as_any().downcast_ref::<AstMethodNameWithEvent>().unwrap();
       assert_eq!(method_name.get_identifier(), "Method#SomeEvent");
+   }
+
+   #[test]
+   fn test_parse_type_sized(){
+      let input = gen_list_of_tokens(&[
+         (TokenType::Identifier, Some("Int".to_string())),
+         (TokenType::OBracket, Some("(".to_string())),
+         (TokenType::NumericLiteral, Some("10".to_string())),
+         (TokenType::CBracket, Some(")".to_string())),
+      ]);
+      let mut context = create_context();
+      let (next, node) = parse_type(&input, &mut context).unwrap();
+      assert!(next.is_empty());
+      check_node_pos_and_range(node.as_ref(), &input);
+
+      let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeSized>().unwrap();
+      assert_eq!(downcasted.get_identifier(), "Int");
+      assert_eq!(downcasted.size_token.get_value(), "10");
    }
 
 }

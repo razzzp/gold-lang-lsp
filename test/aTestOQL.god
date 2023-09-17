@@ -31,4 +31,12 @@ proc TestOQL
     forEach curInfo in OQL select x.LastName, y.LastName from x in aPerson, y in aTeacher where y.myStudents.ContainsObject(x)
         WriteLn(curInfo.x.LastName, ' is in class taught by ', curInfo.y.LastName)
     endFor
+
+    if not Motor.IsNew(self)
+      forEach curSmallId in OQL Select top 1 x.NSId, x.Id, x.Version from x in aEntity++
+         where (x.Somethin.NSId = self.NSId) and (x.Something.Id = 
+         self.Id)
+         _Result = True
+      endFor
+   endIf
 endproc

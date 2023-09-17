@@ -56,8 +56,6 @@ pub fn parse_ident_token<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'
     // keywords can also me used as member identifiers
     return alt_parse(&[
         exp_token(TokenType::Identifier),
-        exp_token(TokenType::TSelf),
-        exp_token(TokenType::Result),
         exp_token(TokenType::Type),
         exp_token(TokenType::Distinct),
         exp_token(TokenType::From),
@@ -71,6 +69,8 @@ pub fn parse_ident_token<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'
         exp_token(TokenType::Descending),
         exp_token(TokenType::Order),
         exp_token(TokenType::By),
+        exp_token(TokenType::Fetch),
+        exp_token(TokenType::Into),
     ])(input);
 }
 
@@ -212,7 +212,8 @@ pub fn parse_primary<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
         parse_unary_op,
         parse_dot_ops,
         parse_literals,
-        parse_cast
+        parse_cast,
+        parse_oql_expr
     ];
     let (next, node) = alt_parse_w_context(&parsers)(input,context)?;
     return Ok((next, node));
@@ -300,7 +301,6 @@ fn parse_logical_or<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
 pub fn parse_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
     let parser = [
         parse_logical_or,
-        parse_oql_expr
     ];
     let result= alt_parse_w_context(&parser)(input, context)?;
     return Ok(result);
@@ -1272,7 +1272,7 @@ mod test{
     #[test]
     fn test_parse_unary_op_post(){
         let input = gen_list_of_tokens(&[
-            (TokenType::TSelf, Some("self".to_string())),
+            (TokenType::Identifier, Some("self".to_string())),
             (TokenType::Dot, Some(".".to_string())),
             (TokenType::Identifier, Some("First".to_string())),
             (TokenType::Dot, Some(".".to_string())),

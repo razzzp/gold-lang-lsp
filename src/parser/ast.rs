@@ -189,32 +189,29 @@ impl IAstNode for AstUses {
 #[derive(Debug)]
 pub struct AstTypeBasic {
     pub raw_pos: usize,
-    pub pos: Position,
     pub range: Range,
     pub type_token: Token,
 }
 implem_irange!(AstTypeBasic);
 impl IAstNode for AstTypeBasic {
-    fn get_type(&self) -> &'static str {
-        return "Type Basic Fixed";
-    }
+    implem_iastnode_common!(AstTypeBasic, "type_basic");
     fn get_identifier(&self) -> String {
         return self.type_token.get_value()
     }
-    fn get_raw_pos(&self) -> usize {
-        return self.raw_pos;
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn get_pos(&self) -> Position {
-        self.pos.clone()
-    }
-    fn as_ast_node(&self) -> &dyn IAstNode{
-        self
-    }
-    fn to_string_type(&self) -> String {
-        "type_basic".to_string()
+}
+
+#[derive(Debug)]
+pub struct AstTypeSized {
+    pub raw_pos: usize,
+    pub range: Range,
+    pub type_token: Token,
+    pub size_token: Token,
+}
+implem_irange!(AstTypeSized);
+impl IAstNode for AstTypeSized {
+    implem_iastnode_common!(AstTypeSized, "type_sized");
+    fn get_identifier(&self) -> String {
+        return self.type_token.get_value()
     }
 }
 

@@ -52,15 +52,14 @@ impl FunctionReturnTypeChecker{
                   lsp_types::DiagnosticSeverity::WARNING,
                   "aListOfInstances type should not be returned by functions, pass it as inout/var param instead"
             ))  
-         }
-
-      } else if token.token_type == TokenType::Text {
-         self.diagnostics.push(
-            self.create_diagnostic(
-               return_type_node, 
-               lsp_types::DiagnosticSeverity::WARNING,
-               "Text type should not be returned by functions, pass it as inout/var param instead"
-         ))  
+         }else if tok_val == "TEXT" {
+            self.diagnostics.push(
+               self.create_diagnostic(
+                  return_type_node, 
+                  lsp_types::DiagnosticSeverity::WARNING,
+                  "Text type should not be returned by functions, pass it as inout/var param instead"
+            ))  
+         } 
       } 
    }
 }
