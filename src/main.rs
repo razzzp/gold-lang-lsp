@@ -1,21 +1,21 @@
 use std::net::ToSocketAddrs;
 use std::ops::Deref;
-use std::{io::Read, fs::File};
+
 
 use crate::manager::GoldProjectManager;
-use crate::{lexer::GoldLexer, parser::parse_gold};
+
 use std::error::Error;
 
-use lsp_types::notification::{DidChangeTextDocument, PublishDiagnostics, DidSaveTextDocument};
-use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbol, SymbolKind, Range, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, lsp_notification, DidSaveTextDocumentParams};
+use lsp_types::notification::{DidChangeTextDocument, DidSaveTextDocument};
+use lsp_types::{OneOf, DocumentSymbolResponse, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams};
 use lsp_types::request::{DocumentSymbolRequest, DocumentDiagnosticRequest};
 use lsp_types::{
-    request::GotoDefinition, GotoDefinitionResponse, InitializeParams, ServerCapabilities,
+    InitializeParams, ServerCapabilities,
 };
 
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError, ErrorCode, Notification,};
-use nom::error;
-use parser::ParserDiagnostic;
+
+
 
 pub mod lexer;
 pub mod parser;
@@ -210,11 +210,11 @@ fn handle_did_change_notification(
         diag_report.full_document_diagnostic_report.items.clone(), 
         Some(params.text_document.version));
     let params_serialized = serde_json::to_value(&pub_diag_params).unwrap();
-    let publish_diag = Notification{
+    let _publish_diag = Notification{
         method: "textDocument/publishDiagnostics".to_string(),
         params: params_serialized
     };
-    let mut result = Vec::<Message>::new();
+    let result = Vec::<Message>::new();
     // TODO do we need to publsh? looks like client automatically 
     //  requests diag report when doc change, but previously it didn't update automatically?
     // result.push(Message::Notification(publish_diag));
@@ -291,17 +291,17 @@ fn convert_uri_to_file_path_str(uri : &Url) -> Result<String, String>{
 
 #[cfg(test)]
 mod test {
-    use std::fs::File;
-    use std::io::Read;
+    
+    
 
     use lsp_types::Url;
 
-    use crate::parser::ast::{AstClass, AstUses};
+    
     use crate::convert_uri_to_file_path_str;
-    use crate::lexer::GoldLexer;
-    use crate::parser;
-    use crate::parser::parse_gold;
-    use crate::utils::ast_to_string_brief_recursive;
+    
+    
+    
+    
 
     #[test]
     #[ignore] 

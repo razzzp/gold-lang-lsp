@@ -2,12 +2,12 @@
 
 use crate::lexer::tokens::{Token, TokenType};
 use crate::parser::body_parser::parse_identifier;
-use crate::utils::{Range, get_end_pos, create_new_range_from_irange, IRange, create_new_range};
-use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstBinaryOp, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
+use crate::utils::{Range, create_new_range_from_irange, IRange, create_new_range};
+use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
 
 use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent, AstTerminal, AstModule, MemberModifiers, AstTypeSized};
 use self::body_parser::{parse_statement_v2, parse_literal_basic, parse_ident_token, parse_binary_ops_w_context};
-use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, parse_separated_list, opt_token, parse_repeat, parse_until, parse_until_strict, create_closure, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context, parse_until_no_match_w_context, seq_parse_w_context};
+use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, opt_token, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context, parse_until_no_match_w_context};
 
 pub mod utils;
 pub mod body_parser;
@@ -143,7 +143,7 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
 }
 
 
-fn parse_comment<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
+fn parse_comment<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
    let (next, comment_token) = exp_token(TokenType::Comment)(input)?;
    return Ok((next, Box::new(AstComment{
       raw_pos: comment_token.raw_pos,
@@ -153,7 +153,7 @@ fn parse_comment<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Toke
    })))
 }
 
-fn parse_annotations<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
+fn parse_annotations<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
    // TODO for now annotations ignored
    let (next, _) = exp_token(TokenType::OSqrBracket)(input)?;
    let (next, _, _) = take_until([TokenType::CSqrBracket].as_ref())(next)?;
@@ -216,7 +216,7 @@ fn parse_module<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token
 }
 
 
-fn parse_constant_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
+fn parse_constant_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
    // const keyword
    let (next, const_token) = match exp_token(TokenType::Const)(input){
       Ok(r) => r,
@@ -261,7 +261,7 @@ fn parse_constant_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(inpu
 }
 
 
-fn parse_uses<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
+fn parse_uses<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
    // uses
    let (next, uses_token) = match exp_token(TokenType::Uses)(input){
       Ok((r, t)) => (r, t),
@@ -348,7 +348,7 @@ fn parse_type<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token],
 //    ])(input);
 // }
 
-fn parse_type_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C)
+fn parse_type_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C)
 -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
    // basic fixed size
    let parse_result = alt_parse(&[
@@ -402,7 +402,7 @@ fn parse_enum_variant<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a 
    ))
 }
 
-fn parse_type_sized<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_type_sized<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
    // int(3), cstring(4)
    let(next, ident_token) = exp_token(TokenType::Identifier)(input)?;
    let(next, _obracket) = exp_token(TokenType::OBracket)(next)?;
@@ -506,7 +506,7 @@ fn parse_type_reference<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'
    })));
 }
 
-fn parse_type_reference_options<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Vec<Token>), ParseError<'a>>{
+fn parse_type_reference_options<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  Vec<Token>), ParseError<'a>>{
    // opening [
    let mut result = Vec::<Token>::new();
    let (next, open_token) = match exp_token(TokenType::OSqrBracket)(input) {
@@ -985,7 +985,7 @@ fn parse_parameter_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(inp
    }
 }
 
-fn parse_member_modifier_tokens<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Token), ParseError<'a>>{
+fn parse_member_modifier_tokens<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  Token), ParseError<'a>>{
    return alt_parse([
       exp_token(TokenType::Private),
       exp_token(TokenType::Protected),
@@ -1030,7 +1030,7 @@ fn parse_member_modifiers<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : 
    }))))
 } 
 
-fn parse_method_external<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Token), ParseError<'a>>{
+fn parse_method_external<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  Token), ParseError<'a>>{
    match seq_parse(&[
       exp_token(TokenType::External),
       exp_token(TokenType::StringLiteral)
@@ -1051,7 +1051,7 @@ fn parse_method_external<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &
    };
 }
 
-fn parse_method_forward<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Token), ParseError<'a>>{
+fn parse_method_forward<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  Token), ParseError<'a>>{
    return exp_token(TokenType::Forward)(input);
 }
 
@@ -1176,7 +1176,7 @@ fn parse_method_body<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant, AstModule, AstTypeSized}, IParserContext, parse_module, parse_type_sized}, utils::{ast_to_string_brief, ast_to_string_brief_recursive}};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant, AstModule, AstTypeSized}, IParserContext, parse_module}, utils::ast_to_string_brief_recursive};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type, ParserContext};
 

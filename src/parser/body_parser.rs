@@ -1,7 +1,7 @@
 
-use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, Range}, parser::take_until};
+use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, Range}};
 
-use super::{ParseError, exp_token, utils::{parse_until, parse_until_no_match, parse_separated_list_allow_empty, parse_separated_list_w_context, alt_parse_w_context, parse_until_w_context, parse_until_no_match_w_context, opt_parse_w_context}, alt_parse, parse_type_basic, parse_separated_list, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::{AstArrayAccess, AstRepeatBlock}, IParserContext, ParserContext, oql_parser::parse_oql_expr};
+use super::{ParseError, exp_token, utils::{parse_separated_list_w_context, alt_parse_w_context, parse_until_w_context, parse_until_no_match_w_context, opt_parse_w_context}, alt_parse, parse_type_basic, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::{AstArrayAccess, AstRepeatBlock}, IParserContext, ParserContext, oql_parser::parse_oql_expr};
 
 /// expr = ident
 ///     | bin_op
@@ -39,7 +39,7 @@ fn parse_literal_set<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
     })))
 }
 
-pub fn parse_literal_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+pub fn parse_literal_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], _context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
     let (next, ident_token) = alt_parse(&[
         exp_token(TokenType::StringLiteral),
         exp_token(TokenType::NumericLiteral),
@@ -52,7 +52,7 @@ pub fn parse_literal_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: 
     })))
 }
 
-pub fn parse_ident_token<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Token), ParseError<'a>> {
+pub fn parse_ident_token<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], _context : &mut C) -> Result<(&'a [Token], Token), ParseError<'a>> {
     // keywords can also me used as member identifiers
     return alt_parse(&[
         exp_token(TokenType::Identifier),
@@ -624,7 +624,7 @@ fn parse_while_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
         Some(t) => t.clone(),
         _ => while_token.clone()
     };
-    let cond_block_end = match statement_nodes.last() {
+    let _cond_block_end = match statement_nodes.last() {
         Some(n) => n.get_range(),
         _ => cond_node.get_range()
     };
@@ -763,7 +763,7 @@ fn parse_return_statement<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : 
     })));
 }
 
-fn _parse_control_statements<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+fn _parse_control_statements<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
     let (next, control_token) = alt_parse([
         exp_token(TokenType::Exit),
         exp_token(TokenType::Break),

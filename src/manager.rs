@@ -1,9 +1,9 @@
-use std::{collections::HashMap, error::Error, fs::File, io::Read, ops::Deref, rc::Rc, alloc::GlobalAlloc, sync::{Arc, Mutex}, cell::RefCell, panic::resume_unwind};
+use std::{collections::HashMap, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex}, cell::RefCell};
 
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{AnalyzerDiagnostic, ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
 
 // pub trait IDocument {
 //     fn get_symbols(&self)-> Vec<&'static DocumentSymbol>;
@@ -417,7 +417,7 @@ impl DocumentSymbolGenerator{
 mod test{
     use std::{fs::File, io::Read};
 
-    use crate::{lexer::{GoldLexer, tokens::Token}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::ast_to_string_brief_recursive, analyzers::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
+    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::ast_to_string_brief_recursive, analyzers::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
 
     use super::GoldProjectManager;
 
@@ -439,14 +439,14 @@ mod test{
     }
 
     fn create_ast_walker()->AstWalker{
-        let mut result = AstWalker::new();
+        let result = AstWalker::new();
         return result;
     }
 
     #[test]
     fn test_gold_document_manager(){
         let doc_manager = GoldProjectManager::new();
-        let doc = doc_manager.parse_document("test/aTestClass.god").unwrap();
+        let _doc = doc_manager.parse_document("test/aTestClass.god").unwrap();
         // println!("{:#?}",doc);
     }
 

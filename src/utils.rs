@@ -4,7 +4,7 @@ use std::{fmt::Write, collections::LinkedList, ops::Deref};
 
 pub trait IRange {
     fn get_range(&self) -> Range;
-    fn set_range(&mut self, new_range: Range){//TODO:implem for all classes
+    fn set_range(&mut self, _new_range: Range){//TODO:implem for all classes
         ()
     }
     fn as_range(&self) -> &dyn IRange;
