@@ -20,11 +20,16 @@ Tokenize the text file. Output will be fed to the Parser
 ## Parser
 Reads the Token stream and constructs as AST. Output will be fed to the Analyzer
 
-## Analyzer (To Do)
+## Analyzer
+Currently the analyzer performs linting like services. Currently implemented:
+- Checks unused variables
+- Checks return values of functions (cannot be text/tvarbytearray/list)
+- Checks params that should be inout/const/var
+
+TODO
 This module would:
 - Perform Type Checking on AST (attach types? or generate new tree?)
 - Provide Semantic Diagnostics
 - Perform static code analysis, should be able to easily add new rules. E.g. rules:
-    - Check unused vars
     - Check undisposed objects?
     - Check unpurged tVarByteArrays?
