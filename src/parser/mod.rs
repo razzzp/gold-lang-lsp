@@ -5,7 +5,7 @@ use crate::parser::body_parser::parse_identifier;
 use crate::utils::{Range, create_new_range_from_irange, IRange, create_new_range};
 use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstParameterDeclaration, AstParameterDeclarationList, AstProcedure, AstMethodModifiers, AstComment, AstMethodBody, AstFunction, AstMemberModifiers, AstEmpty, AstEnumVariant, AstTypeSet, AstTypeRecordField, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange};
 
-use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent, AstTerminal, AstModule, MemberModifiers, AstTypeSized};
+use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent, AstTerminal, AstModule, MemberModifiers, AstTypeSized, AstRoot};
 use self::body_parser::{parse_statement_v2, parse_literal_basic, parse_ident_token, parse_binary_ops_w_context};
 use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, opt_token, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context, parse_until_no_match_w_context};
 
@@ -72,7 +72,7 @@ impl ParserDiagnostic {
    }
 }
 
-pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNode>>), Vec<ParserDiagnostic>) {
+pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Box<dyn IAstNode>), Vec<ParserDiagnostic>) {
    let mut context = ParserContext::new();
    let parsers = [
       parse_comment,
@@ -87,16 +87,18 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
       parse_procedure_declaration,
       parse_function_declaration
    ];
-   let mut result = Vec::<Box<dyn IAstNode>>::new();
+   let mut statements = Vec::<Box<dyn IAstNode>>::new();
+
    if input.len() == 0 {
-      return ((input, result), context.get_diagnostics())
+      let root_node = Box::new(AstRoot::new(statements));
+      return ((input, root_node), context.get_diagnostics())
    }
    let mut next = input;
    while next.len() > 0 {
       let mut most_matched: Option<ParseError> = None;
       match alt_parse_w_context(&block_parsers)(next, &mut context){
          Ok((r,node))=> {
-            result.push(node); 
+            statements.push(node); 
             next = r;
             continue
          },
@@ -112,7 +114,7 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
          }
       };
       next = match alt_parse_w_context(&parsers)(next, &mut context){
-         Ok((r,n))=> {result.push(n); r},
+         Ok((r,n))=> {statements.push(n); r},
          Err(e)=> {
             // update most matched
             if most_matched.is_some(){
@@ -139,7 +141,8 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Vec<Box<dyn IAstNo
          }
       };
    }
-   ((next, result), context.get_diagnostics())
+   let root_node = Box::new(AstRoot::new(statements));
+   ((next, root_node), context.get_diagnostics())
 }
 
 

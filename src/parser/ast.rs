@@ -80,6 +80,52 @@ pub trait IAstNode: std::fmt::Debug + IRange {
     // fn eval() -> ();
 }
 
+#[derive(Debug)]
+pub struct AstRoot{
+    pub statements: Vec<Box<dyn IAstNode>>,
+}
+impl AstRoot {
+    pub fn new(statements: Vec<Box<dyn IAstNode>>) -> AstRoot{
+        return AstRoot{
+            statements,
+        }
+    }
+}
+impl IRange for AstRoot{
+    fn get_range(&self) -> Range {
+        Range::default()
+    }
+    fn as_range(&self) -> &dyn IRange {
+        self
+    }
+}
+impl IAstNode for AstRoot{
+    fn get_type(&self) -> &'static str {
+        return "AstRoot";
+    }
+    fn get_identifier(&self) -> String {
+        "".to_string()
+    }
+    fn get_raw_pos(&self) -> usize {
+        0
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_ast_node(&self) -> &dyn IAstNode{
+        self
+    }
+    fn to_string_type(&self) -> String {
+        "root".to_string()
+    }
+    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+        let mut result = Vec::new();
+        self.statements.iter().for_each(|n|{
+            result.push(n.as_ast_node())
+        });
+        return Some(result);
+    }
+}
 
 #[derive(Debug)]
 pub struct AstTerminal {

@@ -9,9 +9,8 @@ use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedu
 //     fn get_symbols(&self)-> Vec<&'static DocumentSymbol>;
 // }
 #[derive(Debug)]
-#[derive(Default)]
 pub struct GoldDocument{
-    ast_nodes: Vec<Box<dyn IAstNode>>,
+    ast: Box<dyn IAstNode>,
     parser_diagnostics: Vec<ParserDiagnostic>,
     symbols: Option<Rc<Vec<DocumentSymbol>>>,
     analyzer_diagnostics: Option<Rc<Vec<lsp_types::Diagnostic>>>,
@@ -244,9 +243,11 @@ impl GoldProjectManager{
             ParserDiagnostic { range: l_error.range, msg: l_error.msg }
         }));
         let new_doc =GoldDocument { 
-            ast_nodes: ast_nodes.1,
+            ast: ast_nodes.1,
             parser_diagnostics,
-            ..Default::default()
+            analyzer_diagnostics:None,
+            symbols: None,
+            diagnostic_report: None
         };
         return Ok(new_doc)
     }
@@ -256,25 +257,25 @@ impl GoldProjectManager{
         if diags.is_some(){
             return Ok(diags.unwrap());
         } else {
-            let diags = self.analyze_ast(&doc.borrow().ast_nodes);
+            let diags = self.analyze_ast(&doc.borrow().ast);
             doc.borrow_mut().analyzer_diagnostics = Some(Rc::new(diags));
             return Ok(doc.borrow().analyzer_diagnostics.as_ref().unwrap().clone());
         }
     }
 
-    fn analyze_ast(&self, ast_nodes : &Vec<Box<dyn IAstNode>>) -> Vec<lsp_types::Diagnostic>{
+    fn analyze_ast(&self, ast : &Box<dyn IAstNode>) -> Vec<lsp_types::Diagnostic>{
         // let result = Vec::new();
-        let mut analyzer = AstWalker::new();
-        analyzer.register_analyzer(Box::new(UnusedVarAnalyzer::new()));
-        analyzer.register_analyzer(Box::new(InoutParamChecker::new()));
-        analyzer.register_analyzer(Box::new(FunctionReturnTypeChecker::new()));
+        let mut ast_walker = AstWalker::new();
+        ast_walker.register_analyzer(Box::new(UnusedVarAnalyzer::new()));
+        ast_walker.register_analyzer(Box::new(InoutParamChecker::new()));
+        ast_walker.register_analyzer(Box::new(FunctionReturnTypeChecker::new()));
 
-        return analyzer.analyze(ast_nodes);
+        return ast_walker.analyze(ast);
     }
 
     fn generate_document_symbols(&self, doc: Rc<RefCell<GoldDocument>>) -> Result<Rc<Vec<DocumentSymbol>>, GoldProjectManagerError>{
         let symbol_generator = DocumentSymbolGenerator::new();
-        let symbols = symbol_generator.generate_symbols(&doc.borrow().ast_nodes);
+        let symbols = symbol_generator.generate_symbols(&doc.borrow().ast);
         let rc_result = Rc::new(symbols);
         doc.borrow_mut().symbols = Some(rc_result.clone());
         return Ok(rc_result);
@@ -318,11 +319,11 @@ impl DocumentSymbolGenerator{
         return DocumentSymbolGenerator {  }
     }
 
-    pub fn generate_symbols(&self, ast_nodes: &Vec<Box<dyn IAstNode>>)-> Vec<DocumentSymbol> {
+    pub fn generate_symbols(&self, ast: &Box<dyn IAstNode>)-> Vec<DocumentSymbol> {
         let mut result = Vec::<DocumentSymbol>::new();
-        let mut class_symbol = self.find_and_generate_class_symbol(ast_nodes);
-        for node in ast_nodes {
-            let symbol = self.generate_symbol_for_node(node.as_ref());
+        let mut class_symbol = self.find_and_generate_class_symbol(ast);
+        for node in ast.get_children().unwrap_or_default().iter() {
+            let symbol = self.generate_symbol_for_node(node.as_ast_node());
             if symbol.is_some(){
                 match &mut class_symbol {
                     Some(class_sym) => class_sym.children.as_mut().unwrap().push(symbol.unwrap()),
@@ -439,10 +440,10 @@ impl DocumentSymbolGenerator{
         }
     }
 
-    fn find_and_generate_class_symbol(&self, ast_nodes: &Vec<Box<dyn IAstNode>>) -> Option<DocumentSymbol>{
+    fn find_and_generate_class_symbol(&self, ast: &Box<dyn IAstNode>) -> Option<DocumentSymbol>{
         let mut result: Option<DocumentSymbol> = None;
-        for ast_node in ast_nodes {
-            match ast_node.as_ref().as_any().downcast_ref::<AstClass>(){
+        for ast_node in ast.get_children().unwrap_or_default().iter() {
+            match ast_node.as_any().downcast_ref::<AstClass>(){
                 Some(n) => {
                     result = Some(DocumentSymbol { 
                         name: n.name.clone(), 
@@ -471,7 +472,7 @@ mod test{
 
     use super::GoldProjectManager;
 
-    fn parse_and_analyze(file_path: &str) -> (Vec<Box<dyn IAstNode>>, Vec<ParserDiagnostic>){
+    fn parse_and_analyze(file_path: &str) -> (Box<dyn IAstNode>, Vec<ParserDiagnostic>){
         let  mut f = File::open(file_path).expect("file not found");
         let mut file_contents = String::new();
         match f.read_to_string(&mut file_contents){
@@ -514,8 +515,8 @@ mod test{
         // println!("{:#?}", tokens);
         let ast = parse_gold(&tokens);
         // println!("{:#?}", ast.0.0);
-        for node in ast.0.1{
-            println!("{}",ast_to_string_brief_recursive(node.as_ref()));
+        for node in ast.0.1.get_children().unwrap_or_default().iter(){
+            println!("{}",ast_to_string_brief_recursive(node.as_ast_node()));
         }
         // println!("{:#?}", ast.1.len());
     }
@@ -537,8 +538,8 @@ mod test{
 
         assert_eq!(ast.1.len(), 0);
         // println!("{:#?}", ast.0.0);
-        for node in ast.0.1{
-            println!("{}",ast_to_string_brief_recursive(node.as_ref()));
+        for node in ast.0.1.get_children().unwrap_or_default().iter(){
+            println!("{}",ast_to_string_brief_recursive(node.as_ast_node()));
         }
         // println!("{:#?}", ast.1.len());
     }
@@ -560,8 +561,8 @@ mod test{
 
         assert_eq!(ast.1.len(), 0);
         // println!("{:#?}", ast.0.0);
-        for node in ast.0.1{
-            println!("{}",ast_to_string_brief_recursive(node.as_ref()));
+        for node in ast.0.1.get_children().unwrap_or_default().iter(){
+            println!("{}",ast_to_string_brief_recursive(node.as_ast_node()));
         }
         // println!("{:#?}", ast.1.len());
     }
