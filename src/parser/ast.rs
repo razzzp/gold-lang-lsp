@@ -40,7 +40,7 @@ macro_rules! implem_iastnode_common {
     };
 }
 
-pub trait IAstNode: std::fmt::Debug + IRange {
+pub trait IAstNode: std::fmt::Debug + IRange + Send {
     /// returns node type, for display?
     fn get_type(&self) -> &'static str;
     fn get_raw_pos(&self) -> usize;

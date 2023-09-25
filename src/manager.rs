@@ -12,24 +12,24 @@ use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedu
 pub struct GoldDocument{
     ast: Box<dyn IAstNode>,
     parser_diagnostics: Vec<ParserDiagnostic>,
-    symbols: Option<Rc<Vec<DocumentSymbol>>>,
-    analyzer_diagnostics: Option<Rc<Vec<lsp_types::Diagnostic>>>,
-    diagnostic_report: Option<Rc<RelatedFullDocumentDiagnosticReport>>
+    symbols: Option<Arc<Vec<DocumentSymbol>>>,
+    analyzer_diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>,
+    diagnostic_report: Option<Arc<RelatedFullDocumentDiagnosticReport>>
 }
 impl GoldDocument{
-    pub fn get_symbols(&self)-> Option<Rc<Vec<DocumentSymbol>>>{
+    pub fn get_symbols(&self)-> Option<Arc<Vec<DocumentSymbol>>>{
         match &self.symbols {
             Some(syms) => return Some(syms.clone()),
             _=> None
         }
     }
-    pub fn get_analyzer_diagnostics(&self)-> Option<Rc<Vec<lsp_types::Diagnostic>>>{
+    pub fn get_analyzer_diagnostics(&self)-> Option<Arc<Vec<lsp_types::Diagnostic>>>{
         match &self.analyzer_diagnostics {
             Some(syms) => return Some(syms.clone()),
             _=> None
         }
     }
-    pub fn get_diagnostic_report(&self)-> Option<Rc<RelatedFullDocumentDiagnosticReport>>{
+    pub fn get_diagnostic_report(&self)-> Option<Arc<RelatedFullDocumentDiagnosticReport>>{
         match &self.diagnostic_report {
             Some(diag_report) => Some(diag_report.clone()),
             _=> None
@@ -41,12 +41,12 @@ impl GoldDocument{
 pub struct GoldDocumentInfo{
     uri: String,
     file_path: String,
-    saved: Option<Rc<RefCell<GoldDocument>>>,
-    opened: Option<Rc<RefCell<GoldDocument>>>
+    saved: Option<Arc<Mutex<GoldDocument>>>,
+    opened: Option<Arc<Mutex<GoldDocument>>>
 }
 
 impl GoldDocumentInfo{
-    pub fn get_saved_document(&self) -> Option<Rc<RefCell<GoldDocument>>> {
+    pub fn get_saved_document(&self) -> Option<Arc<Mutex<GoldDocument>>> {
         if let Some(doc) = &self.saved {
             return Some(doc.clone())
         } else {
@@ -54,7 +54,7 @@ impl GoldDocumentInfo{
         }
     }
 
-    pub fn get_opened_document(&self) -> Option<Rc<RefCell<GoldDocument>>> {
+    pub fn get_opened_document(&self) -> Option<Arc<Mutex<GoldDocument>>> {
         if let Some(doc) = &self.opened {
             return Some(doc.clone())
         } else {
@@ -80,7 +80,7 @@ impl Error for GoldProjectManagerError{
 #[derive(Debug)]
 pub struct GoldProjectManager{
     threadpool : ThreadPool,
-    uri_docinfo_map : RwLock<HashMap<String, Arc<Mutex<GoldDocumentInfo>>>>,
+    uri_docinfo_map : Arc<RwLock<HashMap<String, Arc<Mutex<GoldDocumentInfo>>>>>,
     root_path: Option<String>,
 }
 
@@ -111,7 +111,7 @@ impl GoldProjectManager{
         }
 
         Ok(GoldProjectManager{
-            uri_docinfo_map: RwLock::new(HashMap::new()),
+            uri_docinfo_map: Arc::new(RwLock::new(HashMap::new())),
             root_path,
             threadpool: ThreadPool::new(10)
         })
@@ -120,13 +120,11 @@ impl GoldProjectManager{
     pub fn index_files(&mut self){
         if self.root_path.is_none() {return};
 
-        // self.threadpool.execute(move ||{
-        //     self._index_files();
-        // });
-    }
-
-    fn _index_files(&mut self){
-
+        let uri_docinfo_map = self.uri_docinfo_map.clone();
+        self.threadpool.execute(move ||{
+            uri_docinfo_map.read().unwrap();
+            
+        });
     }
 
     pub fn get_document_info(&mut self, uri: &Url) -> Result<Arc<Mutex<GoldDocumentInfo>>, GoldProjectManagerError>{
@@ -163,7 +161,7 @@ impl GoldProjectManager{
         }
     }
 
-    pub fn get_parsed_document(&mut self, uri: &Url) -> Result<Rc<RefCell<GoldDocument>>, GoldProjectManagerError>{
+    pub fn get_parsed_document(&mut self, uri: &Url) -> Result<Arc<Mutex<GoldDocument>>, GoldProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         // check opened document
         if doc_info.lock().unwrap().get_opened_document().is_some() {
@@ -175,13 +173,13 @@ impl GoldProjectManager{
         } else {
             // if none, read from file
             let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
-            doc_info.lock().unwrap().saved = Some(Rc::new(RefCell::new(new_doc)));
+            doc_info.lock().unwrap().saved = Some(Arc::new(Mutex::new(new_doc)));
             return Ok(doc_info.lock().unwrap().get_saved_document().unwrap());
         }
     }
 
-    pub fn get_document_symbols(&mut self, doc: Rc<RefCell<GoldDocument>>)-> Rc<Vec<DocumentSymbol>>{
-        let syms = doc.borrow().get_symbols();
+    pub fn get_document_symbols(&mut self, doc: Arc<Mutex<GoldDocument>>)-> Arc<Vec<DocumentSymbol>>{
+        let syms = doc.lock().unwrap().get_symbols();
         if syms.is_some() {
             return syms.unwrap();
         } else {
@@ -189,8 +187,8 @@ impl GoldProjectManager{
         }
     }
 
-    pub fn get_diagnostic_report(&mut self, doc: Rc<RefCell<GoldDocument>>) -> Rc<RelatedFullDocumentDiagnosticReport>{
-        let diag_report = doc.borrow().get_diagnostic_report();
+    pub fn get_diagnostic_report(&mut self, doc: Arc<Mutex<GoldDocument>>) -> Arc<RelatedFullDocumentDiagnosticReport>{
+        let diag_report = doc.lock().unwrap().get_diagnostic_report();
         if diag_report.is_some(){
             return diag_report.unwrap();
         } else {
@@ -198,21 +196,21 @@ impl GoldProjectManager{
         }
     }
 
-    pub fn notify_document_saved(&mut self, uri: &Url) -> Result<Rc<RefCell<GoldDocument>>, GoldProjectManagerError>{
+    pub fn notify_document_saved(&mut self, uri: &Url) -> Result<Arc<Mutex<GoldDocument>>, GoldProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
-        let rc_doc = Rc::new(RefCell::new(new_doc));
-        doc_info.lock().unwrap().saved = Some(rc_doc.clone());
+        let new_doc = Arc::new(Mutex::new(new_doc));
+        doc_info.lock().unwrap().saved = Some(new_doc.clone());
         doc_info.lock().unwrap().opened = None;
-        return Ok(rc_doc);
+        return Ok(new_doc);
     }
 
-    pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String) -> Result<Rc<RefCell<GoldDocument>>, GoldProjectManagerError>{
+    pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String) -> Result<Arc<Mutex<GoldDocument>>, GoldProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_content(full_file_content)?;
-        let rc_doc = Rc::new(RefCell::new(new_doc));
-        doc_info.lock().unwrap().opened = Some(rc_doc.clone());
-        return Ok(rc_doc);
+        let new_doc = Arc::new(Mutex::new(new_doc));
+        doc_info.lock().unwrap().opened = Some(new_doc.clone());
+        return Ok(new_doc);
     }
 
     fn parse_document(&self, file_path: &str) -> Result<GoldDocument, GoldProjectManagerError>{
@@ -252,14 +250,15 @@ impl GoldProjectManager{
         return Ok(new_doc)
     }
 
-    fn get_analyzer_diagnostics(&self, doc : Rc<RefCell<GoldDocument>>) -> Result<Rc<Vec<lsp_types::Diagnostic>>, GoldProjectManagerError>{
-        let diags = doc.borrow().get_analyzer_diagnostics();
+    fn get_analyzer_diagnostics(&self, doc : Arc<Mutex<GoldDocument>>) -> Result<Arc<Vec<lsp_types::Diagnostic>>, GoldProjectManagerError>{
+        let diags = doc.lock().unwrap().get_analyzer_diagnostics();
         if diags.is_some(){
             return Ok(diags.unwrap());
         } else {
-            let diags = self.analyze_ast(&doc.borrow().ast);
-            doc.borrow_mut().analyzer_diagnostics = Some(Rc::new(diags));
-            return Ok(doc.borrow().analyzer_diagnostics.as_ref().unwrap().clone());
+            let diags = self.analyze_ast(&doc.lock().unwrap().ast);
+            let diags = Arc::new(diags);
+            doc.lock().unwrap().analyzer_diagnostics = Some(diags.clone());
+            return Ok(diags);
         }
     }
 
@@ -273,18 +272,18 @@ impl GoldProjectManager{
         return ast_walker.analyze(ast);
     }
 
-    fn generate_document_symbols(&self, doc: Rc<RefCell<GoldDocument>>) -> Result<Rc<Vec<DocumentSymbol>>, GoldProjectManagerError>{
+    fn generate_document_symbols(&self, doc: Arc<Mutex<GoldDocument>>) -> Result<Arc<Vec<DocumentSymbol>>, GoldProjectManagerError>{
         let symbol_generator = DocumentSymbolGenerator::new();
-        let symbols = symbol_generator.generate_symbols(&doc.borrow().ast);
-        let rc_result = Rc::new(symbols);
-        doc.borrow_mut().symbols = Some(rc_result.clone());
-        return Ok(rc_result);
+        let symbols = symbol_generator.generate_symbols(&doc.lock().unwrap().ast);
+        let symbols = Arc::new(symbols);
+        doc.lock().unwrap().symbols = Some(symbols.clone());
+        return Ok(symbols);
     }
 
-    fn generate_document_diagnostic_report(&self, doc: Rc<RefCell<GoldDocument>>)
-    -> Result<Rc<RelatedFullDocumentDiagnosticReport>, GoldProjectManagerError>{
+    fn generate_document_diagnostic_report(&self, doc: Arc<Mutex<GoldDocument>>)
+    -> Result<Arc<RelatedFullDocumentDiagnosticReport>, GoldProjectManagerError>{
         let diagnostics = self.get_diagnostics(doc)?;
-        return Ok(Rc::new(RelatedFullDocumentDiagnosticReport{
+        return Ok(Arc::new(RelatedFullDocumentDiagnosticReport{
             related_documents: None,
             full_document_diagnostic_report: FullDocumentDiagnosticReport{
                 result_id: None,
@@ -293,8 +292,8 @@ impl GoldProjectManager{
         }))
     }
 
-    fn get_diagnostics(&self, doc: Rc<RefCell<GoldDocument>>) -> Result<Vec<Diagnostic>, GoldProjectManagerError>{
-        let mut result: Vec<Diagnostic> = doc.borrow().parser_diagnostics.iter()
+    fn get_diagnostics(&self, doc: Arc<Mutex<GoldDocument>>) -> Result<Vec<Diagnostic>, GoldProjectManagerError>{
+        let mut result: Vec<Diagnostic> = doc.lock().unwrap().parser_diagnostics.iter()
             .map(|gold_error| {
                 Diagnostic::new(
                     gold_error.get_range().as_lsp_type_range(),
