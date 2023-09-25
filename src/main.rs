@@ -22,6 +22,7 @@ pub mod parser;
 pub mod utils;
 pub mod manager;
 pub mod analyzers;
+pub mod threadpool;
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Note that  we must have our logging only write out to stderr.
@@ -63,9 +64,15 @@ fn main_loop(
     connection: Connection,
     params: serde_json::Value,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
-    let _params: InitializeParams = serde_json::from_value(params).unwrap();
+    let params: InitializeParams = serde_json::from_value(params).unwrap();
     
-    let mut doc_manager = GoldProjectManager::new();
+    let mut doc_manager = match GoldProjectManager::new(params.root_uri){
+        Ok(r) => r,
+        Err(e) => {
+            return Err(Box::new(e));
+        }
+    };
+    doc_manager.index_files();
 
     eprintln!("starting example main loop");
     for msg in &connection.receiver {

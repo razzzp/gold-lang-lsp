@@ -1,9 +1,9 @@
-use std::{collections::HashMap, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex}, cell::RefCell};
+use std::{collections::HashMap, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, error::Error, fmt::Display};
 
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker}, threadpool::ThreadPool};
 
 // pub trait IDocument {
 //     fn get_symbols(&self)-> Vec<&'static DocumentSymbol>;
@@ -65,26 +65,75 @@ impl GoldDocumentInfo{
 }
 
 #[derive(Debug)]
-pub struct GoldProjectManager{
-    documents: HashMap<String, Arc<Mutex<GoldDocumentInfo>>>
-}
-
-#[derive(Debug)]
 pub struct GoldProjectManagerError{
     pub msg: String,
     pub error_code: ErrorCode,
 }
+impl Display for GoldProjectManagerError{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "error; code:{}; msg:{};", self.error_code as usize, self.msg)
+    }
+}
+impl Error for GoldProjectManagerError{
+
+}
+
+#[derive(Debug)]
+pub struct GoldProjectManager{
+    threadpool : ThreadPool,
+    uri_docinfo_map : RwLock<HashMap<String, Arc<Mutex<GoldDocumentInfo>>>>,
+    root_path: Option<String>,
+}
 
 impl GoldProjectManager{
-    pub fn new() -> GoldProjectManager{
-        GoldProjectManager{
-            documents: HashMap::new(),
+    pub fn new(root_uri : Option<Url>) -> Result<GoldProjectManager, GoldProjectManagerError>{
+        let mut root_path : Option<String> = None;
+
+        match root_uri {
+            Some(uri) => {
+                root_path = match uri.to_file_path() {
+                    Ok(fp) => {
+                        let fp = match fp.as_path().to_str() {
+                            Some(s) => s.to_string(),
+                            _ => return Err(GoldProjectManagerError{
+                                    msg: format!("cannot convert uri to file path:{}", uri),
+                                    error_code: ErrorCode::InvalidRequest,
+                                })
+                        };
+                        Some(fp)
+                    },
+                    Err(_) => return Err(GoldProjectManagerError{
+                            msg: format!("cannot convert uri to file path:{}", uri),
+                            error_code: ErrorCode::InvalidRequest,
+                    })
+                };
+            },
+            _=>()
         }
+
+        Ok(GoldProjectManager{
+            uri_docinfo_map: RwLock::new(HashMap::new()),
+            root_path,
+            threadpool: ThreadPool::new(10)
+        })
+    }
+
+    pub fn index_files(&mut self){
+        if self.root_path.is_none() {return};
+
+        // self.threadpool.execute(move ||{
+        //     self._index_files();
+        // });
+    }
+
+    fn _index_files(&mut self){
+
     }
 
     pub fn get_document_info(&mut self, uri: &Url) -> Result<Arc<Mutex<GoldDocumentInfo>>, GoldProjectManagerError>{
         let uri_string = uri.to_string();
-        let doc_info =  self.documents.get(&uri_string);
+        let proj_manager=  self.uri_docinfo_map.read().unwrap();
+        let doc_info =  proj_manager.get(&uri_string);
         if doc_info.is_some() {
             return Ok(doc_info.unwrap().clone());
         } else {
@@ -109,8 +158,9 @@ impl GoldProjectManager{
                 file_path: file_path,
                 ..Default::default()
             };
-            self.documents.insert(uri_string.clone(), Arc::new(Mutex::new(new_doc_info)));
-            Ok(self.documents.get(&uri_string).unwrap().clone())     
+            let new_doc_info = Arc::new(Mutex::new(new_doc_info));
+            self.uri_docinfo_map.write().unwrap().insert(uri_string.clone(), new_doc_info.clone());
+            Ok(new_doc_info)     
         }
     }
 
@@ -445,7 +495,7 @@ mod test{
 
     #[test]
     fn test_gold_document_manager(){
-        let doc_manager = GoldProjectManager::new();
+        let doc_manager = GoldProjectManager::new(None).unwrap();
         let _doc = doc_manager.parse_document("test/aTestClass.god").unwrap();
         // println!("{:#?}",doc);
     }
