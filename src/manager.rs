@@ -83,7 +83,6 @@ pub struct GoldProjectManager{
     uri_docinfo_map : Arc<RwLock<HashMap<String, Arc<Mutex<GoldDocumentInfo>>>>>,
     root_path: Option<String>,
 }
-
 impl GoldProjectManager{
     pub fn new(root_uri : Option<Url>) -> Result<GoldProjectManager, GoldProjectManagerError>{
         let mut root_path : Option<String> = None;
@@ -113,17 +112,49 @@ impl GoldProjectManager{
         Ok(GoldProjectManager{
             uri_docinfo_map: Arc::new(RwLock::new(HashMap::new())),
             root_path,
-            threadpool: ThreadPool::new(10)
+            threadpool: ThreadPool::new(5)
         })
     }
 
     pub fn index_files(&mut self){
         if self.root_path.is_none() {return};
 
+        let root_path = self.root_path.as_ref().unwrap().clone();
         let uri_docinfo_map = self.uri_docinfo_map.clone();
         self.threadpool.execute(move ||{
-            uri_docinfo_map.read().unwrap();
+            let mut stack = Vec::new();
+            // stack for pushing dirs
             
+            stack.push(root_path);
+            // lock here and keep locked until all files indexed
+            let mut uri_docinfo_map = uri_docinfo_map.write().unwrap();
+            while !stack.is_empty(){
+                let path = stack.pop().unwrap();
+                for entry in std::fs::read_dir(path).unwrap(){
+                    // skip if err
+                    if let Err(e)= entry { eprint!("{}",e);continue;}
+    
+                    let entry = entry.unwrap();
+                    if let Ok(file_type) = entry.file_type(){
+                        let path = entry.path().clone().to_str().unwrap().to_string();
+                        // if dir push to stack
+                        if file_type.is_dir() {stack.push(path.clone())}
+                        // if file and .god, add to hash
+                        if file_type.is_file() && path.ends_with(".god") {
+                            let uri = Url::from_file_path(&path).unwrap();
+                            let new_doc_info = GoldDocumentInfo{
+                                uri: uri.to_string(),
+                                file_path: path,
+                                saved :None,
+                                opened: None,
+                            };
+                            let new_doc_info = Arc::new(Mutex::new(new_doc_info));
+                            uri_docinfo_map.insert(uri.to_string(), new_doc_info);
+                        }
+                    }
+                }
+            }
+            return
         });
     }
 
@@ -465,7 +496,9 @@ impl DocumentSymbolGenerator{
 
 #[cfg(test)]
 mod test{
-    use std::{fs::File, io::Read};
+    use std::{fs::{File, self}, io::Read, path::PathBuf, time, thread};
+
+    use lsp_types::Url;
 
     use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::ast_to_string_brief_recursive, analyzers::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
 
@@ -612,5 +645,24 @@ mod test{
     fn test_read_file_oql() {
         let (_, parser_diags) = parse_and_analyze("./test/aTestOQL.god");
         assert_eq!(parser_diags.len(), 0);
+    }
+
+
+    #[test]
+    fn test_index_file(){
+        let path = PathBuf::from("./test/workspace");
+        let path =  fs::canonicalize(&path).unwrap().to_str().unwrap().to_string();
+        let uri = Url::from_file_path(path.clone()).unwrap();
+       
+        let mut doc_manager = GoldProjectManager::new(Some(uri)).unwrap();
+        doc_manager.index_files();
+
+        // to prevent termination before index has a chance to run
+        let ten_millis = time::Duration::from_millis(500);
+        thread::sleep(ten_millis);
+        
+        let map = doc_manager.uri_docinfo_map.clone();
+        let map = map.read().unwrap();
+        assert_eq!(map.len(), 4);
     }
 }
