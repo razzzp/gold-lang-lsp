@@ -1,53 +1,65 @@
+use std::cell::RefCell;
+use std::error::Error;
+use std::rc::Rc;
+
 use crate::parser::ast::IAstNode;
 use crate::utils::DynamicChild;
 
-use super::{IAstWalker, IAnalyzer};
+use super::IVisitor;
 
-pub struct AstWalker{
-    analyzers: Vec<Box<dyn IAnalyzer>>,
+pub struct AstWalker<V>
+where V: IVisitor + ?Sized
+{
+    recursive: bool,
+    visitors: Vec<Rc<RefCell<V>>>,
 }
-impl AstWalker{
-    pub fn new() -> AstWalker{
+impl<V> AstWalker<V>
+where V: IVisitor + ?Sized
+{
+    pub fn new(recursive: bool) -> AstWalker<V>{
         return AstWalker{
-            analyzers: Vec::new()
+            recursive,
+            visitors: Vec::new()
         };
     }
     
     fn visit(&mut self, node: &DynamicChild<dyn IAstNode>){
-        for analyzer in &mut self.analyzers{
-            analyzer.visit(node);
+        for analyzer in self.visitors.iter_mut(){
+            analyzer.borrow_mut().visit(node);
         }
-        match node.data.get_children_dynamic() {
-            Some(children) =>{
-                for dyn_child in children{
-                    self.visit(&dyn_child);
-                }   
+        if self.recursive{
+            match node.data.get_children_dynamic() {
+                Some(children) =>{
+                    for dyn_child in children{
+                        self.visit(&dyn_child);
+                    }   
+                }
+                
+                _=>()
             }
-            
-            _=>()
         }
     }
     fn notify_end(&mut self){
-        for analyzer in &mut self.analyzers{
-            analyzer.notify_end();
+        for analyzer in &self.visitors{
+            analyzer.borrow_mut().notify_end();
         }
     }
-}
 
-impl IAstWalker for AstWalker{
-    fn analyze(& mut self, ast: &dyn IAstNode) -> Vec<lsp_types::Diagnostic> {
+    pub fn run(&mut self, ast: &dyn IAstNode){
         for dyn_node in ast.get_children_dynamic().unwrap_or_default().iter(){
             self.visit(dyn_node);
         }
         self.notify_end();
-        let mut result = Vec::<lsp_types::Diagnostic>::new();
-        self.analyzers.iter().for_each(|analyzer|{
-            analyzer.append_diagnostics(&mut result);
-        });
-        return result;
     }
 
-    fn register_analyzer(&mut self, analyzer: Box<dyn IAnalyzer>) {
-        self.analyzers.push(analyzer);
+    pub fn register_visitor(&mut self, visitor: &Rc<RefCell<V>>) {
+        self.visitors.push(visitor.clone());
+    }
+
+    pub fn register_visitors(&mut self, visitors: &Vec<Rc<RefCell<V>>>) {
+        for visitor in visitors{
+            self.visitors.push(visitor.clone());
+        } 
     }
 }
+

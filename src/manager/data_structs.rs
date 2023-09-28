@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, fmt::{Display, Debug}, error::Error};
+use std::{sync::{Arc, Mutex}, fmt::{Display, Debug}, error::Error, collections::HashMap};
 
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, RelatedFullDocumentDiagnosticReport};
@@ -118,5 +118,31 @@ impl Error for GoldProjectManagerError{
 
 
 pub trait ISymbolTable: Debug + Send{
+    fn get_symbol_info(&self, id: String) -> &SymbolInfo;
+    fn insert_symbol_info(&self, id : String, info: SymbolInfo) -> &SymbolInfo;
+}
 
+#[derive(Debug)]
+pub struct SymbolTable{
+    hash_map : HashMap<String, SymbolInfo>
+}
+impl SymbolTable{
+    pub fn new()-> SymbolTable{
+        SymbolTable { hash_map: HashMap::new() }
+    }
+}
+impl ISymbolTable for SymbolTable {
+    fn get_symbol_info(&self, id: String) -> &SymbolInfo {
+        todo!()
+    }
+
+    fn insert_symbol_info(&self, id : String, info: SymbolInfo) -> &SymbolInfo {
+        todo!()
+    }
+}
+
+#[derive(Debug)]
+pub struct SymbolInfo{
+    pub id: String,
+    pub sym_type: String, 
 }

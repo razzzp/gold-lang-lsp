@@ -3,10 +3,11 @@ use std::{collections::HashMap, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, R
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker}, threadpool::ThreadPool};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool};
 use data_structs::*;
 
 pub mod data_structs;
+pub mod symbol_generator;
 
 #[derive(Debug)]
 pub struct GoldProjectManager{
@@ -218,14 +219,26 @@ impl GoldProjectManager{
         }
     }
 
-    fn analyze_ast(&self, ast : &dyn IAstNode) -> Vec<lsp_types::Diagnostic>{
-        // let result = Vec::new();
-        let mut ast_walker = AstWalker::new();
-        ast_walker.register_analyzer(Box::new(UnusedVarAnalyzer::new()));
-        ast_walker.register_analyzer(Box::new(InoutParamChecker::new()));
-        ast_walker.register_analyzer(Box::new(FunctionReturnTypeChecker::new()));
+    fn collect_diagnostics(&self, analyzers: &Vec<Rc<RefCell<dyn IAnalyzer>>>) -> Vec<lsp_types::Diagnostic>{
+        let mut result = Vec::new();
+        for analyzer in analyzers{
+            analyzer.as_ref().borrow().append_diagnostics(&mut result);
+        }
+        return result;
+    }
 
-        return ast_walker.analyze(ast);
+    fn analyze_ast<'a>(&self, ast : &'a dyn IAstNode) -> Vec<lsp_types::Diagnostic>{
+        // let result = Vec::new();
+        let mut ast_walker: AstWalker<dyn IAnalyzer> = AstWalker::new(true);
+        let analyzers: Vec<Rc<RefCell<dyn IAnalyzer>>> = vec![
+            Rc::new(RefCell::new(UnusedVarAnalyzer::new())),
+            Rc::new(RefCell::new(InoutParamChecker::new())),
+            Rc::new(RefCell::new(FunctionReturnTypeChecker::new()))
+        ];
+        ast_walker.register_visitors(&analyzers);
+        ast_walker.run(ast);
+        
+        return self.collect_diagnostics(&analyzers)
     }
 
     fn generate_document_symbols(&self, doc: Arc<Mutex<GoldDocument>>) -> Result<Arc<Vec<DocumentSymbol>>, GoldProjectManagerError>{
@@ -421,11 +434,11 @@ impl DocumentSymbolGenerator{
 
 #[cfg(test)]
 mod test{
-    use std::{fs::{File, self}, io::Read, path::PathBuf, time, thread};
+    use std::{fs::{File, self}, io::Read, path::PathBuf, time, thread, rc::Rc, cell::RefCell};
 
     use lsp_types::Url;
 
-    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::ast_to_string_brief_recursive, analyzers::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker}};
+    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::ast_to_string_brief_recursive, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer}};
 
     use super::GoldProjectManager;
 
@@ -446,8 +459,16 @@ mod test{
         return (ast.0.1, ast.1);
     }
 
-    fn create_ast_walker()->AstWalker{
-        let result = AstWalker::new();
+    fn create_ast_walker<T:IVisitor+?Sized>()-> AstWalker<T>{
+        let result = AstWalker::<T>::new(true);
+        return result;
+    }
+
+    fn collect_diagnostics(analyzers: &Vec<Box<dyn IAnalyzer>>) -> Vec<lsp_types::Diagnostic>{
+        let mut result = Vec::new();
+        for analyzer in analyzers{
+            analyzer.append_diagnostics(&mut result);
+        }
         return result;
     }
 
@@ -527,37 +548,40 @@ mod test{
     #[test]
     fn test_unused_var_file() {
         let (asts, _) = parse_and_analyze("./test/aTestUnusedVar.god");
-        let mut walker = create_ast_walker();
-        walker.register_analyzer(Box::new(UnusedVarAnalyzer::new()));
-        let diags = walker.analyze(asts.as_ast_node());
+        let mut walker = create_ast_walker::<dyn IAnalyzer>();
+        let mut analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(UnusedVarAnalyzer::new()));
+        walker.register_visitor(&analyzer);
+        walker.run(asts.as_ast_node());
         // for diag in diags{
         //     print!("{:#?}",diag);
         // }
-        assert_eq!(diags.len(), 1);
+        assert_eq!(analyzer.borrow().get_diagnostics_count(), 1);
     }
 
     #[test]
     fn test_varbytearray_param_checker_file() {
         let (asts, _) = parse_and_analyze("./test/aTestVarByteArrayParamChecker.god");
-        let mut walker = create_ast_walker();
-        walker.register_analyzer(Box::new(InoutParamChecker::new()));
-        let diags = walker.analyze(asts.as_ast_node());
+        let mut walker = create_ast_walker::<dyn IAnalyzer>();
+        let mut analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(InoutParamChecker::new()));
+        walker.register_visitor(&analyzer);
+        let diags = walker.run(asts.as_ast_node());
         // for diag in diags{
         //     print!("{:#?}",diag);
         // }
-        assert_eq!(diags.len(), 2);
+        assert_eq!(analyzer.borrow().get_diagnostics_count(), 2);
     }
 
     #[test]
     fn test_func_return_type_checker_param_file() {
         let (asts, _) = parse_and_analyze("./test/aTestFunctionReturnTypeChecker.god");
-        let mut walker = create_ast_walker();
-        walker.register_analyzer(Box::new(FunctionReturnTypeChecker::new()));
-        let diags = walker.analyze(asts.as_ast_node());
+        let mut walker = create_ast_walker::<dyn IAnalyzer>();
+        let analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(FunctionReturnTypeChecker::new()));
+        walker.register_visitor(&analyzer);
+        let diags = walker.run(asts.as_ast_node());
         // for diag in diags{
         //     print!("{:#?}",diag);
         // }
-        assert_eq!(diags.len(), 3);
+        assert_eq!(analyzer.borrow().get_diagnostics_count(), 3);
     }
 
     #[test]

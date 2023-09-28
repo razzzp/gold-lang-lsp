@@ -1,7 +1,7 @@
 
-use crate::{parser::ast::{IAstNode, AstFunction, AstTypeBasic}, utils::DynamicChild, lexer::tokens::TokenType};
+use crate::{parser::ast::{IAstNode, AstFunction, AstTypeBasic}, utils::DynamicChild, lexer::tokens::TokenType, implem_as_ivisitor};
 
-use super::IAnalyzer;
+use super::{IAnalyzer, IVisitor};
 
 
 pub struct FunctionReturnTypeChecker{
@@ -64,15 +64,20 @@ impl FunctionReturnTypeChecker{
    }
 }
 
-
-impl IAnalyzer for FunctionReturnTypeChecker{
-    fn visit(&mut self, node: &crate::utils::DynamicChild<dyn crate::parser::ast::IAstNode>) {
+impl IVisitor for FunctionReturnTypeChecker{
+   implem_as_ivisitor!();
+   fn visit(&mut self, node: &crate::utils::DynamicChild<dyn crate::parser::ast::IAstNode>) {
       match node.data.as_any().downcast_ref::<AstFunction>(){
          Some(_) => self.notify_param_decl_node(node),
          _=>()
       };
     }
+    fn notify_end(&mut self) {
+      ()
+  }
+}
 
+impl IAnalyzer for FunctionReturnTypeChecker{
     fn append_diagnostics(&self, result : &mut Vec<lsp_types::Diagnostic>) {
         self.diagnostics.iter()
         .for_each(|d|{
@@ -80,7 +85,7 @@ impl IAnalyzer for FunctionReturnTypeChecker{
         })
     }
 
-    fn notify_end(&mut self) {
-        ()
+    fn get_diagnostics_count(&self) ->  usize {
+        self.diagnostics.len()
     }
 }
