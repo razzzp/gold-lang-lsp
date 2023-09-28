@@ -4,78 +4,9 @@ use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
 use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{ast_walker::AstWalker, IAstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker}, threadpool::ThreadPool};
+use data_structs::*;
 
-// pub trait IDocument {
-//     fn get_symbols(&self)-> Vec<&'static DocumentSymbol>;
-// }
-#[derive(Debug)]
-pub struct GoldDocument{
-    ast: Box<dyn IAstNode>,
-    parser_diagnostics: Vec<ParserDiagnostic>,
-    symbols: Option<Arc<Vec<DocumentSymbol>>>,
-    analyzer_diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>,
-    diagnostic_report: Option<Arc<RelatedFullDocumentDiagnosticReport>>
-}
-impl GoldDocument{
-    pub fn get_symbols(&self)-> Option<Arc<Vec<DocumentSymbol>>>{
-        match &self.symbols {
-            Some(syms) => return Some(syms.clone()),
-            _=> None
-        }
-    }
-    pub fn get_analyzer_diagnostics(&self)-> Option<Arc<Vec<lsp_types::Diagnostic>>>{
-        match &self.analyzer_diagnostics {
-            Some(syms) => return Some(syms.clone()),
-            _=> None
-        }
-    }
-    pub fn get_diagnostic_report(&self)-> Option<Arc<RelatedFullDocumentDiagnosticReport>>{
-        match &self.diagnostic_report {
-            Some(diag_report) => Some(diag_report.clone()),
-            _=> None
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct GoldDocumentInfo{
-    uri: String,
-    file_path: String,
-    saved: Option<Arc<Mutex<GoldDocument>>>,
-    opened: Option<Arc<Mutex<GoldDocument>>>
-}
-
-impl GoldDocumentInfo{
-    pub fn get_saved_document(&self) -> Option<Arc<Mutex<GoldDocument>>> {
-        if let Some(doc) = &self.saved {
-            return Some(doc.clone())
-        } else {
-            return None
-        }
-    }
-
-    pub fn get_opened_document(&self) -> Option<Arc<Mutex<GoldDocument>>> {
-        if let Some(doc) = &self.opened {
-            return Some(doc.clone())
-        } else {
-            return None
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct GoldProjectManagerError{
-    pub msg: String,
-    pub error_code: ErrorCode,
-}
-impl Display for GoldProjectManagerError{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "error; code:{}; msg:{};", self.error_code as usize, self.msg)
-    }
-}
-impl Error for GoldProjectManagerError{
-
-}
+pub mod data_structs;
 
 #[derive(Debug)]
 pub struct GoldProjectManager{
@@ -142,12 +73,10 @@ impl GoldProjectManager{
                         // if file and .god, add to hash
                         if file_type.is_file() && path.ends_with(".god") {
                             let uri = Url::from_file_path(&path).unwrap();
-                            let new_doc_info = GoldDocumentInfo{
-                                uri: uri.to_string(),
-                                file_path: path,
-                                saved :None,
-                                opened: None,
-                            };
+                            let new_doc_info = GoldDocumentInfo::new(
+                                uri.to_string(),
+                                path
+                            );
                             let new_doc_info = Arc::new(Mutex::new(new_doc_info));
                             uri_docinfo_map.insert(uri.to_string(), new_doc_info);
                         }
@@ -181,11 +110,10 @@ impl GoldProjectManager{
                         error_code: ErrorCode::InvalidRequest,
                     })
             };
-            let new_doc_info = GoldDocumentInfo{
-                uri: uri.to_string(),
-                file_path: file_path,
-                ..Default::default()
-            };
+            let new_doc_info = GoldDocumentInfo::new(
+                uri.to_string(),
+                file_path,
+            );
             let new_doc_info = Arc::new(Mutex::new(new_doc_info));
             self.uri_docinfo_map.write().unwrap().insert(uri_string.clone(), new_doc_info.clone());
             Ok(new_doc_info)     
@@ -204,7 +132,7 @@ impl GoldProjectManager{
         } else {
             // if none, read from file
             let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
-            doc_info.lock().unwrap().saved = Some(Arc::new(Mutex::new(new_doc)));
+            doc_info.lock().unwrap().set_saved_document(Some(Arc::new(Mutex::new(new_doc))));
             return Ok(doc_info.lock().unwrap().get_saved_document().unwrap());
         }
     }
@@ -231,8 +159,8 @@ impl GoldProjectManager{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
         let new_doc = Arc::new(Mutex::new(new_doc));
-        doc_info.lock().unwrap().saved = Some(new_doc.clone());
-        doc_info.lock().unwrap().opened = None;
+        doc_info.lock().unwrap().set_saved_document(Some(new_doc.clone()));
+        doc_info.lock().unwrap().set_opened_document(None);
         return Ok(new_doc);
     }
 
@@ -240,7 +168,7 @@ impl GoldProjectManager{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_content(full_file_content)?;
         let new_doc = Arc::new(Mutex::new(new_doc));
-        doc_info.lock().unwrap().opened = Some(new_doc.clone());
+        doc_info.lock().unwrap().set_opened_document(Some(new_doc.clone()));
         return Ok(new_doc);
     }
 
@@ -271,13 +199,10 @@ impl GoldProjectManager{
         parser_diagnostics.extend(lexer_errors.into_iter().map(|l_error|{
             ParserDiagnostic { range: l_error.range, msg: l_error.msg }
         }));
-        let new_doc =GoldDocument { 
-            ast: ast_nodes.1,
+        let new_doc =GoldDocument::new( 
+            ast_nodes.1,
             parser_diagnostics,
-            analyzer_diagnostics:None,
-            symbols: None,
-            diagnostic_report: None
-        };
+        );
         return Ok(new_doc)
     }
 
@@ -286,14 +211,14 @@ impl GoldProjectManager{
         if diags.is_some(){
             return Ok(diags.unwrap());
         } else {
-            let diags = self.analyze_ast(&doc.lock().unwrap().ast);
+            let diags = self.analyze_ast(doc.lock().unwrap().get_ast());
             let diags = Arc::new(diags);
-            doc.lock().unwrap().analyzer_diagnostics = Some(diags.clone());
+            doc.lock().unwrap().set_analyzer_diagnostics(Some(diags.clone()));
             return Ok(diags);
         }
     }
 
-    fn analyze_ast(&self, ast : &Box<dyn IAstNode>) -> Vec<lsp_types::Diagnostic>{
+    fn analyze_ast(&self, ast : &dyn IAstNode) -> Vec<lsp_types::Diagnostic>{
         // let result = Vec::new();
         let mut ast_walker = AstWalker::new();
         ast_walker.register_analyzer(Box::new(UnusedVarAnalyzer::new()));
@@ -305,9 +230,9 @@ impl GoldProjectManager{
 
     fn generate_document_symbols(&self, doc: Arc<Mutex<GoldDocument>>) -> Result<Arc<Vec<DocumentSymbol>>, GoldProjectManagerError>{
         let symbol_generator = DocumentSymbolGenerator::new();
-        let symbols = symbol_generator.generate_symbols(&doc.lock().unwrap().ast);
+        let symbols = symbol_generator.generate_symbols(doc.lock().unwrap().get_ast());
         let symbols = Arc::new(symbols);
-        doc.lock().unwrap().symbols = Some(symbols.clone());
+        doc.lock().unwrap().set_symbols(Some(symbols.clone()));
         return Ok(symbols);
     }
 
@@ -324,7 +249,7 @@ impl GoldProjectManager{
     }
 
     fn get_diagnostics(&self, doc: Arc<Mutex<GoldDocument>>) -> Result<Vec<Diagnostic>, GoldProjectManagerError>{
-        let mut result: Vec<Diagnostic> = doc.lock().unwrap().parser_diagnostics.iter()
+        let mut result: Vec<Diagnostic> = doc.lock().unwrap().get_parser_diagnostics().iter()
             .map(|gold_error| {
                 Diagnostic::new(
                     gold_error.get_range().as_lsp_type_range(),
@@ -349,7 +274,7 @@ impl DocumentSymbolGenerator{
         return DocumentSymbolGenerator {  }
     }
 
-    pub fn generate_symbols(&self, ast: &Box<dyn IAstNode>)-> Vec<DocumentSymbol> {
+    pub fn generate_symbols(&self, ast: &dyn IAstNode)-> Vec<DocumentSymbol> {
         let mut result = Vec::<DocumentSymbol>::new();
         let mut class_symbol = self.find_and_generate_class_symbol(ast);
         for node in ast.get_children().unwrap_or_default().iter() {
@@ -470,7 +395,7 @@ impl DocumentSymbolGenerator{
         }
     }
 
-    fn find_and_generate_class_symbol(&self, ast: &Box<dyn IAstNode>) -> Option<DocumentSymbol>{
+    fn find_and_generate_class_symbol(&self, ast: &dyn IAstNode) -> Option<DocumentSymbol>{
         let mut result: Option<DocumentSymbol> = None;
         for ast_node in ast.get_children().unwrap_or_default().iter() {
             match ast_node.as_any().downcast_ref::<AstClass>(){
@@ -604,7 +529,7 @@ mod test{
         let (asts, _) = parse_and_analyze("./test/aTestUnusedVar.god");
         let mut walker = create_ast_walker();
         walker.register_analyzer(Box::new(UnusedVarAnalyzer::new()));
-        let diags = walker.analyze(&asts);
+        let diags = walker.analyze(asts.as_ast_node());
         // for diag in diags{
         //     print!("{:#?}",diag);
         // }
@@ -616,7 +541,7 @@ mod test{
         let (asts, _) = parse_and_analyze("./test/aTestVarByteArrayParamChecker.god");
         let mut walker = create_ast_walker();
         walker.register_analyzer(Box::new(InoutParamChecker::new()));
-        let diags = walker.analyze(&asts);
+        let diags = walker.analyze(asts.as_ast_node());
         // for diag in diags{
         //     print!("{:#?}",diag);
         // }
@@ -628,7 +553,7 @@ mod test{
         let (asts, _) = parse_and_analyze("./test/aTestFunctionReturnTypeChecker.god");
         let mut walker = create_ast_walker();
         walker.register_analyzer(Box::new(FunctionReturnTypeChecker::new()));
-        let diags = walker.analyze(&asts);
+        let diags = walker.analyze(asts.as_ast_node());
         // for diag in diags{
         //     print!("{:#?}",diag);
         // }

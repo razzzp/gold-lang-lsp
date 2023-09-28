@@ -6,7 +6,7 @@ pub mod inout_param_checker;
 pub mod function_return_type_checker;
 
 pub trait IAstWalker{
-    fn analyze(& mut self, ast_nodes: & Box<dyn IAstNode>) -> Vec<lsp_types::Diagnostic>;
+    fn analyze(& mut self, ast_nodes: &dyn IAstNode) -> Vec<lsp_types::Diagnostic>;
     fn register_analyzer(&mut self, analyzer: Box<dyn IAnalyzer>);
 }
 

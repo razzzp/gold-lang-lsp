@@ -35,7 +35,7 @@ impl AstWalker{
 }
 
 impl IAstWalker for AstWalker{
-    fn analyze(& mut self, ast: &Box<dyn IAstNode>) -> Vec<lsp_types::Diagnostic> {
+    fn analyze(& mut self, ast: &dyn IAstNode) -> Vec<lsp_types::Diagnostic> {
         for dyn_node in ast.get_children_dynamic().unwrap_or_default().iter(){
             self.visit(dyn_node);
         }
