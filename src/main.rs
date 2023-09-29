@@ -2,7 +2,7 @@ use std::net::ToSocketAddrs;
 use std::ops::Deref;
 
 
-use crate::manager::GoldProjectManager;
+use crate::manager::ProjectManager;
 
 use std::error::Error;
 
@@ -66,7 +66,7 @@ fn main_loop(
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let params: InitializeParams = serde_json::from_value(params).unwrap();
     
-    let mut doc_manager = match GoldProjectManager::new(params.root_uri){
+    let mut doc_manager = match ProjectManager::new(params.root_uri){
         Ok(r) => r,
         Err(e) => {
             return Err(Box::new(e));
@@ -150,7 +150,7 @@ fn main_loop(
 }
 
 fn handle_document_symbol_request(
-    doc_manager: &mut GoldProjectManager, 
+    doc_manager: &mut ProjectManager, 
     id: RequestId, 
     params: DocumentSymbolParams)
     -> Result<Message, (i32, String)>
@@ -170,7 +170,7 @@ fn handle_document_symbol_request(
 }
 
 fn handle_document_diagnostics_request(
-    doc_manager: &mut GoldProjectManager, 
+    doc_manager: &mut ProjectManager, 
     id: RequestId, 
     params: DocumentDiagnosticParams)
     -> Result<Message, (i32, String)>
@@ -190,7 +190,7 @@ fn handle_document_diagnostics_request(
 }
 
 fn handle_did_change_notification(
-    doc_manager: &mut GoldProjectManager, 
+    doc_manager: &mut ProjectManager, 
     params: DidChangeTextDocumentParams)
     -> Result<Vec<Message>, (i32, String)>
 {
@@ -229,7 +229,7 @@ fn handle_did_change_notification(
 }
 
 fn handle_did_save_notification(
-    doc_manager: &mut GoldProjectManager, 
+    doc_manager: &mut ProjectManager, 
     params: DidSaveTextDocumentParams)
     -> Result<Vec<Message>, (i32, String)>
 {

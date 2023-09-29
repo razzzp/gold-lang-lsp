@@ -1,22 +1,25 @@
 use std::{sync::{Arc, Mutex}, fmt::{Display, Debug}, error::Error, collections::HashMap};
 
 use lsp_server::ErrorCode;
-use lsp_types::{DocumentSymbol, RelatedFullDocumentDiagnosticReport};
+use lsp_types::{DocumentSymbol, RelatedFullDocumentDiagnosticReport, error_codes};
+use nom::error;
 
 use crate::parser::{ast::IAstNode, ParserDiagnostic};
 
+use super::symbol_generator::ISymbolTable;
+
 #[derive(Debug)]
-pub struct GoldDocument{
+pub struct Document{
     ast: Box<dyn IAstNode>,
     parser_diagnostics: Vec<ParserDiagnostic>,
     symbols: Option<Arc<Vec<DocumentSymbol>>>,
     analyzer_diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>,
     diagnostic_report: Option<Arc<RelatedFullDocumentDiagnosticReport>>,
-    symbol_table: Option<Box<dyn ISymbolTable>>
+    symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>
 }
-impl GoldDocument{
-    pub fn new(ast: Box<dyn IAstNode>, parser_diagnostics: Vec<ParserDiagnostic>) -> GoldDocument {
-        return GoldDocument{
+impl Document{
+    pub fn new(ast: Box<dyn IAstNode>, parser_diagnostics: Vec<ParserDiagnostic>) -> Document {
+        return Document{
             ast,
             parser_diagnostics,
             symbols: None,
@@ -28,15 +31,26 @@ impl GoldDocument{
     pub fn get_ast<'a>(&'a self) -> &'a dyn IAstNode{
         self.ast.as_ast_node()
     }
-    pub fn get_symbols(&self)-> Option<Arc<Vec<DocumentSymbol>>>{
+    pub fn get_document_symbols(&self)-> Option<Arc<Vec<DocumentSymbol>>>{
         match &self.symbols {
             Some(syms) => return Some(syms.clone()),
             _=> None
         }
     }
-    pub fn set_symbols(&mut self, symbols: Option<Arc<Vec<DocumentSymbol>>>){
+    pub fn set_document_symbols(&mut self, symbols: Option<Arc<Vec<DocumentSymbol>>>){
         self.symbols = symbols;
     }
+
+    pub fn get_symbol_table(&self)-> Option<Arc<Mutex<dyn ISymbolTable>>>{
+        match &self.symbol_table {
+            Some(sym_tbl) => return Some(sym_tbl.clone()),
+            _=> None
+        }
+    }
+    pub fn set_symbol_table(&mut self, symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>){
+        self.symbol_table = symbol_table;
+    }
+
     pub fn get_analyzer_diagnostics(&self)-> Option<Arc<Vec<lsp_types::Diagnostic>>>{
         match &self.analyzer_diagnostics {
             Some(syms) => return Some(syms.clone()),
@@ -62,23 +76,23 @@ impl GoldDocument{
 }
 
 #[derive(Debug, Default)]
-pub struct GoldDocumentInfo{
+pub struct DocumentInfo{
     pub uri: String,
     pub file_path: String,
-    saved: Option<Arc<Mutex<GoldDocument>>>,
-    opened: Option<Arc<Mutex<GoldDocument>>>
+    saved: Option<Arc<Mutex<Document>>>,
+    opened: Option<Arc<Mutex<Document>>>
 }
 
-impl GoldDocumentInfo{
-    pub fn new(uri: String, file_path: String) -> GoldDocumentInfo {
-        return GoldDocumentInfo { 
+impl DocumentInfo{
+    pub fn new(uri: String, file_path: String) -> DocumentInfo {
+        return DocumentInfo { 
             uri, 
             file_path, 
             saved: None, 
             opened: None
         }
     }
-    pub fn get_saved_document(&self) -> Option<Arc<Mutex<GoldDocument>>> {
+    pub fn get_saved_document(&self) -> Option<Arc<Mutex<Document>>> {
         if let Some(doc) = &self.saved {
             return Some(doc.clone())
         } else {
@@ -86,7 +100,7 @@ impl GoldDocumentInfo{
         }
     }
 
-    pub fn get_opened_document(&self) -> Option<Arc<Mutex<GoldDocument>>> {
+    pub fn get_opened_document(&self) -> Option<Arc<Mutex<Document>>> {
         if let Some(doc) = &self.opened {
             return Some(doc.clone())
         } else {
@@ -94,55 +108,30 @@ impl GoldDocumentInfo{
         }
     }
 
-    pub fn set_saved_document(&mut self, doc: Option<Arc<Mutex<GoldDocument>>>){
+    pub fn set_saved_document(&mut self, doc: Option<Arc<Mutex<Document>>>){
         self.saved = doc;
     }
-    pub fn set_opened_document(&mut self, doc: Option<Arc<Mutex<GoldDocument>>>){
+    pub fn set_opened_document(&mut self, doc: Option<Arc<Mutex<Document>>>){
         self.opened = doc;
     }
 }
 
 #[derive(Debug)]
-pub struct GoldProjectManagerError{
+pub struct ProjectManagerError{
     pub msg: String,
     pub error_code: ErrorCode,
 }
-impl Display for GoldProjectManagerError{
+impl ProjectManagerError {
+    pub fn new(msg: &str, error_code : ErrorCode)->ProjectManagerError{
+        ProjectManagerError { msg: msg.to_string(), error_code }
+    }
+}
+impl Display for ProjectManagerError{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "error; code:{}; msg:{};", self.error_code as usize, self.msg)
     }
 }
-impl Error for GoldProjectManagerError{
+impl Error for ProjectManagerError{
 
 }
 
-
-pub trait ISymbolTable: Debug + Send{
-    fn get_symbol_info(&self, id: String) -> &SymbolInfo;
-    fn insert_symbol_info(&self, id : String, info: SymbolInfo) -> &SymbolInfo;
-}
-
-#[derive(Debug)]
-pub struct SymbolTable{
-    hash_map : HashMap<String, SymbolInfo>
-}
-impl SymbolTable{
-    pub fn new()-> SymbolTable{
-        SymbolTable { hash_map: HashMap::new() }
-    }
-}
-impl ISymbolTable for SymbolTable {
-    fn get_symbol_info(&self, id: String) -> &SymbolInfo {
-        todo!()
-    }
-
-    fn insert_symbol_info(&self, id : String, info: SymbolInfo) -> &SymbolInfo {
-        todo!()
-    }
-}
-
-#[derive(Debug)]
-pub struct SymbolInfo{
-    pub id: String,
-    pub sym_type: String, 
-}
