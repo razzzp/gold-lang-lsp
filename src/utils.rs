@@ -10,6 +10,18 @@ pub trait IRange {
     fn as_range(&self) -> &dyn IRange;
 }
 
+pub trait OptionExt {
+    type Value;
+    fn unwrap_ref(&self) -> &Self::Value;
+    fn unwrap_mut(&mut self) -> &mut Self::Value;
+}
+
+impl <T> OptionExt for Option<T> {
+    type Value = T;
+    fn unwrap_ref(&self) -> &T { self.as_ref().unwrap() }
+    fn unwrap_mut(&mut self) -> &mut T { self.as_mut().unwrap() }
+}
+
 #[derive(Debug,Clone,PartialEq, Default)]
 pub struct Range {
     pub start: Position,

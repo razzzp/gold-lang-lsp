@@ -1,7 +1,7 @@
 use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic}, analyzers::IVisitor, utils::DynamicChild, lexer::tokens::TokenType};
 use core::fmt::Debug;
 use std::{collections::HashMap, sync::{Mutex, Arc}};
-
+use crate::utils::OptionExt;
 use super::ProjectManager;
 
 #[derive(Debug,Default)]
@@ -33,6 +33,10 @@ impl SymbolInfo{
             ..Default::default()
         }
     }
+}
+
+pub trait ISymbolGenerator : IVisitor{
+    fn take_symbol_table(&mut self) -> Option<Arc<Mutex<dyn ISymbolTable>>>;
 }
 
 pub trait ISymbolTable: Debug + Send{
@@ -75,15 +79,25 @@ impl ISymbolTable for SymbolTable {
 
 
 #[derive(Debug)]
-pub struct SymbolGenerator {
-    symbol_table : Box<dyn ISymbolTable>,
-    project_manager : Arc<Mutex<ProjectManager>>
+pub struct SymbolGenerator<'a> {
+    symbol_table : Option<SymbolTable>,
+    project_manager : &'a mut ProjectManager
 }
 
-impl SymbolGenerator {
-    pub fn new(project_manager: Arc<Mutex<ProjectManager>>) -> SymbolGenerator{
+// ensure generator is not used after this!
+impl<'a> ISymbolGenerator for SymbolGenerator<'a>{
+    fn take_symbol_table(&mut self) -> Option<Arc<Mutex<dyn ISymbolTable>>> {
+        match self.symbol_table.take(){
+            Some(t) => return Some(Arc::new(Mutex::new(t))),
+            _=> return None
+        }
+    }
+}
+
+impl<'a> SymbolGenerator<'a> {
+    pub fn new(project_manager: &'a mut ProjectManager) -> SymbolGenerator{
         return SymbolGenerator {  
-            symbol_table: Box::new(SymbolTable::new()),
+            symbol_table: Some(SymbolTable::new()),
             project_manager
         }
     }
@@ -91,7 +105,7 @@ impl SymbolGenerator {
     fn handle_class(&mut self, node: &AstClass){
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Class);
         sym_info.parent = Some(node.parent_class.clone());
-        self.symbol_table.insert_symbol_info(node.get_identifier(), sym_info);
+        self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_constant_decl(&mut self, node: &AstConstantDeclaration){
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Constant);
@@ -100,7 +114,7 @@ impl SymbolGenerator {
             TokenType::NumericLiteral => Some("numeric".to_string()),
             _=> Some("unknown".to_string())
         };
-        self.symbol_table.insert_symbol_info(node.get_identifier(), sym_info);
+        self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_type_decl(&mut self, node: &AstTypeDeclaration){
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Type);
@@ -108,11 +122,11 @@ impl SymbolGenerator {
             Some(n) => {sym_info.eval_type = Some(n.get_identifier())},
             _=> ()
         }
-        self.symbol_table.insert_symbol_info(node.get_identifier(), sym_info);
+        self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_proc_decl(&mut self, node: &AstProcedure){
         let sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Proc);
-        self.symbol_table.insert_symbol_info(node.get_identifier(), sym_info);
+        self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_func_decl(&mut self, node: &AstFunction){
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Type);
@@ -120,10 +134,10 @@ impl SymbolGenerator {
             Some(n) => {sym_info.eval_type = Some(n.get_identifier())},
             _=> ()
         }
-        self.symbol_table.insert_symbol_info(node.get_identifier(), sym_info);
+        self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
     }
 }
-impl IVisitor for SymbolGenerator{
+impl<'a> IVisitor for SymbolGenerator<'a>{
     fn visit(&mut self, node: &DynamicChild<dyn IAstNode>) {
         match node.data.as_any().downcast_ref::<AstClass>(){
             Some(n) => self.handle_class(n),
@@ -155,4 +169,3 @@ impl IVisitor for SymbolGenerator{
         self
     }
 }
-

@@ -76,7 +76,7 @@ fn main_loop(
 
     eprintln!("starting example main loop");
     for msg in &connection.receiver {
-        eprintln!("got msg: {msg:?}");
+        // eprintln!("got msg: {msg:?}");
         match msg {
             Message::Request(req) => {
                 if connection.handle_shutdown(&req)? {

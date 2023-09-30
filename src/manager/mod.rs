@@ -1,12 +1,12 @@
-use std::{collections::HashMap, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, error::Error, fmt::Display, borrow::BorrowMut};
+use std::{collections::HashMap, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, error::Error, fmt::Display};
 
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool, manager::symbol_generator::ISymbolGenerator};
 use data_structs::*;
 
-use self::symbol_generator::ISymbolTable;
+use self::symbol_generator::{ISymbolTable, SymbolGenerator};
 
 pub mod data_structs;
 pub mod symbol_generator;
@@ -89,7 +89,10 @@ impl ProjectManager{
                             match entry.path().as_path().file_stem(){
                                 Some(p) => {
                                     match p.to_str(){
-                                        Some(s) => {class_uri_map.write().unwrap().insert(s.to_string(), uri.to_string());},
+                                        Some(s) => {
+                                            class_uri_map.write().unwrap().insert(s.to_string(), uri.to_string());
+                                            eprint!("found file {}; uri:{}",s.to_string(), uri.to_string());
+                                        },
                                         _=> ()
                                     }
                                 }
@@ -105,51 +108,54 @@ impl ProjectManager{
 
     pub fn get_document_info(&mut self, uri: &Url) -> Result<Arc<Mutex<DocumentInfo>>, ProjectManagerError>{
         let uri_string = uri.to_string();
-        let proj_manager=  self.uri_docinfo_map.read().unwrap();
-        let doc_info =  proj_manager.get(&uri_string);
+        let uri_docinfo_map=  self.uri_docinfo_map.read().unwrap();
+        let doc_info =  uri_docinfo_map.get(&uri_string);
         if doc_info.is_some() {
             return Ok(doc_info.unwrap().clone());
-        } else {
-            let file_path = match uri.to_file_path() {
-                Ok(fp) => {
-                    let fp = match fp.as_path().to_str() {
-                        Some(s) => s.to_string(),
-                        _ => return Err(ProjectManagerError{
-                                msg: format!("cannot convert uri to file path:{}", uri),
-                                error_code: ErrorCode::InvalidRequest,
-                            })
-                    };
-                    fp
-                },
-                Err(_) => return Err(ProjectManagerError{
-                        msg: format!("cannot convert uri to file path:{}", uri),
-                        error_code: ErrorCode::InvalidRequest,
-                    })
-            };
-            let new_doc_info = DocumentInfo::new(
-                uri.to_string(),
-                file_path,
-            );
-            let new_doc_info = Arc::new(Mutex::new(new_doc_info));
-            self.uri_docinfo_map.write().unwrap().insert(uri_string.clone(), new_doc_info.clone());
-            Ok(new_doc_info)     
         }
+        // ensure can get write lock later
+        drop(uri_docinfo_map);
+
+        let file_path = match uri.to_file_path() {
+            Ok(fp) => {
+                let fp = match fp.as_path().to_str() {
+                    Some(s) => s.to_string(),
+                    _ => return Err(ProjectManagerError{
+                            msg: format!("cannot convert uri to file path:{}", uri),
+                            error_code: ErrorCode::InvalidRequest,
+                        })
+                };
+                fp
+            },
+            Err(_) => return Err(ProjectManagerError{
+                    msg: format!("cannot convert uri to file path:{}", uri),
+                    error_code: ErrorCode::InvalidRequest,
+                })
+        };
+        let new_doc_info = DocumentInfo::new(
+            uri.to_string(),
+            file_path,
+        );
+        let new_doc_info = Arc::new(Mutex::new(new_doc_info));
+        self.uri_docinfo_map.write().unwrap().insert(uri_string.clone(), new_doc_info.clone());
+        Ok(new_doc_info)
     }
 
     pub fn get_parsed_document(&mut self, uri: &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
+        let mut doc_info = doc_info.lock().unwrap();
         // check opened document
-        if doc_info.lock().unwrap().get_opened_document().is_some() {
-            return Ok(doc_info.lock().unwrap().get_opened_document().unwrap());
+        if doc_info.get_opened_document().is_some() {
+            return Ok(doc_info.get_opened_document().unwrap());
         }
         // check last saved doc
-        if doc_info.lock().unwrap().get_saved_document().is_some() {
-            return Ok(doc_info.lock().unwrap().get_saved_document().unwrap());
+        if doc_info.get_saved_document().is_some() {
+            return Ok(doc_info.get_saved_document().unwrap());
         } else {
             // if none, read from file
-            let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
-            doc_info.lock().unwrap().set_saved_document(Some(Arc::new(Mutex::new(new_doc))));
-            return Ok(doc_info.lock().unwrap().get_saved_document().unwrap());
+            let new_doc = self.parse_document(doc_info.file_path.as_str())?;
+            doc_info.set_saved_document(Some(Arc::new(Mutex::new(new_doc))));
+            return Ok(doc_info.get_saved_document().unwrap());
         }
     }
 
@@ -201,7 +207,7 @@ impl ProjectManager{
         return self.get_or_generate_symbols(doc);
     }
 
-    fn get_or_generate_symbols(&self, doc:Arc<Mutex<Document>>) -> Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
+    fn get_or_generate_symbols(&mut self, doc:Arc<Mutex<Document>>) -> Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
         if doc.lock().unwrap().get_symbol_table().is_some(){
             return Ok(doc.lock().unwrap().get_symbol_table().unwrap());
         } 
@@ -211,8 +217,17 @@ impl ProjectManager{
         return Ok(sym_table)
     }
 
-    fn generate_symbol_table(&self, doc: Arc<Mutex<Document>>)->Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
-        todo!()
+    fn generate_symbol_table(&mut self, doc: Arc<Mutex<Document>>)->Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
+        let symbol_generator = SymbolGenerator::new(self);
+        let symbol_generator:Rc<RefCell<dyn ISymbolGenerator>> = Rc::new(RefCell::new(symbol_generator));
+        let mut ast_walker = AstWalker::<dyn ISymbolGenerator>::new(false);
+        ast_walker.register_visitor(&symbol_generator);
+        ast_walker.run(doc.lock().unwrap().get_ast());
+        let result = match symbol_generator.borrow_mut().take_symbol_table() {
+            Some(st) => Ok(st),
+            _=> Err(ProjectManagerError::new("failed to generate symbol table for ", ErrorCode::InternalError))
+        };
+        result
     }
 
     fn parse_document(&self, file_path: &str) -> Result<Document, ProjectManagerError>{
