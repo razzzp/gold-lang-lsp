@@ -1,4 +1,3 @@
-use lsp_types::lsif::Item;
 
 use crate::{parser::ast::IAstNode, utils::DynamicChild};
 

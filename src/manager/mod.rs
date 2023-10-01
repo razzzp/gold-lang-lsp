@@ -6,7 +6,7 @@ use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagn
 use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool, manager::symbol_generator::ISymbolGenerator};
 use data_structs::*;
 
-use self::symbol_generator::{ISymbolTable, SymbolGenerator, DocumentSymbolGeneratorV2};
+use self::symbol_generator::{ISymbolTable, SymbolGenerator, DocumentSymbolGenerator};
 
 pub mod data_structs;
 pub mod symbol_generator;
@@ -157,15 +157,6 @@ impl ProjectManager{
         }
     }
 
-    pub fn get_document_symbols(&mut self, doc: Arc<Mutex<Document>>)-> Arc<Vec<DocumentSymbol>>{
-        let syms = doc.lock().unwrap().get_document_symbols();
-        if syms.is_some() {
-            return syms.unwrap();
-        } else {
-            return self.generate_document_symbols(doc).unwrap();
-        }
-    }
-
     pub fn get_diagnostic_report(&mut self, doc: Arc<Mutex<Document>>) -> Arc<RelatedFullDocumentDiagnosticReport>{
         let diag_report = doc.lock().unwrap().get_diagnostic_report();
         if diag_report.is_some(){
@@ -232,9 +223,9 @@ impl ProjectManager{
         return Ok(sym_table)
     }
 
-    pub fn get_document_symbols_v2(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
+    pub fn get_document_symbols(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
         let sym_table = self.get_symbol_table_for_uri(uri)?;
-        let sym_gen = DocumentSymbolGeneratorV2 {};
+        let sym_gen = DocumentSymbolGenerator {};
         return Ok(sym_gen.generate_symbols(sym_table))
     }
 
@@ -306,14 +297,6 @@ impl ProjectManager{
         return self.collect_diagnostics(&analyzers)
     }
 
-    fn generate_document_symbols(&self, doc: Arc<Mutex<Document>>) -> Result<Arc<Vec<DocumentSymbol>>, ProjectManagerError>{
-        let symbol_generator = DocumentSymbolGenerator::new();
-        let symbols = symbol_generator.generate_symbols(doc.lock().unwrap().get_ast());
-        let symbols = Arc::new(symbols);
-        doc.lock().unwrap().set_document_symbols(Some(symbols.clone()));
-        return Ok(symbols);
-    }
-
     fn generate_document_diagnostic_report(&self, doc: Arc<Mutex<Document>>)
     -> Result<Arc<RelatedFullDocumentDiagnosticReport>, ProjectManagerError>{
         let diagnostics = self.get_diagnostics(doc)?;
@@ -344,158 +327,6 @@ impl ProjectManager{
     }
 }
 
-struct DocumentSymbolGenerator{
-
-}
-impl DocumentSymbolGenerator{
-    pub fn new() -> DocumentSymbolGenerator{
-        return DocumentSymbolGenerator {  }
-    }
-
-    pub fn generate_symbols(&self, ast: &dyn IAstNode)-> Vec<DocumentSymbol> {
-        let mut result = Vec::<DocumentSymbol>::new();
-        let mut class_symbol = self.find_and_generate_class_symbol(ast);
-        for node in ast.get_children().unwrap_or_default().iter() {
-            let symbol = self.generate_symbol_for_node(node.as_ast_node());
-            if symbol.is_some(){
-                match &mut class_symbol {
-                    Some(class_sym) => class_sym.children.as_mut().unwrap().push(symbol.unwrap()),
-                    None => result.push(symbol.unwrap())
-                };
-            }
-        }
-        if class_symbol.is_some(){result.push(class_symbol.unwrap())}
-        return result;
-    }
-
-    fn generate_symbol_for_node(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
-        let mut result : Option<DocumentSymbol>= None;
-        match self.generate_constant_symbol(ast_node) {
-            Some(s) => {result = Some(s);},
-            None => ()
-        };
-        match self.generate_type_declaration_symbol(ast_node) {
-            Some(s) => {result = Some(s);},
-            None => ()
-        };
-        match self.generate_global_var_decl_symbol(ast_node) {
-            Some(s) => {result = Some(s);},
-            None => ()
-        };
-        match self.generate_proc_symbol(ast_node) {
-            Some(s) => {result = Some(s);},
-            None => ()
-        };
-        match self.generate_func_symbol(ast_node) {
-            Some(s) => {result = Some(s);},
-            None => ()
-        };
-        return result;
-    }
-
-    fn generate_constant_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
-        match ast_node.as_any().downcast_ref::<AstConstantDeclaration>(){
-            Some(n) => Some(DocumentSymbol { 
-                    name: n.identifier.value.as_ref().unwrap().to_string(), 
-                    detail: Some(n.value.value.as_ref().unwrap().to_string()), 
-                    kind: SymbolKind::CONSTANT, 
-                    range: n.get_range().as_lsp_type_range(), 
-                    selection_range: n.identifier.get_range().as_lsp_type_range(), 
-                    tags: None,
-                    deprecated: None,
-                    children: None
-            }),
-            None => None
-        }
-    }
-
-    fn generate_type_declaration_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
-        match ast_node.as_any().downcast_ref::<AstTypeDeclaration>(){
-            Some(n) => Some(DocumentSymbol { 
-                    name: n.identifier.value.as_ref().unwrap().to_string(), 
-                    detail: None, 
-                    kind: SymbolKind::PROPERTY, 
-                    range: n.get_range().as_lsp_type_range(), 
-                    selection_range: n.identifier.get_range().as_lsp_type_range(), 
-                    tags: None,
-                    deprecated: None,
-                    children: None
-            }),
-            None => None
-        }
-    }
-
-    fn generate_global_var_decl_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
-        match ast_node.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
-            Some(n) => Some(DocumentSymbol { 
-                    name: n.identifier.value.as_ref().unwrap().to_string(), 
-                    detail: Some(n.type_node.get_identifier()), 
-                    kind: SymbolKind::FIELD, 
-                    range: n.get_range().as_lsp_type_range(), 
-                    selection_range: n.identifier.get_range().as_lsp_type_range(), 
-                    tags: None,
-                    deprecated: None,
-                    children: None
-            }),
-            None => None
-        }
-    }
-
-    fn generate_proc_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
-        match ast_node.as_any().downcast_ref::<AstProcedure>(){
-            Some(n) => Some(DocumentSymbol { 
-                    name: n.identifier.get_identifier(), 
-                    detail: None, 
-                    kind: SymbolKind::METHOD, 
-                    range: n.get_range().as_lsp_type_range(), 
-                    selection_range: n.identifier.get_range().as_lsp_type_range(), 
-                    tags: None,
-                    deprecated: None,
-                    children: None
-            }),
-            None => None
-        }
-    }
-
-    fn generate_func_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
-        match ast_node.as_any().downcast_ref::<AstFunction>(){
-            Some(n) => Some(DocumentSymbol { 
-                    name: n.identifier.get_identifier(), 
-                    detail: Some(n.return_type.get_identifier()), 
-                    kind: SymbolKind::FUNCTION, 
-                    range: n.get_range().as_lsp_type_range(), 
-                    selection_range: n.identifier.get_range().as_lsp_type_range(), 
-                    tags: None,
-                    deprecated: None,
-                    children: None
-            }),
-            None => None
-        }
-    }
-
-    fn find_and_generate_class_symbol(&self, ast: &dyn IAstNode) -> Option<DocumentSymbol>{
-        let mut result: Option<DocumentSymbol> = None;
-        for ast_node in ast.get_children().unwrap_or_default().iter() {
-            match ast_node.as_any().downcast_ref::<AstClass>(){
-                Some(n) => {
-                    result = Some(DocumentSymbol { 
-                        name: n.name.clone(), 
-                        detail: Some(n.parent_class.clone()), 
-                        kind: SymbolKind::CLASS, 
-                        range: n.get_range().as_lsp_type_range(), 
-                        selection_range: n.get_range().as_lsp_type_range(), 
-                        tags: None,
-                        deprecated: None,
-                        children: Some(Vec::new())
-                    });
-                    break;
-                }
-                None => continue
-            }
-        }
-        return result;
-    }
-}
 
 #[cfg(test)]
 mod test{

@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::error::Error;
 use std::rc::Rc;
 
 use crate::parser::ast::IAstNode;

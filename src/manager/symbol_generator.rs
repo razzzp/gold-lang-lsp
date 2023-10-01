@@ -182,12 +182,12 @@ impl<'a> IVisitor for SymbolGenerator<'a>{
 
 
 
-pub struct DocumentSymbolGeneratorV2{
+pub struct DocumentSymbolGenerator{
 
 }
-impl DocumentSymbolGeneratorV2{
-    pub fn new() -> DocumentSymbolGeneratorV2{
-        return DocumentSymbolGeneratorV2 {  }
+impl DocumentSymbolGenerator{
+    pub fn new() -> DocumentSymbolGenerator{
+        return DocumentSymbolGenerator {  }
     }
 
     pub fn generate_symbols(&self, symbol_table: Arc<Mutex<dyn ISymbolTable>>)-> Vec<DocumentSymbol> {
@@ -212,7 +212,7 @@ impl DocumentSymbolGeneratorV2{
     }
 
     fn generate_doc_symbol(&self, symbol: &SymbolInfo)-> Option<DocumentSymbol>{
-        let mut result : Option<DocumentSymbol>= None;
+        let result : Option<DocumentSymbol>;
         result = match symbol.sym_type {
             SymbolType::Constant => self.generate_constant_symbol(symbol),
             SymbolType::Field => self.generate_global_var_decl_symbol(symbol),

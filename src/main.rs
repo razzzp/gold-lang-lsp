@@ -160,7 +160,7 @@ fn handle_document_symbol_request(
     -> Result<Message, (i32, String)>
 {
     eprintln!("got Document Symbol request #{id}: {params:?}");
-    let symbols = match doc_manager.get_document_symbols_v2(&params.text_document.uri){
+    let symbols = match doc_manager.get_document_symbols(&params.text_document.uri){
         Ok(syms) => syms,
         Err(e) => return Err((e.error_code as i32, e.msg))
     };
