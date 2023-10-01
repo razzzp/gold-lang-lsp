@@ -1,8 +1,8 @@
 use lsp_types::{DocumentSymbol, SymbolKind};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration}, analyzers::IVisitor, utils::{DynamicChild, Range, IRange, OptionString}, lexer::tokens::TokenType};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses}, analyzers::IVisitor, utils::{DynamicChild, Range, IRange, OptionString}, lexer::tokens::TokenType};
 use core::fmt::Debug;
-use std::{collections::HashMap, sync::{Mutex, Arc}, ops::{DerefMut, Deref}};
+use std::{collections::HashMap, sync::{Mutex, Arc}, ops::{DerefMut, Deref}, result};
 use crate::utils::{OptionExt};
 use super::ProjectManager;
 
@@ -44,11 +44,10 @@ pub trait ISymbolTableGenerator : IVisitor{
 }
 
 pub trait ISymbolTable: Debug + Send{
-    fn get_symbol_info(&self, id: String) -> Option<&SymbolInfo>;
+    fn get_symbol_info(&self, id: &String) -> Option<Arc<SymbolInfo>>;
     fn insert_symbol_info(& mut self, id : String, info: SymbolInfo) -> & SymbolInfo;
-    fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a SymbolInfo> +'a>;
+    fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Arc<SymbolInfo>> + 'a >;
     fn get_parent_symbol_table(&self) -> Option<Arc<Mutex<dyn ISymbolTable>>>;
-    fn set_parent_symbol_table(&mut self,symbol_table: Arc<Mutex<dyn ISymbolTable>>);
     // for debug only
     fn print_all_symbols(&self);
 }
@@ -57,7 +56,7 @@ pub trait ISymbolTable: Debug + Send{
 pub struct SymbolTable{
     parent_symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>,
     // allows order to be preserved and access through key
-    symbols_list: Vec<SymbolInfo>,
+    symbols_list: Vec<Arc<SymbolInfo>>,
     hash_map : HashMap<String, usize>,
     uses_symbol_table: Vec<Arc<Mutex<dyn ISymbolTable>>>
     // string_table: HashMap<String, Arc<Mutex<String>>>,
@@ -72,24 +71,43 @@ impl SymbolTable{
             // string_table: HashMap::new()
         }
     }
+
+    pub fn set_parent_symbol_table(&mut self, symbol_table: Arc<Mutex<dyn ISymbolTable>>) {
+        self.parent_symbol_table = Some(symbol_table)
+    }
+
+    pub fn add_uses_symbol_table(&mut self, symbol_table: Arc<Mutex<dyn ISymbolTable>>) {
+        self.uses_symbol_table.push(symbol_table); 
+    }
 }
 impl ISymbolTable for SymbolTable {
-    fn get_symbol_info(&self, id: String) -> Option<&SymbolInfo> {
-        let idx = match self.hash_map.get(&id) {
+    fn get_symbol_info(&self, id: &String) -> Option<Arc<SymbolInfo>> {
+        let idx = match self.hash_map.get(id) {
             Some(i) => i,
             _=> return None,
         };
-        return self.symbols_list.get(*idx)
+        let mut result =  self.symbols_list.get(*idx).cloned();
+        if result.is_none() && self.parent_symbol_table.is_some(){
+            let parent_st= self.parent_symbol_table.unwrap_ref();
+            result = parent_st.lock().unwrap().get_symbol_info(id);
+        }
+        if result.is_none(){
+            for st in &self.uses_symbol_table{
+                result = st.lock().unwrap().get_symbol_info(&id);
+                if result.is_some() {break}
+            }
+        }
+        return result;
     }
 
     fn insert_symbol_info(&mut self, id : String, info: SymbolInfo) -> &SymbolInfo {
         let idx = self.symbols_list.len();
-        self.symbols_list.push(info);
+        self.symbols_list.push(Arc::new(info));
         self.hash_map.insert(id, idx);
         return self.symbols_list.get(idx).unwrap()
     }
 
-    fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a SymbolInfo> + 'a > {
+    fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Arc<SymbolInfo>> + 'a > {
         let iter = self.symbols_list.iter();
         return Box::new(iter);
     }
@@ -98,9 +116,6 @@ impl ISymbolTable for SymbolTable {
         self.parent_symbol_table.clone()
     }
 
-    fn set_parent_symbol_table(&mut self, symbol_table: Arc<Mutex<dyn ISymbolTable>>) {
-        self.parent_symbol_table = Some(symbol_table)
-    }
     // for debug only
     fn print_all_symbols(&self){
         match self.parent_symbol_table.as_ref(){
@@ -186,6 +201,15 @@ impl<'a> SymbolTableGenerator<'a> {
         sym_info.eval_type = Some(node.type_node.get_identifier());
         self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
     }
+    fn handle_uses(&mut self, node: &AstUses){
+        for uses in &node.list_of_uses{
+            let uses_sym_table = match self.project_manager.get_symbol_table_for_class(&uses.get_value()) {
+                Ok(st) => st,
+                Err(_) => continue
+            };
+            self.symbol_table.unwrap_mut().add_uses_symbol_table(uses_sym_table);
+        }
+    }
 }
 impl<'a> IVisitor for SymbolTableGenerator<'a>{
     fn visit(&mut self, node: &DynamicChild<dyn IAstNode>) {
@@ -211,6 +235,10 @@ impl<'a> IVisitor for SymbolTableGenerator<'a>{
         }
         match node.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
             Some(n) => self.handle_field_decl(n),
+            _=> ()
+        }
+        match node.data.as_any().downcast_ref::<AstUses>(){
+            Some(n) => self.handle_uses(n),
             _=> ()
         }
     }
