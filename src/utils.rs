@@ -2,6 +2,31 @@ use crate::{parser::ast::IAstNode, lexer::tokens::Token};
 use std::{fmt::Write, collections::LinkedList, ops::Deref};
 
 
+pub trait ILogger :std::fmt::Debug{
+    fn log(&mut self, msg: &str);
+    fn as_logger_mut(&mut self)->&mut dyn ILogger;
+}
+
+#[derive(Debug, Clone)]
+pub struct ConsoleLogger {
+    prefix: String
+}
+impl ConsoleLogger{
+    pub fn new(prefix: &str) -> ConsoleLogger{
+        ConsoleLogger { prefix: prefix.to_string() }
+    }
+}
+impl ILogger for ConsoleLogger{
+    fn log(&mut self, msg: &str) {
+        eprintln!("{} {}", self.prefix, msg)
+    }
+
+    fn as_logger_mut(&mut self)->&mut dyn ILogger {
+        self
+    }
+}
+
+
 pub trait IRange {
     fn get_range(&self) -> Range;
     fn set_range(&mut self, _new_range: Range){//TODO:implem for all classes

@@ -1,10 +1,12 @@
 use std::net::ToSocketAddrs;
 use std::ops::Deref;
+use std::sync::{Mutex, Arc};
 
 
 
 use crate::manager::ProjectManager;
 use crate::threadpool::ThreadPool;
+use crate::utils::ConsoleLogger;
 
 use std::error::Error;
 
@@ -16,6 +18,7 @@ use lsp_types::{
 };
 
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError, ErrorCode, Notification,};
+use utils::ILogger;
 
 
 
@@ -70,7 +73,12 @@ fn main_loop(
     
     //TODO implem multithreading
     let mut threadpool = ThreadPool::new(5);
-    let mut doc_manager = match ProjectManager::new(params.root_uri){
+    let mut logger = ConsoleLogger::new("[LSP Server]");
+    // TODO use same logger in server and project manager
+    let mut doc_manager = match ProjectManager::new(
+        params.root_uri,
+        Arc::new(Mutex::new(logger.clone()))
+    ){
         Ok(r) => r,
         Err(e) => {
             return Err(Box::new(e));
@@ -78,7 +86,6 @@ fn main_loop(
     };
     doc_manager.index_files();
 
-    eprintln!("starting example main loop");
     for msg in &connection.receiver {
         // eprintln!("got msg: {msg:?}");
         match msg {
@@ -86,10 +93,10 @@ fn main_loop(
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
-                eprintln!("got request: {req:?}");
+                logger.log(format!("got request; #{}; method:{}", req.id, req.method).as_str());
                 let req = match cast_req::<DocumentSymbolRequest>(req) {
                     Ok((id, params)) => {
-                        match handle_document_symbol_request(&mut doc_manager, id.clone(), params){
+                        match handle_document_symbol_request(&mut doc_manager, id.clone(), params, logger.as_logger_mut()){
                             Ok(resp) => connection.sender.send(resp)?,
                             Err(e) => send_error(&connection, id, e.0, e.1)?
                         }
@@ -100,7 +107,7 @@ fn main_loop(
                 };
                 match cast_req::<DocumentDiagnosticRequest>(req) {
                     Ok((id, params)) => {
-                        match handle_document_diagnostics_request(&mut doc_manager, id.clone(), params){
+                        match handle_document_diagnostics_request(&mut doc_manager, id.clone(), params, logger.as_logger_mut()){
                             Ok(resp) => connection.sender.send(resp)?,
                             Err(e) => send_error(&connection, id, e.0, e.1)?
                         }
@@ -113,19 +120,19 @@ fn main_loop(
                 // ...
             }
             Message::Response(resp) => {
-                eprintln!("got response: {resp:?}");
+                eprintln!("got response: #{}",resp.id);
             }
             Message::Notification(not) => {
-                eprintln!("got notification: {not:?}");
+                logger.log(format!("got notification; method:{}", not.method).as_str());
                 let not = match cast_not::<DidChangeTextDocument>(not) {
                     Ok(params) => {
-                        match handle_did_change_notification(&mut doc_manager, params){
+                        match handle_did_change_notification(&mut doc_manager, params, logger.as_logger_mut()){
                             Ok(msgs) => {
                                 for msg in msgs {
                                     connection.sender.send(msg)?;
                                 }
                             },
-                            Err(e) => eprintln!("error: code({}) {}", e.0, e.1)
+                            Err(e) => logger.log(format!("error: code({}) {}", e.0, e.1).as_str())
                         }
                         continue;
                     }
@@ -134,13 +141,13 @@ fn main_loop(
                 };
                 match cast_not::<DidSaveTextDocument>(not) {
                     Ok(params) => {
-                        match handle_did_save_notification(&mut doc_manager, params){
+                        match handle_did_save_notification(&mut doc_manager, params, logger.as_logger_mut()){
                             Ok(msgs) => {
                                 for msg in msgs {
                                     connection.sender.send(msg)?;
                                 }
                             },
-                            Err(e) => eprintln!("error: code({}) {}", e.0, e.1)
+                            Err(e) => logger.log(format!("error: code({}) {}", e.0, e.1).as_str())
                         }
                         continue;
                     }
@@ -156,10 +163,12 @@ fn main_loop(
 fn handle_document_symbol_request(
     doc_manager: &mut ProjectManager, 
     id: RequestId, 
-    params: DocumentSymbolParams)
+    params: DocumentSymbolParams,
+    logger: &mut dyn ILogger,
+)
     -> Result<Message, (i32, String)>
 {
-    eprintln!("got Document Symbol request #{id}: {params:?}");
+    logger.log(format!("handling Document Symbol request #{id}").as_str());
     let symbols = match doc_manager.get_document_symbols(&params.text_document.uri){
         Ok(syms) => syms,
         Err(e) => return Err((e.error_code as i32, e.msg))
@@ -173,10 +182,12 @@ fn handle_document_symbol_request(
 fn handle_document_diagnostics_request(
     doc_manager: &mut ProjectManager, 
     id: RequestId, 
-    params: DocumentDiagnosticParams)
+    params: DocumentDiagnosticParams,
+    logger: &mut dyn ILogger,
+)
     -> Result<Message, (i32, String)>
 {
-    eprintln!("got Document Diagnostics request #{id}: {params:?}");
+    logger.log(format!("handling Document Diagnostics request #{id}").as_str());
     let doc = match doc_manager.get_parsed_document(&params.text_document.uri) {
         Ok(d) => d,
         Err(e) =>{
@@ -192,10 +203,11 @@ fn handle_document_diagnostics_request(
 
 fn handle_did_change_notification(
     doc_manager: &mut ProjectManager, 
-    params: DidChangeTextDocumentParams)
+    params: DidChangeTextDocumentParams,
+    logger: &mut dyn ILogger,)
     -> Result<Vec<Message>, (i32, String)>
 {
-    eprintln!("got Did Change notification {params:?}");
+    logger.log(format!("handling Did Change notification").as_str());
     // get full file content
     let full_file_content = match params.content_changes.last(){
         Some(text_doc_change_event) => {
@@ -231,10 +243,12 @@ fn handle_did_change_notification(
 
 fn handle_did_save_notification(
     doc_manager: &mut ProjectManager, 
-    params: DidSaveTextDocumentParams)
+    params: DidSaveTextDocumentParams,
+    logger: &mut dyn ILogger,
+)
     -> Result<Vec<Message>, (i32, String)>
 {
-    eprintln!("got Did Change notification {params:?}");
+    logger.log(format!("handling Did Save notification").as_str());
     // get full file content
     let doc = match doc_manager.notify_document_saved(&params.text_document.uri){
         Ok(d) => d,
@@ -285,38 +299,8 @@ fn send_error(connection: &Connection, id: RequestId, code: i32, message: String
     Ok(connection.sender.send(Message::Response(resp))?)
 }
 
-fn convert_uri_to_file_path_str(uri : &Url) -> Result<String, String>{
-    let req_doc_uri = match uri.to_file_path(){
-        Ok(r) => r,
-        _ => return Err("invalid uri".to_string())
-    };
-    match req_doc_uri.as_path().to_str() {
-        Some(p) => return Ok(p.to_string()),
-        _ => return Err("invalid uri".to_string())
-    };
-}
-
 
 #[cfg(test)]
 mod test {
-    
-    
 
-    use lsp_types::Url;
-
-    
-    use crate::convert_uri_to_file_path_str;
-    
-    
-    
-    
-
-    #[test]
-    #[ignore] 
-    fn test_convert_uri_to_file_path(){
-        // TODO not valid in different pcs
-        let uri = Url::parse("file:///home/razzzp/dev/gold-lang-lsp/test/aTestClass.god").unwrap();
-        let path = convert_uri_to_file_path_str(&uri).unwrap();
-        assert_eq!(path, "/home/razzzp/dev/gold-lang-lsp/test/aTestClass.god");
-    }
 }

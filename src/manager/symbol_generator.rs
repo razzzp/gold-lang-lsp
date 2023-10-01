@@ -47,10 +47,13 @@ pub trait ISymbolTable: Debug + Send{
     fn get_symbol_info(&self, id: String) -> Option<&SymbolInfo>;
     fn insert_symbol_info(& mut self, id : String, info: SymbolInfo) -> & SymbolInfo;
     fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a SymbolInfo> +'a>;
+    fn get_parent_symbol_table(&self) -> Option<Arc<Mutex<dyn ISymbolTable>>>;
+    fn set_parent_symbol_table(&mut self,symbol_table: Arc<Mutex<dyn ISymbolTable>>);
 }
 
 #[derive(Debug)]
 pub struct SymbolTable{
+    parent_symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>,
     // allows order to be preserved and access through key
     symbols_list: Vec<SymbolInfo>,
     hash_map : HashMap<String, usize>,
@@ -59,6 +62,7 @@ pub struct SymbolTable{
 impl SymbolTable{
     pub fn new()-> SymbolTable{
         SymbolTable { 
+            parent_symbol_table: None,
             symbols_list: Vec::new(),
             hash_map: HashMap::new(),
             // string_table: HashMap::new()
@@ -84,6 +88,14 @@ impl ISymbolTable for SymbolTable {
     fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a SymbolInfo> + 'a > {
         let iter = self.symbols_list.iter();
         return Box::new(iter);
+    }
+
+    fn get_parent_symbol_table(&self) -> Option<Arc<Mutex<dyn ISymbolTable>>> {
+        self.parent_symbol_table.clone()
+    }
+
+    fn set_parent_symbol_table(&mut self, symbol_table: Arc<Mutex<dyn ISymbolTable>>) {
+        self.parent_symbol_table = Some(symbol_table)
     }
 }
 
@@ -114,7 +126,16 @@ impl<'a> SymbolGenerator<'a> {
 
     fn handle_class(&mut self, node: &AstClass){
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Class);
+
         sym_info.parent = Some(node.parent_class.clone());
+        let parent_symbol_table = match self.project_manager.get_symbol_table_for_class(&node.parent_class){
+            Ok(st) => Some(st),
+            _=> None,
+        };
+        match parent_symbol_table{
+            Some(st) => self.symbol_table.unwrap_mut().set_parent_symbol_table(st),
+            _=> ()
+        }
         self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_constant_decl(&mut self, node: &AstConstantDeclaration){

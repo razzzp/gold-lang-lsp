@@ -3,7 +3,7 @@ use std::{collections::HashMap, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, R
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool, manager::symbol_generator::ISymbolGenerator};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool, manager::symbol_generator::ISymbolGenerator};
 use data_structs::*;
 
 use self::symbol_generator::{ISymbolTable, SymbolGenerator, DocumentSymbolGenerator};
@@ -16,9 +16,10 @@ pub struct ProjectManager{
     uri_docinfo_map : Arc<RwLock<HashMap<String, Arc<Mutex<DocumentInfo>>>>>,
     class_uri_map: Arc<RwLock<HashMap<String, Url>>>,
     root_path: Option<String>,
+    logger: Arc<Mutex<dyn ILogger>>,
 }
 impl ProjectManager{
-    pub fn new(root_uri : Option<Url>) -> Result<ProjectManager, ProjectManagerError>{
+    pub fn new(root_uri : Option<Url>, logger: Arc<Mutex<dyn ILogger>>) -> Result<ProjectManager, ProjectManagerError>{
         let mut root_path : Option<String> = None;
 
         match root_uri {
@@ -46,7 +47,8 @@ impl ProjectManager{
         Ok(ProjectManager{
             uri_docinfo_map: Arc::new(RwLock::new(HashMap::new())),
             root_path,
-            class_uri_map: Arc::new(RwLock::new(HashMap::new()))
+            class_uri_map: Arc::new(RwLock::new(HashMap::new())),
+            logger
         })
     }
 
@@ -190,7 +192,7 @@ impl ProjectManager{
         }
     }
 
-    pub fn get_symbol_table_for_class(&mut self, class: String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+    pub fn get_symbol_table_for_class(&mut self, class: &String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         let uri = self.get_uri_for_class(&class)?;
         return self.get_symbol_table_for_uri(&uri);
     }
@@ -330,11 +332,11 @@ impl ProjectManager{
 
 #[cfg(test)]
 mod test{
-    use std::{fs::{File, self}, io::Read, path::PathBuf, time, thread, rc::Rc, cell::RefCell};
+    use std::{fs::{File, self}, io::Read, path::PathBuf, time, thread, rc::Rc, cell::RefCell, sync::{Mutex, Arc}};
 
     use lsp_types::Url;
 
-    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::ast_to_string_brief_recursive, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer}};
+    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILogger, ConsoleLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer}};
 
     use super::ProjectManager;
 
@@ -368,9 +370,14 @@ mod test{
         return result;
     }
 
+    fn create_test_logger()-> Arc<Mutex<dyn ILogger>>{
+        Arc::new(Mutex::new(ConsoleLogger::new("[LSP Server]")))
+    }
+
     #[test]
     fn test_gold_document_manager(){
-        let doc_manager = ProjectManager::new(None).unwrap();
+        
+        let doc_manager = ProjectManager::new(None, create_test_logger()).unwrap();
         let _doc = doc_manager.parse_document("test/aTestClass.god").unwrap();
         // println!("{:#?}",doc);
     }
@@ -499,7 +506,7 @@ mod test{
         let path =  fs::canonicalize(&path).unwrap().to_str().unwrap().to_string();
         let uri = Url::from_file_path(path.clone()).unwrap();
        
-        let mut doc_manager = ProjectManager::new(Some(uri)).unwrap();
+        let mut doc_manager = ProjectManager::new(Some(uri), create_test_logger()).unwrap();
         doc_manager.index_files();
 
         // to prevent termination before index has a chance to run
