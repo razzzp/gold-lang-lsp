@@ -12,7 +12,6 @@ use super::symbol_generator::ISymbolTable;
 pub struct Document{
     ast: Box<dyn IAstNode>,
     parser_diagnostics: Vec<ParserDiagnostic>,
-    symbols: Option<Arc<Vec<DocumentSymbol>>>,
     analyzer_diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>,
     diagnostic_report: Option<Arc<RelatedFullDocumentDiagnosticReport>>,
     symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>
@@ -22,7 +21,6 @@ impl Document{
         return Document{
             ast,
             parser_diagnostics,
-            symbols: None,
             analyzer_diagnostics:None,
             diagnostic_report:None,
             symbol_table: None
@@ -31,16 +29,6 @@ impl Document{
     pub fn get_ast<'a>(&'a self) -> &'a dyn IAstNode{
         self.ast.as_ast_node()
     }
-    pub fn get_document_symbols(&self)-> Option<Arc<Vec<DocumentSymbol>>>{
-        match &self.symbols {
-            Some(syms) => return Some(syms.clone()),
-            _=> None
-        }
-    }
-    pub fn set_document_symbols(&mut self, symbols: Option<Arc<Vec<DocumentSymbol>>>){
-        self.symbols = symbols;
-    }
-
     pub fn get_symbol_table(&self)-> Option<Arc<Mutex<dyn ISymbolTable>>>{
         match &self.symbol_table {
             Some(sym_tbl) => return Some(sym_tbl.clone()),

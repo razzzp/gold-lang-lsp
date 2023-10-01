@@ -1,2 +1,2 @@
-class aClass (aFullObject)
+class aClass3 (aRootClass)
 

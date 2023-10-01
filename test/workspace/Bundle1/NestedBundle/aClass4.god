@@ -1,2 +1,3 @@
-class aClass (aFullObject)
+class aClass4 (aRootClass)
 
+Class4Var : Int4

@@ -199,7 +199,7 @@ impl ProjectManager{
 
     pub fn get_symbol_table_for_uri(&mut self, uri : &Url) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         let doc: Arc<Mutex<Document>> = self.get_parsed_document(uri)?;
-        return self.get_or_generate_symbols(doc);
+        return self.get_or_generate_symbol_table(doc);
     }
 
     fn generate_symbol_table(&mut self, doc: Arc<Mutex<Document>>)->Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
@@ -215,7 +215,7 @@ impl ProjectManager{
         result
     }
 
-    fn get_or_generate_symbols(&mut self, doc:Arc<Mutex<Document>>) -> Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
+    fn get_or_generate_symbol_table(&mut self, doc:Arc<Mutex<Document>>) -> Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
         if doc.lock().unwrap().get_symbol_table().is_some(){
             return Ok(doc.lock().unwrap().get_symbol_table().unwrap());
         } 

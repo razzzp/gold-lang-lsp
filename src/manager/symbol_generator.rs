@@ -49,6 +49,8 @@ pub trait ISymbolTable: Debug + Send{
     fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a SymbolInfo> +'a>;
     fn get_parent_symbol_table(&self) -> Option<Arc<Mutex<dyn ISymbolTable>>>;
     fn set_parent_symbol_table(&mut self,symbol_table: Arc<Mutex<dyn ISymbolTable>>);
+    // for debug only
+    fn print_all_symbols(&self);
 }
 
 #[derive(Debug)]
@@ -96,6 +98,16 @@ impl ISymbolTable for SymbolTable {
 
     fn set_parent_symbol_table(&mut self, symbol_table: Arc<Mutex<dyn ISymbolTable>>) {
         self.parent_symbol_table = Some(symbol_table)
+    }
+    // for debug only
+    fn print_all_symbols(&self){
+        match self.parent_symbol_table.as_ref(){
+            Some(st) => {st.lock().unwrap().print_all_symbols()}
+            _=> ()
+        }
+        self.iter_symbols().for_each(|s|{
+            eprintln!("{}", s.id)
+        })
     }
 }
 
@@ -167,6 +179,11 @@ impl<'a> SymbolGenerator<'a> {
         }
         self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
     }
+    fn handle_field_decl(&mut self, node: &AstGlobalVariableDeclaration){
+        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Field);
+        sym_info.eval_type = Some(node.type_node.get_identifier());
+        self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
+    }
 }
 impl<'a> IVisitor for SymbolGenerator<'a>{
     fn visit(&mut self, node: &DynamicChild<dyn IAstNode>) {
@@ -190,10 +207,18 @@ impl<'a> IVisitor for SymbolGenerator<'a>{
             Some(n) => self.handle_func_decl(n),
             _=> ()
         }
+        match node.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
+            Some(n) => self.handle_field_decl(n),
+            _=> ()
+        }
     }
 
     fn notify_end(&mut self) {
-        ()
+        // debug only
+        // eprintln!("!DEBUG!");
+        // self.symbol_table.iter().for_each(|st|{
+        //     st.print_all_symbols()
+        // })
     }
 
     fn as_visitor(&mut self) -> &dyn IVisitor {
@@ -236,7 +261,7 @@ impl DocumentSymbolGenerator{
         let result : Option<DocumentSymbol>;
         result = match symbol.sym_type {
             SymbolType::Constant => self.generate_constant_symbol(symbol),
-            SymbolType::Field => self.generate_global_var_decl_symbol(symbol),
+            SymbolType::Field => self.generate_field_symbol(symbol),
             SymbolType::Type => self.generate_type_declaration_symbol(symbol),
             SymbolType::Func => self.generate_func_symbol(symbol),
             SymbolType::Proc => self.generate_proc_symbol(symbol),
@@ -271,7 +296,7 @@ impl DocumentSymbolGenerator{
         })
     }
 
-    fn generate_global_var_decl_symbol(&self, symbol: &SymbolInfo)-> Option<DocumentSymbol>{
+    fn generate_field_symbol(&self, symbol: &SymbolInfo)-> Option<DocumentSymbol>{
         Some(DocumentSymbol { 
             name: symbol.id.clone(), 
             detail: symbol.eval_type.unwrap_clone(), 
