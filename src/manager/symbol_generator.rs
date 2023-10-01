@@ -39,7 +39,7 @@ impl SymbolInfo{
     }
 }
 
-pub trait ISymbolGenerator : IVisitor{
+pub trait ISymbolTableGenerator : IVisitor{
     fn take_symbol_table(&mut self) -> Option<Arc<Mutex<dyn ISymbolTable>>>;
 }
 
@@ -59,6 +59,7 @@ pub struct SymbolTable{
     // allows order to be preserved and access through key
     symbols_list: Vec<SymbolInfo>,
     hash_map : HashMap<String, usize>,
+    uses_symbol_table: Vec<Arc<Mutex<dyn ISymbolTable>>>
     // string_table: HashMap<String, Arc<Mutex<String>>>,
 }
 impl SymbolTable{
@@ -67,6 +68,7 @@ impl SymbolTable{
             parent_symbol_table: None,
             symbols_list: Vec::new(),
             hash_map: HashMap::new(),
+            uses_symbol_table: Vec::new()
             // string_table: HashMap::new()
         }
     }
@@ -113,13 +115,13 @@ impl ISymbolTable for SymbolTable {
 
 
 #[derive(Debug)]
-pub struct SymbolGenerator<'a> {
+pub struct SymbolTableGenerator<'a> {
     symbol_table : Option<SymbolTable>,
     project_manager : &'a mut ProjectManager
 }
 
 // ensure generator is not used after this!
-impl<'a> ISymbolGenerator for SymbolGenerator<'a>{
+impl<'a> ISymbolTableGenerator for SymbolTableGenerator<'a>{
     fn take_symbol_table(&mut self) -> Option<Arc<Mutex<dyn ISymbolTable>>> {
         match self.symbol_table.take(){
             Some(t) => return Some(Arc::new(Mutex::new(t))),
@@ -128,9 +130,9 @@ impl<'a> ISymbolGenerator for SymbolGenerator<'a>{
     }
 }
 
-impl<'a> SymbolGenerator<'a> {
-    pub fn new(project_manager: &'a mut ProjectManager) -> SymbolGenerator{
-        return SymbolGenerator {  
+impl<'a> SymbolTableGenerator<'a> {
+    pub fn new(project_manager: &'a mut ProjectManager) -> SymbolTableGenerator{
+        return SymbolTableGenerator {  
             symbol_table: Some(SymbolTable::new()),
             project_manager
         }
@@ -185,7 +187,7 @@ impl<'a> SymbolGenerator<'a> {
         self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
     }
 }
-impl<'a> IVisitor for SymbolGenerator<'a>{
+impl<'a> IVisitor for SymbolTableGenerator<'a>{
     fn visit(&mut self, node: &DynamicChild<dyn IAstNode>) {
         match node.data.as_any().downcast_ref::<AstClass>(){
             Some(n) => self.handle_class(n),

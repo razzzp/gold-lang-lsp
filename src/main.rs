@@ -169,7 +169,7 @@ fn handle_document_symbol_request(
     -> Result<Message, (i32, String)>
 {
     logger.log(format!("handling Document Symbol request #{id}").as_str());
-    let symbols = match doc_manager.get_document_symbols(&params.text_document.uri){
+    let symbols = match doc_manager.generate_document_symbols(&params.text_document.uri){
         Ok(syms) => syms,
         Err(e) => return Err((e.error_code as i32, e.msg))
     };
@@ -188,13 +188,10 @@ fn handle_document_diagnostics_request(
     -> Result<Message, (i32, String)>
 {
     logger.log(format!("handling Document Diagnostics request #{id}").as_str());
-    let doc = match doc_manager.get_parsed_document(&params.text_document.uri) {
-        Ok(d) => d,
-        Err(e) =>{
-            return Err((e.error_code as i32, e.msg));
-        }
+    let diag_report = match doc_manager.generate_document_diagnostic_report(&params.text_document.uri){
+        Ok(diag_report) => diag_report,
+        Err(e) => return Err((e.error_code as i32, e.msg))
     };
-    let diag_report = doc_manager.get_diagnostic_report(doc.clone());
     let result = DocumentDiagnosticReport::Full(diag_report.deref().clone());
     let result = serde_json::to_value(&result).unwrap();
     let resp = Response { id, result: Some(result), error: None };
@@ -218,13 +215,16 @@ fn handle_did_change_notification(
         },
         None=> return Err((ErrorCode::InvalidParams as i32, "Incremental did change event not supported".to_string()))
     };
-    let doc = match doc_manager.notify_document_changed(&params.text_document.uri, full_file_content){
+    let _ = match doc_manager.notify_document_changed(&params.text_document.uri, full_file_content){
         Ok(d) => d,
         Err(e) =>{
             return Err((e.error_code as i32, e.msg));
         }
     };
-    let diag_report = doc_manager.get_diagnostic_report(doc.clone());
+    let diag_report = match doc_manager.generate_document_diagnostic_report(&params.text_document.uri){
+        Ok(diag_report) => diag_report,
+        Err(e) => return Err((e.error_code as i32, e.msg))
+    };
     let pub_diag_params = PublishDiagnosticsParams::new(
         params.text_document.uri, 
         diag_report.full_document_diagnostic_report.items.clone(), 
@@ -250,13 +250,16 @@ fn handle_did_save_notification(
 {
     logger.log(format!("handling Did Save notification").as_str());
     // get full file content
-    let doc = match doc_manager.notify_document_saved(&params.text_document.uri){
+    let _ = match doc_manager.notify_document_saved(&params.text_document.uri){
         Ok(d) => d,
         Err(e) =>{
             return Err((e.error_code as i32, e.msg));
         }
     };
-    let diag_report = doc_manager.get_diagnostic_report(doc.clone());
+    let diag_report = match doc_manager.generate_document_diagnostic_report(&params.text_document.uri){
+        Ok(diag_report) => diag_report,
+        Err(e) => return Err((e.error_code as i32, e.msg))
+    };
     let pub_diag_params = PublishDiagnosticsParams::new(
         params.text_document.uri, 
         diag_report.full_document_diagnostic_report.items.clone(), 

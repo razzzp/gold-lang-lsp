@@ -3,10 +3,10 @@ use std::{collections::HashMap, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, R
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool, manager::symbol_generator::ISymbolGenerator};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool, manager::symbol_generator::ISymbolTableGenerator};
 use data_structs::*;
 
-use self::symbol_generator::{ISymbolTable, SymbolGenerator, DocumentSymbolGenerator};
+use self::symbol_generator::{ISymbolTable, SymbolTableGenerator, DocumentSymbolGenerator};
 
 pub mod data_structs;
 pub mod symbol_generator;
@@ -91,7 +91,7 @@ impl ProjectManager{
                                     match p.to_str(){
                                         Some(s) => {
                                             class_uri_map.write().unwrap().insert(s.to_string(), uri.clone());
-                                            eprint!("found file {}; uri:{}",s.to_string(), uri.to_string());
+                                            // eprint!("found file {}; uri:{}",s.to_string(), uri.to_string());
                                         },
                                         _=> ()
                                     }
@@ -159,15 +159,6 @@ impl ProjectManager{
         }
     }
 
-    pub fn get_diagnostic_report(&mut self, doc: Arc<Mutex<Document>>) -> Arc<RelatedFullDocumentDiagnosticReport>{
-        let diag_report = doc.lock().unwrap().get_diagnostic_report();
-        if diag_report.is_some(){
-            return diag_report.unwrap();
-        } else {
-            return self.generate_document_diagnostic_report(doc).unwrap();
-        }
-    }
-
     pub fn notify_document_saved(&mut self, uri: &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
@@ -199,13 +190,13 @@ impl ProjectManager{
 
     pub fn get_symbol_table_for_uri(&mut self, uri : &Url) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         let doc: Arc<Mutex<Document>> = self.get_parsed_document(uri)?;
-        return self.get_or_generate_symbol_table(doc);
+        return self.get_symbol_table(doc);
     }
 
     fn generate_symbol_table(&mut self, doc: Arc<Mutex<Document>>)->Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
-        let symbol_generator = SymbolGenerator::new(self);
-        let symbol_generator:Rc<RefCell<dyn ISymbolGenerator>> = Rc::new(RefCell::new(symbol_generator));
-        let mut ast_walker = AstWalker::<dyn ISymbolGenerator>::new(false);
+        let symbol_generator = SymbolTableGenerator::new(self);
+        let symbol_generator:Rc<RefCell<dyn ISymbolTableGenerator>> = Rc::new(RefCell::new(symbol_generator));
+        let mut ast_walker = AstWalker::<dyn ISymbolTableGenerator>::new(false);
         ast_walker.register_visitor(&symbol_generator);
         ast_walker.run(doc.lock().unwrap().get_ast());
         let result = match symbol_generator.borrow_mut().take_symbol_table() {
@@ -215,7 +206,7 @@ impl ProjectManager{
         result
     }
 
-    fn get_or_generate_symbol_table(&mut self, doc:Arc<Mutex<Document>>) -> Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
+    fn get_symbol_table(&mut self, doc:Arc<Mutex<Document>>) -> Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
         if doc.lock().unwrap().get_symbol_table().is_some(){
             return Ok(doc.lock().unwrap().get_symbol_table().unwrap());
         } 
@@ -225,7 +216,7 @@ impl ProjectManager{
         return Ok(sym_table)
     }
 
-    pub fn get_document_symbols(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
+    pub fn generate_document_symbols(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
         let sym_table = self.get_symbol_table_for_uri(uri)?;
         let sym_gen = DocumentSymbolGenerator {};
         return Ok(sym_gen.generate_symbols(sym_table))
@@ -299,8 +290,9 @@ impl ProjectManager{
         return self.collect_diagnostics(&analyzers)
     }
 
-    fn generate_document_diagnostic_report(&self, doc: Arc<Mutex<Document>>)
+    pub fn generate_document_diagnostic_report(&mut self, uri : &Url)
     -> Result<Arc<RelatedFullDocumentDiagnosticReport>, ProjectManagerError>{
+        let doc = self.get_parsed_document(uri)?;
         let diagnostics = self.get_diagnostics(doc)?;
         return Ok(Arc::new(RelatedFullDocumentDiagnosticReport{
             related_documents: None,
@@ -332,7 +324,7 @@ impl ProjectManager{
 
 #[cfg(test)]
 mod test{
-    use std::{fs::{File, self}, io::Read, path::PathBuf, time, thread, rc::Rc, cell::RefCell, sync::{Mutex, Arc}};
+    use std::{fs::{File, self}, io::Read, path::{PathBuf, Path}, time, thread, rc::Rc, cell::RefCell, sync::{Mutex, Arc}, str::FromStr};
 
     use lsp_types::Url;
 
@@ -357,21 +349,24 @@ mod test{
         return (ast.0.1, ast.1);
     }
 
-    fn create_ast_walker<T:IVisitor+?Sized>()-> AstWalker<T>{
+    fn create_test_ast_walker<T:IVisitor+?Sized>()-> AstWalker<T>{
         let result = AstWalker::<T>::new(true);
-        return result;
-    }
-
-    fn collect_diagnostics(analyzers: &Vec<Box<dyn IAnalyzer>>) -> Vec<lsp_types::Diagnostic>{
-        let mut result = Vec::new();
-        for analyzer in analyzers{
-            analyzer.append_diagnostics(&mut result);
-        }
         return result;
     }
 
     fn create_test_logger()-> Arc<Mutex<dyn ILogger>>{
         Arc::new(Mutex::new(ConsoleLogger::new("[LSP Server]")))
+    }
+
+    fn create_uri_from_path(path:&str)-> Url{
+        let path = PathBuf::from_str(path).unwrap();
+        let path = std::fs::canonicalize(path).unwrap();
+        return Url::from_file_path(path).unwrap();
+    }
+
+    fn create_test_project_manager(root: &str) -> ProjectManager{
+        let uri = create_uri_from_path(root);
+        return ProjectManager::new(Some(uri), create_test_logger()).unwrap()
     }
 
     #[test]
@@ -451,7 +446,7 @@ mod test{
     #[test]
     fn test_unused_var_file() {
         let (asts, _) = parse_and_analyze("./test/aTestUnusedVar.god");
-        let mut walker = create_ast_walker::<dyn IAnalyzer>();
+        let mut walker = create_test_ast_walker::<dyn IAnalyzer>();
         let mut analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(UnusedVarAnalyzer::new()));
         walker.register_visitor(&analyzer);
         walker.run(asts.as_ast_node());
@@ -464,7 +459,7 @@ mod test{
     #[test]
     fn test_varbytearray_param_checker_file() {
         let (asts, _) = parse_and_analyze("./test/aTestVarByteArrayParamChecker.god");
-        let mut walker = create_ast_walker::<dyn IAnalyzer>();
+        let mut walker = create_test_ast_walker::<dyn IAnalyzer>();
         let mut analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(InoutParamChecker::new()));
         walker.register_visitor(&analyzer);
         let diags = walker.run(asts.as_ast_node());
@@ -477,7 +472,7 @@ mod test{
     #[test]
     fn test_func_return_type_checker_param_file() {
         let (asts, _) = parse_and_analyze("./test/aTestFunctionReturnTypeChecker.god");
-        let mut walker = create_ast_walker::<dyn IAnalyzer>();
+        let mut walker = create_test_ast_walker::<dyn IAnalyzer>();
         let analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(FunctionReturnTypeChecker::new()));
         walker.register_visitor(&analyzer);
         let diags = walker.run(asts.as_ast_node());
@@ -508,13 +503,26 @@ mod test{
        
         let mut doc_manager = ProjectManager::new(Some(uri), create_test_logger()).unwrap();
         doc_manager.index_files();
-
-        // to prevent termination before index has a chance to run
-        let ten_millis = time::Duration::from_millis(500);
-        thread::sleep(ten_millis);
         
         let map = doc_manager.uri_docinfo_map.clone();
         let map = map.read().unwrap();
         assert_eq!(map.len(), 4);
+    }
+
+    #[test]
+    fn test_get_symbol_table(){
+        let mut proj_manager= create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let result = proj_manager.get_symbol_table_for_class(&"aRootClass".to_string()).unwrap();
+        let result = result.lock().unwrap();
+        assert_eq!(result.iter_symbols().count(), 3);
+    }
+
+    #[test]
+    fn test_get_document_symbols(){
+        let mut proj_manager= create_test_project_manager("./test/workspace");
+        let input = create_uri_from_path("./test/workspace/aRootClass.god");
+        let result = proj_manager.generate_document_symbols(&input).unwrap();
+        assert_eq!(result.len(), 1);
     }
 }

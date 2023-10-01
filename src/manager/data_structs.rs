@@ -13,7 +13,6 @@ pub struct Document{
     ast: Box<dyn IAstNode>,
     parser_diagnostics: Vec<ParserDiagnostic>,
     analyzer_diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>,
-    diagnostic_report: Option<Arc<RelatedFullDocumentDiagnosticReport>>,
     symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>
 }
 impl Document{
@@ -22,7 +21,6 @@ impl Document{
             ast,
             parser_diagnostics,
             analyzer_diagnostics:None,
-            diagnostic_report:None,
             symbol_table: None
         };
     }
@@ -48,16 +46,6 @@ impl Document{
     pub fn set_analyzer_diagnostics(&mut self, diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>){
         self.analyzer_diagnostics = diagnostics;
     }
-    pub fn get_diagnostic_report(&self)-> Option<Arc<RelatedFullDocumentDiagnosticReport>>{
-        match &self.diagnostic_report {
-            Some(diag_report) => Some(diag_report.clone()),
-            _=> None
-        }
-    }
-    pub fn set_diagnostic_report(&mut self, report: Option<Arc<RelatedFullDocumentDiagnosticReport>>){
-        self.diagnostic_report = report;
-    }
-
     pub fn get_parser_diagnostics(&self) -> &Vec<ParserDiagnostic>{
         &self.parser_diagnostics
     }
