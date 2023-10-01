@@ -21,6 +21,25 @@ impl <T> OptionExt for Option<T> {
     fn unwrap_ref(&self) -> &T { self.as_ref().unwrap() }
     fn unwrap_mut(&mut self) -> &mut T { self.as_mut().unwrap() }
 }
+pub trait OptionString {
+    fn unwrap_clone_or_empty_string(&self) -> String;
+    fn unwrap_clone(&self) -> Option<String>;
+}
+impl OptionString for Option<String>{
+    fn unwrap_clone_or_empty_string(&self) -> String {
+        match self.as_ref(){
+            Some(s) => s.clone(),
+            _=> "".to_string()
+        }
+    }
+
+    fn unwrap_clone(&self) -> Option<String> {
+        match self.as_ref(){
+            Some(s) => Some(s.clone()),
+            _=> None
+        }
+    }
+}
 
 #[derive(Debug,Clone,PartialEq, Default)]
 pub struct Range {

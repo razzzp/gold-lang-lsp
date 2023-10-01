@@ -2,7 +2,9 @@ use std::net::ToSocketAddrs;
 use std::ops::Deref;
 
 
+
 use crate::manager::ProjectManager;
+use crate::threadpool::ThreadPool;
 
 use std::error::Error;
 
@@ -66,6 +68,8 @@ fn main_loop(
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let params: InitializeParams = serde_json::from_value(params).unwrap();
     
+    //TODO implem multithreading
+    let mut threadpool = ThreadPool::new(5);
     let mut doc_manager = match ProjectManager::new(params.root_uri){
         Ok(r) => r,
         Err(e) => {
@@ -156,14 +160,11 @@ fn handle_document_symbol_request(
     -> Result<Message, (i32, String)>
 {
     eprintln!("got Document Symbol request #{id}: {params:?}");
-    let doc = match doc_manager.get_parsed_document(&params.text_document.uri) {
-        Ok(d) => d,
-        Err(e) =>{
-            return Err((e.error_code as i32, e.msg));
-        }
+    let symbols = match doc_manager.get_document_symbols_v2(&params.text_document.uri){
+        Ok(syms) => syms,
+        Err(e) => return Err((e.error_code as i32, e.msg))
     };
-    let symbols = doc_manager.get_document_symbols(doc.clone());
-    let result = Some(DocumentSymbolResponse::Nested(symbols.deref().clone()));
+    let result = Some(DocumentSymbolResponse::Nested(symbols));
     let result = serde_json::to_value(&result).unwrap();
     let resp = Response { id, result: Some(result), error: None };
     return Ok(Message::Response(resp));

@@ -6,16 +6,15 @@ use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagn
 use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::IRange, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool, manager::symbol_generator::ISymbolGenerator};
 use data_structs::*;
 
-use self::symbol_generator::{ISymbolTable, SymbolGenerator};
+use self::symbol_generator::{ISymbolTable, SymbolGenerator, DocumentSymbolGeneratorV2};
 
 pub mod data_structs;
 pub mod symbol_generator;
 
 #[derive(Debug)]
 pub struct ProjectManager{
-    threadpool : ThreadPool,
     uri_docinfo_map : Arc<RwLock<HashMap<String, Arc<Mutex<DocumentInfo>>>>>,
-    class_uri_map: Arc<RwLock<HashMap<String, String>>>,
+    class_uri_map: Arc<RwLock<HashMap<String, Url>>>,
     root_path: Option<String>,
 }
 impl ProjectManager{
@@ -47,7 +46,6 @@ impl ProjectManager{
         Ok(ProjectManager{
             uri_docinfo_map: Arc::new(RwLock::new(HashMap::new())),
             root_path,
-            threadpool: ThreadPool::new(5),
             class_uri_map: Arc::new(RwLock::new(HashMap::new()))
         })
     }
@@ -58,7 +56,7 @@ impl ProjectManager{
         let root_path = self.root_path.as_ref().unwrap().clone();
         let uri_docinfo_map = self.uri_docinfo_map.clone();
         let class_uri_map = self.class_uri_map.clone();
-        self.threadpool.execute(move ||{
+        // self.threadpool.execute(move ||{
             let mut stack = Vec::new();
             // stack for pushing dirs
             
@@ -90,7 +88,7 @@ impl ProjectManager{
                                 Some(p) => {
                                     match p.to_str(){
                                         Some(s) => {
-                                            class_uri_map.write().unwrap().insert(s.to_string(), uri.to_string());
+                                            class_uri_map.write().unwrap().insert(s.to_string(), uri.clone());
                                             eprint!("found file {}; uri:{}",s.to_string(), uri.to_string());
                                         },
                                         _=> ()
@@ -103,7 +101,7 @@ impl ProjectManager{
                 }
             }
             return
-        });
+        // });
     }
 
     pub fn get_document_info(&mut self, uri: &Url) -> Result<Arc<Mutex<DocumentInfo>>, ProjectManagerError>{
@@ -194,27 +192,21 @@ impl ProjectManager{
         return Ok(new_doc);
     }
 
-    pub fn get_uri_for_class(&self, class_name: &String)-> Result<String, ProjectManagerError>{
+    pub fn get_uri_for_class(& self, class_name: &String)-> Result<Url, ProjectManagerError>{
         match self.class_uri_map.read().unwrap().get(class_name){
             Some(uri) => Ok(uri.clone()),
             _=> Err(ProjectManagerError::new("no uri found for class", ErrorCode::InternalError))
         }
     }
 
-    pub fn get_symbol_table(&mut self, class: String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+    pub fn get_symbol_table_for_class(&mut self, class: String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         let uri = self.get_uri_for_class(&class)?;
-        let doc: Arc<Mutex<Document>> = self.get_parsed_document(&Url::parse(uri.as_str()).unwrap())?;
-        return self.get_or_generate_symbols(doc);
+        return self.get_symbol_table_for_uri(&uri);
     }
 
-    fn get_or_generate_symbols(&mut self, doc:Arc<Mutex<Document>>) -> Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
-        if doc.lock().unwrap().get_symbol_table().is_some(){
-            return Ok(doc.lock().unwrap().get_symbol_table().unwrap());
-        } 
-
-        let sym_table = self.generate_symbol_table(doc.clone())?;
-        doc.lock().unwrap().set_symbol_table(Some(sym_table.clone()));
-        return Ok(sym_table)
+    pub fn get_symbol_table_for_uri(&mut self, uri : &Url) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+        let doc: Arc<Mutex<Document>> = self.get_parsed_document(uri)?;
+        return self.get_or_generate_symbols(doc);
     }
 
     fn generate_symbol_table(&mut self, doc: Arc<Mutex<Document>>)->Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
@@ -228,6 +220,22 @@ impl ProjectManager{
             _=> Err(ProjectManagerError::new("failed to generate symbol table for ", ErrorCode::InternalError))
         };
         result
+    }
+
+    fn get_or_generate_symbols(&mut self, doc:Arc<Mutex<Document>>) -> Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
+        if doc.lock().unwrap().get_symbol_table().is_some(){
+            return Ok(doc.lock().unwrap().get_symbol_table().unwrap());
+        } 
+
+        let sym_table = self.generate_symbol_table(doc.clone())?;
+        doc.lock().unwrap().set_symbol_table(Some(sym_table.clone()));
+        return Ok(sym_table)
+    }
+
+    pub fn get_document_symbols_v2(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
+        let sym_table = self.get_symbol_table_for_uri(uri)?;
+        let sym_gen = DocumentSymbolGeneratorV2 {};
+        return Ok(sym_gen.generate_symbols(sym_table))
     }
 
     fn parse_document(&self, file_path: &str) -> Result<Document, ProjectManagerError>{
