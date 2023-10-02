@@ -1,6 +1,6 @@
 use lsp_types::{DocumentSymbol, SymbolKind};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses}, analyzers::IVisitor, utils::{DynamicChild, Range, IRange, OptionString}, lexer::tokens::TokenType};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector}, lexer::tokens::TokenType};
 use core::fmt::Debug;
 use std::{collections::HashMap, sync::{Mutex, Arc}, ops::{DerefMut, Deref}, result};
 use crate::utils::{OptionExt};
@@ -44,7 +44,7 @@ pub trait ISymbolTableGenerator : IVisitor{
 }
 
 pub trait ISymbolTable: Debug + Send{
-    fn get_symbol_info(&self, id: &String) -> Option<Arc<SymbolInfo>>;
+    fn get_symbol_info(&self, id: &String, search_uses: bool) -> Option<Arc<SymbolInfo>>;
     fn insert_symbol_info(& mut self, id : String, info: SymbolInfo) -> & SymbolInfo;
     fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Arc<SymbolInfo>> + 'a >;
     fn get_parent_symbol_table(&self) -> Option<Arc<Mutex<dyn ISymbolTable>>>;
@@ -81,7 +81,7 @@ impl SymbolTable{
     }
 }
 impl ISymbolTable for SymbolTable {
-    fn get_symbol_info(&self, id: &String) -> Option<Arc<SymbolInfo>> {
+    fn get_symbol_info(&self, id: &String, search_uses: bool) -> Option<Arc<SymbolInfo>> {
         let idx = match self.hash_map.get(id) {
             Some(i) => i,
             _=> return None,
@@ -89,20 +89,22 @@ impl ISymbolTable for SymbolTable {
         let mut result =  self.symbols_list.get(*idx).cloned();
         if result.is_none() && self.parent_symbol_table.is_some(){
             let parent_st= self.parent_symbol_table.unwrap_ref();
-            result = parent_st.lock().unwrap().get_symbol_info(id);
+            // don't need to search uses of parent
+            result = parent_st.lock().unwrap().get_symbol_info(id, false);
         }
-        if result.is_none(){
+        if search_uses && result.is_none(){
             for st in &self.uses_symbol_table{
-                result = st.lock().unwrap().get_symbol_info(&id);
+                // don't need to search uses of uses
+                result = st.lock().unwrap().get_symbol_info(&id, false);
                 if result.is_some() {break}
             }
         }
         return result;
     }
 
-    fn insert_symbol_info(&mut self, id : String, info: SymbolInfo) -> &SymbolInfo {
+    fn insert_symbol_info(&mut self, id : String, symbol_info: SymbolInfo) -> &SymbolInfo {
         let idx = self.symbols_list.len();
-        self.symbols_list.push(Arc::new(info));
+        self.symbols_list.push(Arc::new(symbol_info));
         self.hash_map.insert(id, idx);
         return self.symbols_list.get(idx).unwrap()
     }
@@ -131,14 +133,17 @@ impl ISymbolTable for SymbolTable {
 
 #[derive(Debug)]
 pub struct SymbolTableGenerator<'a> {
-    symbol_table : Option<SymbolTable>,
-    project_manager : &'a mut ProjectManager
+    root_symbol_table : Option<SymbolTable>,
+    symbol_table_stack: Vec<SymbolTable>,
+    project_manager : &'a mut ProjectManager,
+    logger: Arc<Mutex<dyn ILogger>>,
+    diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
 }
 
 // ensure generator is not used after this!
 impl<'a> ISymbolTableGenerator for SymbolTableGenerator<'a>{
     fn take_symbol_table(&mut self) -> Option<Arc<Mutex<dyn ISymbolTable>>> {
-        match self.symbol_table.take(){
+        match self.root_symbol_table.take(){
             Some(t) => return Some(Arc::new(Mutex::new(t))),
             _=> return None
         }
@@ -146,11 +151,35 @@ impl<'a> ISymbolTableGenerator for SymbolTableGenerator<'a>{
 }
 
 impl<'a> SymbolTableGenerator<'a> {
-    pub fn new(project_manager: &'a mut ProjectManager) -> SymbolTableGenerator{
+    pub fn new(project_manager: &'a mut ProjectManager, 
+    logger: Arc<Mutex<dyn ILogger>>, 
+    diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>) -> SymbolTableGenerator{
         return SymbolTableGenerator {  
-            symbol_table: Some(SymbolTable::new()),
-            project_manager
+            root_symbol_table: Some(SymbolTable::new()),
+            symbol_table_stack: Vec::new(),
+            project_manager,
+            logger: logger,
+            diag_collector
         }
+    }
+
+    fn notify_new_scope(&mut self){
+        self.symbol_table_stack.push(SymbolTable::new())
+    }
+
+    /// Inserts the symbol to the current scope, last in stack/root
+    fn get_cur_sym_table(&mut self) -> &mut SymbolTable{
+        let cur_st = match self.symbol_table_stack.last_mut(){
+            Some(st) => st,
+            _=> self.root_symbol_table.unwrap_mut()
+        };
+        return cur_st;
+    }
+
+    /// Inserts the symbol to the current scope, last in stack/root
+    fn insert_symbol_info(&mut self, id: String, symbol: SymbolInfo) -> &SymbolInfo{
+        let cur_st = self.get_cur_sym_table();
+        cur_st.insert_symbol_info(id, symbol)
     }
 
     fn handle_class(&mut self, node: &AstClass){
@@ -162,10 +191,10 @@ impl<'a> SymbolTableGenerator<'a> {
             _=> None,
         };
         match parent_symbol_table{
-            Some(st) => self.symbol_table.unwrap_mut().set_parent_symbol_table(st),
+            Some(st) => self.root_symbol_table.unwrap_mut().set_parent_symbol_table(st),
             _=> ()
         }
-        self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
+        self.insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_constant_decl(&mut self, node: &AstConstantDeclaration){
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Constant);
@@ -174,7 +203,7 @@ impl<'a> SymbolTableGenerator<'a> {
             TokenType::NumericLiteral => Some("numeric".to_string()),
             _=> Some("unknown".to_string())
         };
-        self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
+        self.insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_type_decl(&mut self, node: &AstTypeDeclaration){
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Type);
@@ -182,11 +211,12 @@ impl<'a> SymbolTableGenerator<'a> {
             Some(n) => {sym_info.eval_type = Some(n.get_identifier())},
             _=> ()
         }
-        self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
+        self.insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_proc_decl(&mut self, node: &AstProcedure){
         let sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Proc);
-        self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
+        self.insert_symbol_info(node.get_identifier(), sym_info);
+        self.notify_new_scope();
     }
     fn handle_func_decl(&mut self, node: &AstFunction){
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Func);
@@ -194,12 +224,13 @@ impl<'a> SymbolTableGenerator<'a> {
             Some(n) => {sym_info.eval_type = Some(n.get_identifier())},
             _=> ()
         }
-        self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
+        self.insert_symbol_info(node.get_identifier(), sym_info);
+        self.notify_new_scope();
     }
     fn handle_field_decl(&mut self, node: &AstGlobalVariableDeclaration){
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Field);
         sym_info.eval_type = Some(node.type_node.get_identifier());
-        self.symbol_table.unwrap_mut().insert_symbol_info(node.get_identifier(), sym_info);
+        self.insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_uses(&mut self, node: &AstUses){
         for uses in &node.list_of_uses{
@@ -207,7 +238,7 @@ impl<'a> SymbolTableGenerator<'a> {
                 Ok(st) => st,
                 Err(_) => continue
             };
-            self.symbol_table.unwrap_mut().add_uses_symbol_table(uses_sym_table);
+            self.root_symbol_table.unwrap_mut().add_uses_symbol_table(uses_sym_table);
         }
     }
 }

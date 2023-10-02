@@ -3,13 +3,14 @@ use std::{collections::HashMap, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, R
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool, manager::symbol_generator::ISymbolTableGenerator};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool, manager::symbol_generator::ISymbolTableGenerator};
 use data_structs::*;
 
 use self::symbol_generator::{ISymbolTable, SymbolTableGenerator, DocumentSymbolGenerator};
 
 pub mod data_structs;
 pub mod symbol_generator;
+pub mod annotated_node;
 
 #[derive(Debug)]
 pub struct ProjectManager{
@@ -194,7 +195,10 @@ impl ProjectManager{
     }
 
     fn generate_symbol_table(&mut self, doc: Arc<Mutex<Document>>)->Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
-        let symbol_generator = SymbolTableGenerator::new(self);
+        let symbol_generator = SymbolTableGenerator::new(
+            self, 
+            self.logger.clone(),
+            Box::new(GenericDiagnosticCollector::new()));
         let symbol_generator:Rc<RefCell<dyn ISymbolTableGenerator>> = Rc::new(RefCell::new(symbol_generator));
         let mut ast_walker = AstWalker::<dyn ISymbolTableGenerator>::new(false);
         ast_walker.register_visitor(&symbol_generator);

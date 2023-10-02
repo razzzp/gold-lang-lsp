@@ -26,6 +26,30 @@ impl ILogger for ConsoleLogger{
     }
 }
 
+pub trait IDiagnosticCollector<T : std::fmt::Debug> : std::fmt::Debug{
+    fn add_diagnostic(&mut self, diagnostic: T);
+    fn take_diagnostics(self) -> Vec<T>;  
+}
+
+#[derive(Debug)]
+pub struct GenericDiagnosticCollector<T> {
+    diagnostics: Vec<T>
+}
+impl<T : std::fmt::Debug> GenericDiagnosticCollector<T>{
+    pub fn new() -> GenericDiagnosticCollector<T>{
+        return GenericDiagnosticCollector { diagnostics:Vec::new() }
+    }
+}
+impl<T : std::fmt::Debug> IDiagnosticCollector<T> for GenericDiagnosticCollector<T>{
+    fn add_diagnostic(&mut self, diagnostic: T) {
+        self.diagnostics.push(diagnostic)
+    }
+
+    fn take_diagnostics(self) -> Vec<T> {
+        self.diagnostics
+    }
+}
+
 
 pub trait IRange {
     fn get_range(&self) -> Range;
