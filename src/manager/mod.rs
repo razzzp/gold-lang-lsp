@@ -12,9 +12,14 @@ pub mod data_structs;
 pub mod symbol_generator;
 pub mod annotated_node;
 
+#[derive(Debug,Default,Clone,Copy)]
+pub struct SymbolTableRequestOptions{
+    wait_on_lock: bool
+}
+
 #[derive(Debug)]
 pub struct ProjectManager{
-    uri_docinfo_map : Arc<RwLock<HashMap<String, Arc<Mutex<DocumentInfo>>>>>,
+    uri_docinfo_map : Arc<RwLock<HashMap<String, Arc<RwLock<DocumentInfo>>>>>,
     class_uri_map: Arc<RwLock<HashMap<String, Url>>>,
     root_path: Option<String>,
     logger: Arc<Mutex<dyn ILogger>>,
@@ -85,7 +90,7 @@ impl ProjectManager{
                                 uri.to_string(),
                                 path
                             );
-                            let new_doc_info = Arc::new(Mutex::new(new_doc_info));
+                            let new_doc_info = Arc::new(RwLock::new(new_doc_info));
                             uri_docinfo_map.insert(uri.to_string(), new_doc_info);
                             // index class name to file uri
                             match entry.path().as_path().file_stem(){
@@ -108,7 +113,7 @@ impl ProjectManager{
         // });
     }
 
-    pub fn get_document_info(&mut self, uri: &Url) -> Result<Arc<Mutex<DocumentInfo>>, ProjectManagerError>{
+    pub fn get_document_info(&mut self, uri: &Url) -> Result<Arc<RwLock<DocumentInfo>>, ProjectManagerError>{
         let uri_string = uri.to_string();
         let doc_info =  self.uri_docinfo_map.read().unwrap().get(&uri_string).cloned();
         if doc_info.is_some() {
@@ -135,35 +140,51 @@ impl ProjectManager{
             uri.to_string(),
             file_path,
         );
-        let new_doc_info = Arc::new(Mutex::new(new_doc_info));
+        let new_doc_info = Arc::new(RwLock::new(new_doc_info));
         self.uri_docinfo_map.write().unwrap().insert(uri_string.clone(), new_doc_info.clone());
         Ok(new_doc_info)
     }
 
-    pub fn get_parsed_document(&mut self, uri: &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn get_parsed_document(&mut self, uri: &Url, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
-        let mut doc_info = doc_info.lock().unwrap();
+        let read_doc_info = match doc_info.try_read(){
+            Ok(rw_lock) => rw_lock,
+            Err(_) => {
+                if wait_on_lock {doc_info.read().unwrap()}
+                else {return Err(ProjectManagerError::new(format!("doc info locked,{}", uri).as_str(), ErrorCode::RequestFailed))}
+            }
+        };
         // check opened document
-        if doc_info.get_opened_document().is_some() {
-            return Ok(doc_info.get_opened_document().unwrap());
+        if read_doc_info.get_opened_document().is_some() {
+            return Ok(read_doc_info.get_opened_document().unwrap());
         }
         // check last saved doc
-        if doc_info.get_saved_document().is_some() {
-            return Ok(doc_info.get_saved_document().unwrap());
-        } else {
-            // if none, read from file
-            let new_doc = self.parse_document(doc_info.file_path.as_str())?;
-            doc_info.set_saved_document(Some(Arc::new(Mutex::new(new_doc))));
-            return Ok(doc_info.get_saved_document().unwrap());
-        }
+        if read_doc_info.get_saved_document().is_some() {
+            return Ok(read_doc_info.get_saved_document().unwrap());
+        } 
+        // drop read lock
+        drop(read_doc_info);
+        let mut write_doc_info = match doc_info.try_write(){
+            Ok(wr_lock) => wr_lock,
+            Err(_) => {
+                if wait_on_lock {doc_info.write().unwrap()}
+                else {return Err(ProjectManagerError::new(format!("doc info locked,{}", uri).as_str(), ErrorCode::RequestFailed))}
+            }
+        };
+        
+        // if none, read from file
+        let new_doc = self.parse_document(write_doc_info.file_path.as_str())?;
+        write_doc_info.set_saved_document(Some(Arc::new(Mutex::new(new_doc))));
+        return Ok(write_doc_info.get_saved_document().unwrap());
+        
     }
 
     pub fn notify_document_saved(&mut self, uri: &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
-        let new_doc = self.parse_document(doc_info.lock().unwrap().file_path.as_str())?;
+        let new_doc = self.parse_document(doc_info.write().unwrap().file_path.as_str())?;
         let new_doc = Arc::new(Mutex::new(new_doc));
-        doc_info.lock().unwrap().set_saved_document(Some(new_doc.clone()));
-        doc_info.lock().unwrap().set_opened_document(None);
+        doc_info.write().unwrap().set_saved_document(Some(new_doc.clone()));
+        doc_info.write().unwrap().set_opened_document(None);
         return Ok(new_doc);
     }
 
@@ -171,7 +192,7 @@ impl ProjectManager{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_content(full_file_content)?;
         let new_doc = Arc::new(Mutex::new(new_doc));
-        doc_info.lock().unwrap().set_opened_document(Some(new_doc.clone()));
+        doc_info.write().unwrap().set_opened_document(Some(new_doc.clone()));
         return Ok(new_doc);
     }
 
@@ -188,7 +209,7 @@ impl ProjectManager{
     }
 
     pub fn get_symbol_table_for_uri(&mut self, uri : &Url) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
-        let doc: Arc<Mutex<Document>> = self.get_parsed_document(uri)?;
+        let doc: Arc<Mutex<Document>> = self.get_parsed_document(uri, true)?;
         return self.get_symbol_table(doc);
     }
 
@@ -196,7 +217,8 @@ impl ProjectManager{
         let symbol_generator = SymbolTableGenerator::new(
             self, 
             self.logger.clone(),
-            Box::new(GenericDiagnosticCollector::new()));
+            Box::new(GenericDiagnosticCollector::new())
+        );
         let symbol_generator:Rc<RefCell<dyn ISymbolTableGenerator>> = Rc::new(RefCell::new(symbol_generator));
         let mut ast_walker = AstWalker::<dyn ISymbolTableGenerator>::new(false);
         ast_walker.register_visitor(&symbol_generator);
@@ -294,7 +316,7 @@ impl ProjectManager{
 
     pub fn generate_document_diagnostic_report(&mut self, uri : &Url)
     -> Result<Arc<RelatedFullDocumentDiagnosticReport>, ProjectManagerError>{
-        let doc = self.get_parsed_document(uri)?;
+        let doc = self.get_parsed_document(uri, true)?;
         let diagnostics = self.get_diagnostics(doc)?;
         return Ok(Arc::new(RelatedFullDocumentDiagnosticReport{
             related_documents: None,
@@ -330,7 +352,7 @@ mod test{
 
     use lsp_types::Url;
 
-    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILogger, ConsoleLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer}};
+    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILogger, ConsoleLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer}, manager::SymbolTableRequestOptions};
 
     use super::ProjectManager;
 
@@ -503,12 +525,19 @@ mod test{
         let path =  fs::canonicalize(&path).unwrap().to_str().unwrap().to_string();
         let uri = Url::from_file_path(path.clone()).unwrap();
        
+        let file_path= PathBuf::from("./test/workspace/Bundle2/aClass5.god");
+        let file_path =  fs::canonicalize(&file_path).unwrap().to_str().unwrap().to_string();
+        let file_uri = Url::from_file_path(file_path.clone()).unwrap();
+
         let mut doc_manager = ProjectManager::new(Some(uri), create_test_logger()).unwrap();
         doc_manager.index_files();
         
-        let map = doc_manager.uri_docinfo_map.clone();
-        let map = map.read().unwrap();
-        assert_eq!(map.len(), 4);
+        assert_eq!(doc_manager.uri_docinfo_map.read().unwrap().len(), 5);
+        // ensure not locked
+        drop(doc_manager.uri_docinfo_map.try_write().unwrap());
+        drop(doc_manager.class_uri_map.try_write().unwrap());
+        // try request
+        let _ = doc_manager.generate_document_symbols(&file_uri).unwrap();
     }
 
     #[test]

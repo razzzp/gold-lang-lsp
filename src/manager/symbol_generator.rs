@@ -4,7 +4,7 @@ use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDec
 use core::fmt::Debug;
 use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc}, ops::{DerefMut, Deref}, result};
 use crate::utils::{OptionExt};
-use super::ProjectManager;
+use super::{ProjectManager, SymbolTableRequestOptions};
 
 #[derive(Debug,Default)]
 pub enum SymbolType{
@@ -44,7 +44,7 @@ pub trait ISymbolTableGenerator : IVisitor{
 }
 
 pub trait ISymbolTable: Debug + Send{
-    fn get_symbol_info(&self, id: &String, search_uses: bool) -> Option<Arc<SymbolInfo>>;
+    fn get_symbol_info(&mut self, id: &String, search_uses: bool) -> Option<Arc<SymbolInfo>>;
     fn insert_symbol_info(& mut self, id : String, info: SymbolInfo) -> & SymbolInfo;
     fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Arc<SymbolInfo>> + 'a >;
     fn get_parent_symbol_table(&self) -> Option<Arc<Mutex<dyn ISymbolTable>>>;
@@ -58,7 +58,9 @@ pub struct SymbolTable{
     // allows order to be preserved and access through key
     symbols_list: Vec<Arc<SymbolInfo>>,
     hash_map : HashMap<String, usize>,
-    uses_symbol_table: Vec<Arc<Mutex<dyn ISymbolTable>>>
+    uses_entities: Vec<String>,
+    // populated with symbol tables from the uses_entities
+    uses_symbol_table: Option<Vec<Arc<Mutex<dyn ISymbolTable>>>>,
     // string_table: HashMap<String, Arc<Mutex<String>>>,
 }
 impl SymbolTable{
@@ -67,7 +69,8 @@ impl SymbolTable{
             parent_symbol_table: None,
             symbols_list: Vec::new(),
             hash_map: HashMap::new(),
-            uses_symbol_table: Vec::new()
+            uses_symbol_table: None,
+            uses_entities: Vec::new()
             // string_table: HashMap::new()
         }
     }
@@ -77,11 +80,22 @@ impl SymbolTable{
     }
 
     pub fn add_uses_symbol_table(&mut self, symbol_table: Arc<Mutex<dyn ISymbolTable>>) {
-        self.uses_symbol_table.push(symbol_table); 
+        self.uses_symbol_table.unwrap_mut().push(symbol_table); 
+    }
+
+    fn iter_uses_symbol_table<'a>(&'a mut self) -> Vec<&'a Arc<Mutex<dyn ISymbolTable>>>{
+        let result = match &self.uses_symbol_table{
+            Some(st_list) => st_list.iter().map(|st| st).collect(),
+            None => Vec::new()
+        };
+        return result;
+    }
+    pub fn add_uses_entity(&mut self, entity_name:&String){
+        self.uses_entities.push(entity_name.clone())
     }
 }
 impl ISymbolTable for SymbolTable {
-    fn get_symbol_info(&self, id: &String, search_uses: bool) -> Option<Arc<SymbolInfo>> {
+    fn get_symbol_info(&mut self, id: &String, search_uses: bool) -> Option<Arc<SymbolInfo>> {
         let idx = match self.hash_map.get(id) {
             Some(i) => i,
             _=> return None,
@@ -93,7 +107,7 @@ impl ISymbolTable for SymbolTable {
             result = parent_st.lock().unwrap().get_symbol_info(id, false);
         }
         if search_uses && result.is_none(){
-            for st in &self.uses_symbol_table{
+            for st in self.iter_uses_symbol_table(){
                 // don't need to search uses of uses
                 result = st.lock().unwrap().get_symbol_info(&id, false);
                 if result.is_some() {break}
@@ -138,7 +152,7 @@ pub struct SymbolTableGenerator<'a> {
     project_manager : &'a mut ProjectManager,
     logger: Arc<Mutex<dyn ILogger>>,
     diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
-    seen_classes : HashSet<String>
+
 }
 
 // ensure generator is not used after this!
@@ -154,14 +168,14 @@ impl<'a> ISymbolTableGenerator for SymbolTableGenerator<'a>{
 impl<'a> SymbolTableGenerator<'a> {
     pub fn new(project_manager: &'a mut ProjectManager, 
     logger: Arc<Mutex<dyn ILogger>>, 
-    diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>) -> SymbolTableGenerator{
+    diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
+) -> SymbolTableGenerator{
         return SymbolTableGenerator {  
             root_symbol_table: Some(SymbolTable::new()),
             symbol_table_stack: Vec::new(),
             project_manager,
             logger: logger,
             diag_collector,
-            seen_classes: HashSet::new()
         }
     }
 
@@ -184,20 +198,10 @@ impl<'a> SymbolTableGenerator<'a> {
         cur_st.insert_symbol_info(id, symbol)
     }
 
-    /// access get symbol table through here to prevent same thread requesting lock to same
-    ///  doc twice.
     fn get_symbol_table_for_class(&mut self, class : &String) -> Option<Arc<Mutex<dyn ISymbolTable>>>{
-        if self.seen_classes.contains(class){
-            None
-        } else {
-            if class.as_str() == "aWFRoot"{
-                print!(" ");
-            }
-            self.seen_classes.insert(class.clone());
-            match self.project_manager.get_symbol_table_for_class(class){
-                Ok(st) => Some(st),
-                _=> None
-            }
+        match self.project_manager.get_symbol_table_for_class(class){
+            Ok(st) => Some(st),
+            _=> None
         }
     }
 
@@ -249,12 +253,16 @@ impl<'a> SymbolTableGenerator<'a> {
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_uses(&mut self, node: &AstUses){
+        
         for uses in &node.list_of_uses{
-            let uses_sym_table = match self.get_symbol_table_for_class(&uses.get_value()) {
-                Some(st) => st,
-                _=> continue
-            };
-            self.root_symbol_table.unwrap_mut().add_uses_symbol_table(uses_sym_table);
+            self.get_cur_sym_table().add_uses_entity(&uses.get_value());
+
+            // TODO defer uses symbol table population, right now it causes deadlock if done unconditionally 
+            // let uses_sym_table = match self.get_symbol_table_for_class(&uses.get_value(), false) {
+            //     Some(st) => st,
+            //     _=> continue
+            // };
+            // self.get_cur_sym_table().add_uses_symbol_table(uses_sym_table);
         }
     }
 }
