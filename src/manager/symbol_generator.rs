@@ -2,7 +2,7 @@ use lsp_types::{DocumentSymbol, SymbolKind};
 
 use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector}, lexer::tokens::TokenType};
 use core::fmt::Debug;
-use std::{collections::HashMap, sync::{Mutex, Arc}, ops::{DerefMut, Deref}, result};
+use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc}, ops::{DerefMut, Deref}, result};
 use crate::utils::{OptionExt};
 use super::ProjectManager;
 
@@ -138,6 +138,7 @@ pub struct SymbolTableGenerator<'a> {
     project_manager : &'a mut ProjectManager,
     logger: Arc<Mutex<dyn ILogger>>,
     diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
+    seen_classes : HashSet<String>
 }
 
 // ensure generator is not used after this!
@@ -159,7 +160,8 @@ impl<'a> SymbolTableGenerator<'a> {
             symbol_table_stack: Vec::new(),
             project_manager,
             logger: logger,
-            diag_collector
+            diag_collector,
+            seen_classes: HashSet::new()
         }
     }
 
@@ -182,14 +184,28 @@ impl<'a> SymbolTableGenerator<'a> {
         cur_st.insert_symbol_info(id, symbol)
     }
 
+    /// access get symbol table through here to prevent same thread requesting lock to same
+    ///  doc twice.
+    fn get_symbol_table_for_class(&mut self, class : &String) -> Option<Arc<Mutex<dyn ISymbolTable>>>{
+        if self.seen_classes.contains(class){
+            None
+        } else {
+            if class.as_str() == "aWFRoot"{
+                print!(" ");
+            }
+            self.seen_classes.insert(class.clone());
+            match self.project_manager.get_symbol_table_for_class(class){
+                Ok(st) => Some(st),
+                _=> None
+            }
+        }
+    }
+
     fn handle_class(&mut self, node: &AstClass){
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Class);
 
         sym_info.parent = Some(node.parent_class.clone());
-        let parent_symbol_table = match self.project_manager.get_symbol_table_for_class(&node.parent_class){
-            Ok(st) => Some(st),
-            _=> None,
-        };
+        let parent_symbol_table = self.get_symbol_table_for_class(&node.parent_class);
         match parent_symbol_table{
             Some(st) => self.root_symbol_table.unwrap_mut().set_parent_symbol_table(st),
             _=> ()
@@ -234,9 +250,9 @@ impl<'a> SymbolTableGenerator<'a> {
     }
     fn handle_uses(&mut self, node: &AstUses){
         for uses in &node.list_of_uses{
-            let uses_sym_table = match self.project_manager.get_symbol_table_for_class(&uses.get_value()) {
-                Ok(st) => st,
-                Err(_) => continue
+            let uses_sym_table = match self.get_symbol_table_for_class(&uses.get_value()) {
+                Some(st) => st,
+                _=> continue
             };
             self.root_symbol_table.unwrap_mut().add_uses_symbol_table(uses_sym_table);
         }

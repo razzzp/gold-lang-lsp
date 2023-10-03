@@ -66,6 +66,7 @@ impl ProjectManager{
             stack.push(root_path);
             // lock here and keep locked until all files indexed
             let mut uri_docinfo_map = uri_docinfo_map.write().unwrap();
+            // let mut class_uri_map = class_uri_map.write().unwrap();
             while !stack.is_empty(){
                 let path = stack.pop().unwrap();
                 for entry in std::fs::read_dir(path).unwrap(){
@@ -109,13 +110,10 @@ impl ProjectManager{
 
     pub fn get_document_info(&mut self, uri: &Url) -> Result<Arc<Mutex<DocumentInfo>>, ProjectManagerError>{
         let uri_string = uri.to_string();
-        let uri_docinfo_map=  self.uri_docinfo_map.read().unwrap();
-        let doc_info =  uri_docinfo_map.get(&uri_string);
+        let doc_info =  self.uri_docinfo_map.read().unwrap().get(&uri_string).cloned();
         if doc_info.is_some() {
             return Ok(doc_info.unwrap().clone());
         }
-        // ensure can get write lock later
-        drop(uri_docinfo_map);
 
         let file_path = match uri.to_file_path() {
             Ok(fp) => {
@@ -511,6 +509,27 @@ mod test{
         let map = doc_manager.uri_docinfo_map.clone();
         let map = map.read().unwrap();
         assert_eq!(map.len(), 4);
+    }
+
+    #[test]
+    fn test_file_outside_workspace_after_index(){
+        // skip if dir doesn't exist
+        let path = PathBuf::from("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        let path =  match fs::canonicalize(&path){
+            Ok(p) => p.to_str().unwrap().to_string(),
+            _=> return
+        };
+        let uri = Url::from_file_path(path.clone()).unwrap();
+       
+        let mut doc_manager = ProjectManager::new(Some(uri), create_test_logger()).unwrap();
+        doc_manager.index_files();
+        
+        println!("num of files: {}",doc_manager.uri_docinfo_map.read().unwrap().len());
+        // ensure not locked
+        drop(doc_manager.uri_docinfo_map.try_write().unwrap());
+        drop(doc_manager.class_uri_map.try_write().unwrap());
+        // test file outside workspace
+        let _ = doc_manager.generate_document_symbols(&Url::parse("file:///c%3A/Users/muhampra/dev/ewam_src/37.63.03/OcsMobCardsApps/Images/aOcsMobileICCardImageARRViewer.god").unwrap()).unwrap();
     }
 
     #[test]
