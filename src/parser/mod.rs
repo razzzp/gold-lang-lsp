@@ -198,7 +198,7 @@ fn parse_class<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token]
    return Ok((next, Box::new(AstClass{
       raw_pos: class_token.raw_pos,
       range: create_new_range_from_irange(&class_token, &end_token),
-      name: class_name_token.get_value(),
+      identifier: class_name_token,
       parent_class: parent_class_name.get_value()
    }))); 
 }
@@ -1224,7 +1224,7 @@ mod test {
       let class = r.1.as_any().downcast_ref::<AstClass>().unwrap();
       check_node_pos_and_range(class, &input);
       assert_eq!(r.0.len(), 0);
-      assert_eq!(class.name, "aTestClass");
+      assert_eq!(class.get_identifier(), "aTestClass");
       assert_eq!(class.raw_pos, 0);
       assert_eq!(class.parent_class, "aParentClass");
    }

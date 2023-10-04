@@ -183,6 +183,10 @@ impl<'a> SymbolTableGenerator<'a> {
         self.symbol_table_stack.push(SymbolTable::new())
     }
 
+    fn pop_last_scope(&mut self){
+        self.symbol_table_stack.pop();
+    }
+
     /// Inserts the symbol to the current scope, last in stack/root
     fn get_cur_sym_table(&mut self) -> &mut SymbolTable{
         let cur_st = match self.symbol_table_stack.last_mut(){
@@ -214,6 +218,8 @@ impl<'a> SymbolTableGenerator<'a> {
             Some(st) => self.root_symbol_table.unwrap_mut().set_parent_symbol_table(st),
             _=> ()
         }
+        sym_info.range = node.get_range();
+        sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_constant_decl(&mut self, node: &AstConstantDeclaration){
@@ -223,6 +229,8 @@ impl<'a> SymbolTableGenerator<'a> {
             TokenType::NumericLiteral => Some("numeric".to_string()),
             _=> Some("unknown".to_string())
         };
+        sym_info.range = node.get_range();
+        sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_type_decl(&mut self, node: &AstTypeDeclaration){
@@ -231,25 +239,35 @@ impl<'a> SymbolTableGenerator<'a> {
             Some(n) => {sym_info.eval_type = Some(n.get_identifier())},
             _=> ()
         }
+        sym_info.range = node.get_range();
+        sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_proc_decl(&mut self, node: &AstProcedure){
-        let sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Proc);
+        self.pop_last_scope();
+        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Proc);
+        sym_info.range = node.get_range();
+        sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
         self.notify_new_scope();
     }
     fn handle_func_decl(&mut self, node: &AstFunction){
+        self.pop_last_scope();
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Func);
         match node.return_type.as_any().downcast_ref::<AstTypeBasic>(){
             Some(n) => {sym_info.eval_type = Some(n.get_identifier())},
             _=> ()
         }
+        sym_info.range = node.get_range();
+        sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
         self.notify_new_scope();
     }
     fn handle_field_decl(&mut self, node: &AstGlobalVariableDeclaration){
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Field);
         sym_info.eval_type = Some(node.type_node.get_identifier());
+        sym_info.range = node.get_range();
+        sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
     fn handle_uses(&mut self, node: &AstUses){

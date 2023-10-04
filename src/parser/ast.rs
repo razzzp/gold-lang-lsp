@@ -175,14 +175,14 @@ impl IAstNode for AstTerminal {
 pub struct AstClass {
     pub raw_pos: usize,
     pub range: Range,
-    pub name: String,
+    pub identifier: Token,
     pub parent_class: String,
 }
 implem_irange!(AstClass);
 impl IAstNode for AstClass {
     implem_iastnode_common!(AstClass, "class");
     fn get_identifier(&self) -> String {
-        self.name.clone()
+        self.identifier.get_value()
     }
 }
 
