@@ -2,9 +2,9 @@ use lsp_types::{DocumentSymbol, SymbolKind};
 
 use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector}, lexer::tokens::TokenType};
 use core::fmt::Debug;
-use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc}, ops::{DerefMut, Deref}, result};
+use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard}, ops::{DerefMut, Deref}, result};
 use crate::utils::{OptionExt};
-use super::{ProjectManager, SymbolTableRequestOptions};
+use super::{ProjectManager, SymbolTableRequestOptions, annotated_node::AnnotatedNode};
 
 #[derive(Debug,Default)]
 pub enum SymbolType{
@@ -39,7 +39,7 @@ impl SymbolInfo{
     }
 }
 
-pub trait ISymbolTableGenerator : IVisitor{
+pub trait ISymbolTableGenerator{
     fn take_symbol_table(&mut self) -> Option<Arc<Mutex<dyn ISymbolTable>>>;
 }
 
@@ -179,6 +179,44 @@ impl<'a> SymbolTableGenerator<'a> {
         }
     }
 
+    pub fn generate<'b>(&mut self, root_node: &'b dyn IAstNode) -> Arc<RwLock<AnnotatedNode<'b, dyn IAstNode>>>{
+        let annotated_tree = self.generate_annotated_tree(root_node);
+        self.walk_tree(&annotated_tree);
+        return annotated_tree;
+    }
+
+    fn generate_annotated_tree<'b>(&self, root_node: &'b dyn IAstNode) -> Arc<RwLock<AnnotatedNode<'b, dyn IAstNode>>>{
+        let new_annotated_node = Arc::new(RwLock::new(AnnotatedNode::new(root_node, None)));
+        let children = match root_node.get_children_dynamic(){
+            Some(c) => c,
+            _=> return new_annotated_node
+        };
+        for child in children {
+            let new_child_node = self.generate_annotated_tree(child.data);
+            new_child_node.write().unwrap().parent = Some(Arc::downgrade(&new_annotated_node.clone()));
+            new_annotated_node.write().unwrap().children.push(new_child_node.clone())
+        }
+        return new_annotated_node;
+    }
+
+    fn walk_tree(&mut self, node: &Arc<RwLock<AnnotatedNode<'_, dyn IAstNode>>>){
+        self.visit(node);
+        for child in &node.read().unwrap().children {
+            self.walk_tree(child)
+        }
+    }
+
+    fn visit(&mut self, node : &Arc<RwLock<AnnotatedNode<'_, dyn IAstNode>>>){
+        let write_lock = node.write().unwrap();
+        self.handle_class(&write_lock);
+        self.handle_constant_decl(&write_lock);
+        self.handle_type_decl(&write_lock);
+        self.handle_proc_decl(&write_lock);
+        self.handle_func_decl(&write_lock);
+        self.handle_field_decl(&write_lock);
+        self.handle_uses(&write_lock);
+    }
+
     fn notify_new_scope(&mut self){
         self.symbol_table_stack.push(SymbolTable::new())
     }
@@ -209,7 +247,11 @@ impl<'a> SymbolTableGenerator<'a> {
         }
     }
 
-    fn handle_class(&mut self, node: &AstClass){
+    fn handle_class(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+        let node = match node.data.as_any().downcast_ref::<AstClass>(){
+            Some(node) => node,
+            _=> return
+        };
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Class);
 
         sym_info.parent = Some(node.parent_class.clone());
@@ -222,7 +264,12 @@ impl<'a> SymbolTableGenerator<'a> {
         sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
-    fn handle_constant_decl(&mut self, node: &AstConstantDeclaration){
+
+    fn handle_constant_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+        let node = match node.data.as_any().downcast_ref::<AstConstantDeclaration>(){
+            Some(node) => node,
+            _=> return
+        };
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Constant);
         sym_info.eval_type = match &node.value.token_type{
             TokenType::StringLiteral => Some("string".to_string()),
@@ -233,7 +280,12 @@ impl<'a> SymbolTableGenerator<'a> {
         sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
-    fn handle_type_decl(&mut self, node: &AstTypeDeclaration){
+
+    fn handle_type_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+        let node = match node.data.as_any().downcast_ref::<AstTypeDeclaration>(){
+            Some(node) => node,
+            _=> return
+        };
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Type);
         match node.type_node.as_any().downcast_ref::<AstTypeBasic>(){
             Some(n) => {sym_info.eval_type = Some(n.get_identifier())},
@@ -243,7 +295,12 @@ impl<'a> SymbolTableGenerator<'a> {
         sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
-    fn handle_proc_decl(&mut self, node: &AstProcedure){
+
+    fn handle_proc_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+        let node = match node.data.as_any().downcast_ref::<AstProcedure>(){
+            Some(node) => node,
+            _=> return
+        };
         self.pop_last_scope();
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Proc);
         sym_info.range = node.get_range();
@@ -251,7 +308,12 @@ impl<'a> SymbolTableGenerator<'a> {
         self.insert_symbol_info(node.get_identifier(), sym_info);
         self.notify_new_scope();
     }
-    fn handle_func_decl(&mut self, node: &AstFunction){
+
+    fn handle_func_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+        let node = match node.data.as_any().downcast_ref::<AstFunction>(){
+            Some(node) => node,
+            _=> return
+        };
         self.pop_last_scope();
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Func);
         match node.return_type.as_any().downcast_ref::<AstTypeBasic>(){
@@ -263,15 +325,24 @@ impl<'a> SymbolTableGenerator<'a> {
         self.insert_symbol_info(node.get_identifier(), sym_info);
         self.notify_new_scope();
     }
-    fn handle_field_decl(&mut self, node: &AstGlobalVariableDeclaration){
+
+    fn handle_field_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+        let node = match node.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
+            Some(node) => node,
+            _=> return
+        };
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Field);
         sym_info.eval_type = Some(node.type_node.get_identifier());
         sym_info.range = node.get_range();
         sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
-    fn handle_uses(&mut self, node: &AstUses){
-        
+
+    fn handle_uses(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+        let node = match node.data.as_any().downcast_ref::<AstUses>(){
+            Some(node) => node,
+            _=> return
+        };
         for uses in &node.list_of_uses{
             self.get_cur_sym_table().add_uses_entity(&uses.get_value());
 
@@ -284,51 +355,6 @@ impl<'a> SymbolTableGenerator<'a> {
         }
     }
 }
-impl<'a> IVisitor for SymbolTableGenerator<'a>{
-    fn visit(&mut self, node: &DynamicChild<dyn IAstNode>) {
-        match node.data.as_any().downcast_ref::<AstClass>(){
-            Some(n) => self.handle_class(n),
-            _=> ()
-        }
-        match node.data.as_any().downcast_ref::<AstConstantDeclaration>(){
-            Some(n) => self.handle_constant_decl(n),
-            _=> ()
-        }
-        match node.data.as_any().downcast_ref::<AstTypeDeclaration>(){
-            Some(n) => self.handle_type_decl(n),
-            _=> ()
-        }
-        match node.data.as_any().downcast_ref::<AstProcedure>(){
-            Some(n) => self.handle_proc_decl(n),
-            _=> ()
-        }
-        match node.data.as_any().downcast_ref::<AstFunction>(){
-            Some(n) => self.handle_func_decl(n),
-            _=> ()
-        }
-        match node.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
-            Some(n) => self.handle_field_decl(n),
-            _=> ()
-        }
-        match node.data.as_any().downcast_ref::<AstUses>(){
-            Some(n) => self.handle_uses(n),
-            _=> ()
-        }
-    }
-
-    fn notify_end(&mut self) {
-        // debug only
-        // eprintln!("!DEBUG!");
-        // self.symbol_table.iter().for_each(|st|{
-        //     st.print_all_symbols()
-        // })
-    }
-
-    fn as_visitor(&mut self) -> &dyn IVisitor {
-        self
-    }
-}
-
 
 
 pub struct DocumentSymbolGenerator{

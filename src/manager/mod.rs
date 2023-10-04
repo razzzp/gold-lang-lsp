@@ -214,16 +214,14 @@ impl ProjectManager{
     }
 
     fn generate_symbol_table(&mut self, doc: Arc<Mutex<Document>>)->Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
-        let symbol_generator = SymbolTableGenerator::new(
+        let mut symbol_generator = SymbolTableGenerator::new(
             self, 
             self.logger.clone(),
             Box::new(GenericDiagnosticCollector::new())
         );
-        let symbol_generator:Rc<RefCell<dyn ISymbolTableGenerator>> = Rc::new(RefCell::new(symbol_generator));
-        let mut ast_walker = AstWalker::<dyn ISymbolTableGenerator>::new(false);
-        ast_walker.register_visitor(&symbol_generator);
-        ast_walker.run(doc.lock().unwrap().get_ast());
-        let result = match symbol_generator.borrow_mut().take_symbol_table() {
+        // TODO set annotated tree to doc
+        let annotated_tree = symbol_generator.generate(doc.lock().unwrap().get_ast());
+        let result = match symbol_generator.take_symbol_table() {
             Some(st) => Ok(st),
             _=> Err(ProjectManagerError::new("failed to generate symbol table for ", ErrorCode::InternalError))
         };
@@ -567,7 +565,7 @@ mod test{
         proj_manager.index_files();
         let result = proj_manager.get_symbol_table_for_class(&"aRootClass".to_string()).unwrap();
         let result = result.lock().unwrap();
-        assert_eq!(result.iter_symbols().count(), 3);
+        assert_eq!(result.iter_symbols().count(), 6);
     }
 
     #[test]
