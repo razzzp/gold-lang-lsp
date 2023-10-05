@@ -61,7 +61,7 @@ pub struct SymbolTable{
     hash_map : HashMap<String, usize>,
     uses_entities: Vec<String>,
     // populated with symbol tables from the uses_entities
-    uses_symbol_table: Option<Vec<Arc<Mutex<dyn ISymbolTable>>>>,
+    uses_symbol_table: Vec<Arc<Mutex<dyn ISymbolTable>>>,
     // string_table: HashMap<String, Arc<Mutex<String>>>,
 }
 impl SymbolTable{
@@ -70,7 +70,7 @@ impl SymbolTable{
             parent_symbol_table: None,
             symbols_list: Vec::new(),
             hash_map: HashMap::new(),
-            uses_symbol_table: None,
+            uses_symbol_table: Vec::new(),
             uses_entities: Vec::new()
             // string_table: HashMap::new()
         }
@@ -81,15 +81,11 @@ impl SymbolTable{
     }
 
     pub fn add_uses_symbol_table(&mut self, symbol_table: Arc<Mutex<dyn ISymbolTable>>) {
-        self.uses_symbol_table.unwrap_mut().push(symbol_table); 
+        self.uses_symbol_table.push(symbol_table); 
     }
 
     fn iter_uses_symbol_table<'a>(&'a mut self) -> Vec<&'a Arc<Mutex<dyn ISymbolTable>>>{
-        let result = match &self.uses_symbol_table{
-            Some(st_list) => st_list.iter().map(|st| st).collect(),
-            None => Vec::new()
-        };
-        return result;
+        self.uses_symbol_table.iter().collect()
     }
     pub fn add_uses_entity(&mut self, entity_name:&String){
         self.uses_entities.push(entity_name.clone())
@@ -374,12 +370,12 @@ impl<'a> SemanticAnalysisService<'a> {
         for uses in &node.list_of_uses{
             self.get_cur_sym_table().add_uses_entity(&uses.get_value());
 
-            // TODO defer uses symbol table population, right now it causes deadlock if done unconditionally 
-            // let uses_sym_table = match self.get_symbol_table_for_class(&uses.get_value(), false) {
-            //     Some(st) => st,
-            //     _=> continue
-            // };
-            // self.get_cur_sym_table().add_uses_symbol_table(uses_sym_table);
+            // get st for uses
+            let uses_sym_table = match self.get_symbol_table_for_class(&uses.get_value()) {
+                Ok(st) => st,
+                _=> continue
+            };
+            self.get_cur_sym_table().add_uses_symbol_table(uses_sym_table);
         }
     }
 }
