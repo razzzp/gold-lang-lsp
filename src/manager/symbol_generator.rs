@@ -189,7 +189,7 @@ impl<'a> SymbolTableGenerator<'a> {
 
     fn generate_annotated_tree<'b>(&self, root_node: &Arc<dyn IAstNode>) -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>{
         let new_annotated_node = Arc::new(RwLock::new(AnnotatedNode::new(root_node, None)));
-        let children = match root_node.get_children(){
+        let children = match root_node.get_children_arc(){
             Some(c) => c,
             _=> return new_annotated_node
         };

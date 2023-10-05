@@ -383,7 +383,7 @@ fn parse_type_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [T
    }
 }
 
-fn parse_enum_variant<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Arc<AstEnumVariant>), ParseError<'a>>{
+fn parse_enum_variant<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Arc<dyn IAstNode>), ParseError<'a>>{
    // annotations
    let (next, _) = opt_parse_w_context(parse_annotations)(input, context)?;
    let (next, variant_ident) = exp_token(TokenType::Identifier)(next)?;
@@ -820,7 +820,15 @@ fn parse_procedure_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(inp
    }
    }
    let end = if end_method_token.is_some() {end_method_token.as_ref().unwrap().get_range()} else {end.get_range()};
-
+   // copnvert to arc
+   let modifier_node : Option<Arc<dyn IAstNode>> = match modifier_node {
+       Some(n) => Some(Arc::new(n)),
+       _=> None
+   };
+   let method_body: Option<Arc<dyn IAstNode>> = match method_body {
+       Some(n) => Some(Arc::new(n)),
+       _=> None
+   };
    return Ok((
       next, 
       Arc::new(AstProcedure{
@@ -885,7 +893,14 @@ fn parse_function_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(inpu
       }
    }
    let end = if end_method_token.is_some() {end_method_token.as_ref().unwrap().get_range()} else {end.get_range()};
-   
+   let modifier_node : Option<Arc<dyn IAstNode>> = match modifier_node {
+      Some(n) => Some(Arc::new(n)),
+      _=> None
+   };
+   let method_body: Option<Arc<dyn IAstNode>> = match method_body {
+      Some(n) => Some(Arc::new(n)),
+      _=> None
+   };
    return Ok((
       next, 
       Arc::new(AstFunction{
@@ -907,7 +922,7 @@ fn has_method_body(modifier_node: &Option<AstMethodModifiers>) -> bool {
    return !node_ref.is_forward && node_ref.external_dll_name.is_none()
 }
 
-fn parse_parameter_declaration_list<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Option<AstParameterDeclarationList>), ParseError<'a>>{
+fn parse_parameter_declaration_list<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Option<Arc<dyn IAstNode>>), ParseError<'a>>{
    // opening (
    let (next, obracket_token) = match exp_token(TokenType::OBracket)(input){
       Ok((r,t)) => (r, t),
@@ -927,12 +942,12 @@ fn parse_parameter_declaration_list<'a, C: IParserContext<ParserDiagnostic> + 'a
       Err(e) => return Err(prepend_msg_to_error("Failed to parse param list decl: ", e))
    };
 
-   return Ok((next, Some(AstParameterDeclarationList{
+   return Ok((next, Some(Arc::new(AstParameterDeclarationList{
       raw_pos: obracket_token.raw_pos,
       pos: obracket_token.get_pos(),
       range: Range{start: obracket_token.get_pos(), end: cbracket_token.range.end},
       parameter_list: param_decl_list,
-   })));
+   }))));
 }
 
 fn parse_parameter_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Arc<dyn IAstNode>), ParseError<'a>>{
@@ -1181,7 +1196,7 @@ fn parse_method_body<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant, AstModule, AstTypeSized}, IParserContext, parse_module}, utils::ast_to_string_brief_recursive};
+   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant, AstModule, AstTypeSized, AstParameterDeclarationList, AstMethodModifiers}, IParserContext, parse_module}, utils::ast_to_string_brief_recursive};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type, ParserContext};
 
@@ -1566,6 +1581,7 @@ mod test {
 
       // test params
       let params = downcasted.parameter_list.as_ref().unwrap();
+      let params = params.as_any().downcast_ref::<AstParameterDeclarationList>().unwrap();
       assert_eq!(params.parameter_list.len(), 2);
       let expected_param_idents = ["FirstParam", "SecondParam"];
       let expected_param_types = ["FirstParamType", "SecondParamType"];
@@ -1579,6 +1595,7 @@ mod test {
       }
       // test modifiers
       let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
+      let modifiers_node = modifiers_node.as_any().downcast_ref::<AstMethodModifiers>().unwrap();
       assert!(modifiers_node.member_modifiers.is_private);
       assert!(modifiers_node.member_modifiers.is_protected);
       assert!(modifiers_node.member_modifiers.is_final);
@@ -1619,6 +1636,7 @@ mod test {
 
       // test params
       let params = downcasted.parameter_list.as_ref().unwrap();
+      let params = params.as_any().downcast_ref::<AstParameterDeclarationList>().unwrap();
       assert_eq!(params.parameter_list.len(), 2);
       let expected_param_idents = ["FirstParam", "SecondParam"];
       let expected_param_types = ["FirstParamType", "SecondParamType"];
@@ -1635,6 +1653,7 @@ mod test {
       assert_eq!(return_node.type_token.value.as_ref().unwrap().as_str(), "aReturnType");
       // test modifiers
       let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
+      let modifiers_node = modifiers_node.as_any().downcast_ref::<AstMethodModifiers>().unwrap();
       assert!(!modifiers_node.member_modifiers.is_private);
       assert!(modifiers_node.member_modifiers.is_protected);
       assert!(!modifiers_node.member_modifiers.is_final);
@@ -1668,9 +1687,10 @@ mod test {
       let mut context = create_context();
       let (_, node) = parse_parameter_declaration_list(next, &mut context).unwrap();
       let node = node.unwrap();
-      check_node_pos_and_range(&node, &input);
+      check_node_pos_and_range(node.as_ast_node(), &input);
 
       // test params
+      let node = node.as_any().downcast_ref::<AstParameterDeclarationList>().unwrap();
       assert_eq!(node.parameter_list.len(), 3);
       for (i, param_node) in node.parameter_list.iter().enumerate() {
          let param_node = cast_and_unwrap::<AstParameterDeclaration>(param_node);
@@ -1701,8 +1721,9 @@ mod test {
       let mut context = create_context();
       let (_, node) = parse_parameter_declaration_list(next, &mut context).unwrap();
       let node = node.unwrap();
-      check_node_pos_and_range(&node, &input);
+      check_node_pos_and_range(node.as_ast_node(), &input);
 
+      let node = node.as_any().downcast_ref::<AstParameterDeclarationList>().unwrap();
       assert_eq!(node.parameter_list.len(), 2);
       // test param 1
       let param_node = cast_and_unwrap::<AstParameterDeclaration>(&node.parameter_list[0]);

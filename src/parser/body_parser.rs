@@ -412,7 +412,10 @@ fn parse_if_block_v3<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
         pos: if_token.get_pos(),
         range: create_new_range(if_token.get_range(), if_cond_node_range),
         if_block: Arc::new(if_block),
-        else_if_blocks: else_if_blocks.into_iter().map(|b|{Arc::new(b)}).collect(),
+        else_if_blocks: else_if_blocks.into_iter().map(|b|{
+            let b :Arc<dyn IAstNode>= Arc::new(b);
+            b
+        }).collect(),
         end_token: None
     };
     match end_token {
@@ -472,7 +475,7 @@ fn parse_when_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     ].as_ref())(input, context);
 }
 
-fn parse_when_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a[Token], Arc<AstWhenBlock>), ParseError<'a>>{
+fn parse_when_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a[Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, when_tok) = exp_token(TokenType::When)(input)?;
     let (next, when_expr) = parse_when_expr(next, context)?;
     let (next, statements, end_tok) = parse_until_w_context(next, exp_token(TokenType::EndWhen), parse_statement_v2, context);

@@ -53,7 +53,7 @@ pub trait IAstNode: std::fmt::Debug + IRange + Send + Sync{
     fn get_children_ref<'a>(&'a self) -> Option<Vec<&dyn IAstNode>>{
         None
     }
-    fn get_children<'a>(&'a self) -> Option<Vec<&'a Arc<dyn IAstNode>>>{
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>>{
         None
     }
     /// gets children wrapped in DynamicChild object, to provide parent node
@@ -75,6 +75,7 @@ pub trait IAstNode: std::fmt::Debug + IRange + Send + Sync{
     }
     fn to_string_ident_pos(&self) -> String {
         format!("{}:{}", self.get_identifier(), self.get_pos().to_string_brief())
+
     }
     fn to_string_type(&self) -> String {
         todo!()
@@ -128,6 +129,9 @@ impl IAstNode for AstRoot{
             result.push(n.as_ast_node())
         });
         return Some(result);
+    }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        return Some(self.statements.iter().collect());
     }
     
 }
@@ -322,7 +326,7 @@ pub struct AstTypeEnum{
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub variants: Vec<Arc<AstEnumVariant>>,
+    pub variants: Vec<Arc<dyn IAstNode>>,
 }
 implem_irange!(AstTypeEnum);
 impl IAstNode for AstTypeEnum {
@@ -337,6 +341,9 @@ impl IAstNode for AstTypeEnum {
         return Some(
             self.variants.iter().map(|n| n.as_ast_node()).collect()
         )
+    }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        return Some(self.variants.iter().collect());
     }
     fn get_pos(&self) -> Position {
         return self.pos.clone();
@@ -425,6 +432,11 @@ impl IAstNode for AstTypeSet {
         result.push(self.set_type.as_ref());
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.set_type);
+        return Some(result);
+    }
     fn to_string_type(&self) -> String {
         "type_set".to_string()
     }
@@ -463,9 +475,9 @@ impl IAstNode for AstTypeDeclaration {
         result.push(self.type_node.as_ref().as_ast_node());
         return Some(result);
     }
-    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
-        result.push(DynamicChild::new(self.type_node.as_ref(), Some(self)));
+        result.push(&self.type_node);
         return Some(result);
     }
     fn get_identifier(&self) -> String {
@@ -546,9 +558,9 @@ impl IAstNode for AstGlobalVariableDeclaration {
         result.push(self.type_node.as_ref().as_ast_node());
         return Some(result);
     }
-    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
-        result.push(DynamicChild::new(self.type_node.as_ref(), Some(self)));
+        result.push(&self.type_node);
         return Some(result);
     }
     fn get_identifier(&self) -> String {
@@ -564,9 +576,9 @@ pub struct AstProcedure {
     pub raw_pos: usize,
     pub range: Range,
     pub identifier: Arc<dyn IAstNode>,
-    pub parameter_list: Option<AstParameterDeclarationList>,
-    pub modifiers: Option<AstMethodModifiers>,
-    pub body: Option<AstMethodBody>,
+    pub parameter_list: Option<Arc<dyn IAstNode>>,
+    pub modifiers: Option<Arc<dyn IAstNode>>,
+    pub body: Option<Arc<dyn IAstNode>>,
     pub end_token: Option<Token>,
 }
 implem_irange!(AstProcedure);
@@ -580,6 +592,14 @@ impl IAstNode for AstProcedure {
         if self.body.is_some() {result.push(self.body.as_ref().unwrap().as_ast_node());}
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.identifier);
+        result.extend(self.parameter_list.iter());
+        result.extend(self.modifiers.iter());
+        result.extend(self.body.iter());
+        return Some(result);
+    }
     fn get_identifier(&self) -> String {
         self.identifier.get_identifier()
     }
@@ -591,10 +611,10 @@ pub struct AstFunction {
     pub raw_pos: usize,
     pub range: Range,
     pub identifier: Arc<dyn IAstNode>,
-    pub parameter_list: Option<AstParameterDeclarationList>,
+    pub parameter_list: Option<Arc<dyn IAstNode>>,
     pub return_type: Arc<dyn IAstNode>,
-    pub modifiers: Option<AstMethodModifiers>,
-    pub body: Option<AstMethodBody>,
+    pub modifiers: Option<Arc<dyn IAstNode>>,
+    pub body: Option<Arc<dyn IAstNode>>,
     pub end_token: Option<Token>,
 }
 implem_irange!(AstFunction);
@@ -607,6 +627,14 @@ impl IAstNode for AstFunction {
         result.push(self.return_type.as_ref().as_ast_node());
         if self.modifiers.is_some() {result.push(self.modifiers.as_ref().unwrap().as_ast_node());}
         if self.body.is_some() {result.push(self.body.as_ref().unwrap().as_ast_node());}
+        return Some(result);
+    }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.identifier);
+        result.extend(self.parameter_list.iter());
+        result.extend(self.modifiers.iter());
+        result.extend(self.body.iter());
         return Some(result);
     }
     fn get_identifier(&self) -> String {
@@ -640,10 +668,8 @@ impl IAstNode for AstParameterDeclarationList {
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         return Some(self.parameter_list.iter().map(|node| {node.as_ref()}).collect());
     }
-    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
-        return Some(self.parameter_list.iter().map(|node| {
-            DynamicChild::new(node.as_ref(), Some(self))        
-        }).collect());
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        return Some(self.parameter_list.iter().collect());
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
@@ -686,9 +712,10 @@ impl IAstNode for AstParameterDeclaration {
         if self.type_node.is_some() {result.push(self.type_node.as_ref().unwrap().as_ref())}
         return Some(result);
     }
-    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    	
+	fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
-        if self.type_node.is_some() {result.push(DynamicChild::new(self.type_node.as_ref().unwrap().as_ref(), Some(self)));}
+        result.extend(self.type_node.iter());
         return Some(result);
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -811,6 +838,12 @@ impl IAstNode for AstBinaryOp {
         result.push(self.right_node.as_ref());
         return Some(result);
     }
+	fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.left_node);
+        result.push(&self.right_node);
+        return Some(result);
+    }
 }
 
 #[derive(Debug)]
@@ -847,10 +880,10 @@ impl IAstNode for AstCast {
         result.push(self.expr_node.as_ref());
         return Some(result);
     }
-    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
-        result.push(DynamicChild::new(self.type_node.as_ref(), Some(self)));
-        result.push(DynamicChild::new(self.expr_node.as_ref(),Some(self)));
+        result.push(&self.type_node);
+        result.push(&self.expr_node);
         return Some(result);
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -894,9 +927,9 @@ impl IAstNode for AstUnaryOp {
         result.push(self.expr_node.as_ref());
         return Some(result);
     }
-    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
-        result.push(DynamicChild::new(self.expr_node.as_ref(),Some(self)));
+        result.push(&self.expr_node);
         return Some(result);
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -922,6 +955,12 @@ impl IAstNode for AstMethodCall {
         let mut result = Vec::new();
         result.push(self.identifier.as_ast_node());
         self.parameter_list.iter().for_each(|node| {result.push(node.as_ast_node())});
+        return Some(result);
+    }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.identifier);
+        result.extend(self.parameter_list.iter());
         return Some(result);
     }
     fn get_identifier(&self) -> String {
@@ -952,6 +991,12 @@ impl IAstNode for AstConditionalBlock {
         }));
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.extend(self.condition.iter());
+        result.extend(self.statements.iter());
+        return Some(result);
+    }
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
     }
@@ -962,9 +1007,9 @@ pub struct AstIfBlock {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub if_block: Arc<AstConditionalBlock>,
+    pub if_block: Arc<dyn IAstNode>,
     // else block also goes here, with conditional node being an empty node
-    pub else_if_blocks: Vec<Arc<AstConditionalBlock>>,
+    pub else_if_blocks: Vec<Arc<dyn IAstNode>>,
     pub end_token: Option<Token>
 }
 impl AstIfBlock {
@@ -997,13 +1042,10 @@ impl IAstNode for AstIfBlock {
         }));
         return Some(result);
     }
-    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
-        result.push(DynamicChild::new(self.if_block.as_ast_node(), Some(self)));
-
-        result.extend(self.else_if_blocks.iter().map(|n| {
-            DynamicChild::new(n.as_ast_node(), Some(self))
-        }));
+        result.push(&self.if_block);
+        result.extend(self.else_if_blocks.iter());
         return Some(result);
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -1064,21 +1106,11 @@ impl IAstNode for AstForBlock {
         }
         return Some(result);
     }
-    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
-        result.push(DynamicChild::new(self.range_node.as_ast_node(), Some(self)));
-        match &self.step_node {
-            Some(n)=> {result.push(DynamicChild::new(n.as_ast_node(),Some(self)))}
-            _ => ()
-        };
-        match self.statements.as_ref() {
-            Some(statements) =>{
-                result.extend(statements.iter().map(|n| {
-                    DynamicChild::new(n.as_ast_node(), Some(self))
-                }))
-            }
-            _=> ()
-        }
+        result.push(&self.range_node);
+        result.extend(self.step_node.iter());
+        self.statements.iter().for_each(|s|{s.iter().for_each(|s|{result.push(s)})});
         return Some(result);
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -1138,6 +1170,17 @@ impl IAstNode for AstForEachBlock {
         }
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.in_expr_node);
+        if let Some(using_var) = self.using_var.as_ref() {
+            result.push(using_var);
+        }
+        if let Some(statements) = self.statements.as_ref() {
+            result.extend(statements.iter())
+        }
+        return Some(result);
+    }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
@@ -1154,7 +1197,7 @@ pub struct AstWhileBlock {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub cond_block: Arc<AstConditionalBlock>,
+    pub cond_block: Arc<dyn IAstNode>,
     pub end_token: Option<Token>
 }
 impl AstWhileBlock {
@@ -1181,9 +1224,9 @@ impl IAstNode for AstWhileBlock {
         result.push(self.cond_block.as_ast_node());
         return Some(result);
     }
-    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
-        result.push(DynamicChild::new(self.cond_block.as_ast_node(), Some(self)));
+        result.push(&self.cond_block);
         return Some(result);
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -1231,13 +1274,10 @@ impl IAstNode for AstLoopBlock {
         }));
         return Some(result);
     }
-    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
-        let mut result = Vec::new();
-        result.extend(self.statements.iter().map(|n| {
-            DynamicChild::new(n.as_ast_node(), Some(self))
-        }));
-        return Some(result);
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        return Some(self.statements.iter().collect());
     }
+	
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
@@ -1285,16 +1325,15 @@ impl IAstNode for AstLocalVariableDeclaration {
         }
         return Some(result);
     }
-    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
-
-        if let Some(children) = self.get_children_ref() {
-            return Some(children.into_iter().map(|child| {
-                DynamicChild::new(child, Some(self.as_ast_node()))
-            }).collect())
-        } else {
-            return None
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.type_node);
+        if let Some(node) = &self.absolute {
+            result.push(node); 
         }
+        return Some(result);
     }
+	
     fn get_identifier(&self) -> String {
         self.identifier.get_value()
     }
@@ -1332,6 +1371,12 @@ impl IAstNode for AstReturnNode {
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.return_expr.as_ref().as_ast_node());
+        return Some(result);
+    }
+    	
+	fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.return_expr);
         return Some(result);
     }
     fn get_identifier(&self) -> String {
@@ -1372,6 +1417,10 @@ impl IAstNode for AstSetLiteral {
             self.set_items.iter().map(|n| n.as_ast_node()).collect()
         );
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        return Some(self.set_items.iter().collect());
+    }
+	
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
     }
@@ -1408,6 +1457,13 @@ impl IAstNode for AstWhenBlock {
         }));
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.extend(self.when_expr.iter());
+        result.extend(self.statements.iter());
+        return Some(result);
+    }
+	
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
@@ -1425,7 +1481,7 @@ pub struct AstSwitchBlock {
     pub range: Range,
     pub switch_expr: Arc<dyn IAstNode>,
     // else block also goes here, with conditional node being an empty node
-    pub when_blocks: Vec<Arc<AstWhenBlock>>,
+    pub when_blocks: Vec<Arc<dyn IAstNode>>,
     pub end_token: Option<Token>
 }
 impl AstSwitchBlock {
@@ -1451,6 +1507,12 @@ impl IAstNode for AstSwitchBlock {
         result.extend(self.when_blocks.iter().map(|n| {
             n.as_ast_node()
         }));
+        return Some(result);
+    }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.switch_expr);
+        result.extend(self.when_blocks.iter());
         return Some(result);
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -1488,6 +1550,11 @@ impl IAstNode for AstTypeRecordField {
         result.push(self.type_node.as_ref());
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.type_node);
+        return Some(result);
+    }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
@@ -1520,6 +1587,17 @@ impl IAstNode for AstTypeRecord {
         });
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        match &self.parent {
+            Some(p) => result.push(p),
+            _=> ()
+        };
+        self.fields.iter().for_each(|field| {
+            result.push(field);
+        });
+        return Some(result);
+    }
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
     }
@@ -1546,6 +1624,11 @@ impl IAstNode for AstTypePointer {
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.type_node.as_ref());
+        return Some(result);
+    }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.type_node);
         return Some(result);
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -1587,6 +1670,12 @@ impl IAstNode for AstTypeArray {
         result.push(self.object_type.as_ref());
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.extend(self.index_nodes.iter());
+        result.push(&self.object_type);
+        return Some(result);
+    }
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
@@ -1626,6 +1715,12 @@ impl IAstNode for AstTypeRange {
         result.push(self.to.as_ref());
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.from);
+        result.push(&self.to);
+        return Some(result);
+    }
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
     }
@@ -1638,7 +1733,7 @@ impl IAstNode for AstTypeRange {
 pub struct AstTypeProcedure {
     pub raw_pos: usize,
     pub range: Range,
-    pub parameter_list: Option<AstParameterDeclarationList>,
+    pub parameter_list: Option<Arc<dyn IAstNode>>,
 }
 implem_irange!(AstTypeProcedure);
 impl IAstNode for AstTypeProcedure {
@@ -1660,6 +1755,11 @@ impl IAstNode for AstTypeProcedure {
         if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.extend(self.parameter_list.iter());
+        return Some(result);
+    }
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
     }
@@ -1673,7 +1773,7 @@ impl IAstNode for AstTypeProcedure {
 pub struct AstTypeFunction {
     pub raw_pos: usize,
     pub range: Range,
-    pub parameter_list: Option<AstParameterDeclarationList>,
+    pub parameter_list: Option<Arc<dyn IAstNode>>,
     pub return_type: Arc<dyn IAstNode>
 }
 implem_irange!(AstTypeFunction);
@@ -1695,6 +1795,15 @@ impl IAstNode for AstTypeFunction {
         let mut result = Vec::new();
         if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
         result.push(self.return_type.as_ast_node());
+        return Some(result);
+    }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        match self.parameter_list.as_ref(){
+            Some(param_list)=> result.push(param_list),
+            _=> ()
+        }
+        result.push(&self.return_type);
         return Some(result);
     }
     fn get_identifier(&self) -> String {
@@ -1733,6 +1842,11 @@ impl IAstNode for AstTypeInstanceOf {
         result.push(self.instance_type.as_ast_node());
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.instance_type);
+        return Some(result);
+    }
     fn to_string_type(&self) -> String {
         "type_instanceof".to_string()
     }
@@ -1757,13 +1871,19 @@ impl IAstNode for AstArrayAccess {
         result.push(self.index_node.as_ast_node());
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.left_node);
+        result.push(&self.index_node);
+        return Some(result);
+    }
 }
 
 #[derive(Debug)]
 pub struct AstRepeatBlock {
     pub raw_pos: usize,
     pub range: Range,
-    pub cond_block: Arc<AstConditionalBlock>,
+    pub cond_block: Arc<dyn IAstNode>,
     pub end_token: Option<Token>
 }
 implem_irange!(AstRepeatBlock);
@@ -1772,6 +1892,11 @@ impl IAstNode for AstRepeatBlock {
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.cond_block.as_ast_node());
+        return Some(result);
+    }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.cond_block);
         return Some(result);
     }
     fn get_identifier(&self) -> String {
@@ -1793,6 +1918,12 @@ impl IAstNode for AstMethodNameWithEvent {
         let mut result = Vec::new();
         result.push(self.method_name.as_ast_node());
         result.push(self.event.as_ast_node());
+        return Some(result);
+    }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.method_name);
+        result.push(&self.event);
         return Some(result);
     }
     fn get_identifier(&self) -> String {
@@ -1837,6 +1968,28 @@ impl IAstNode for AstOQLSelect {
         }
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        match &self.limit_node{
+            Some(n) => {result.push(n);}
+            _=> ()
+        }
+        result.extend(self.select_nodes.iter());
+        result.extend(self.from_nodes.iter());
+        match &self.where_node{
+            Some(n) => {result.push(n);}
+            _=> ()
+        }
+        match &self.order_by_nodes{
+            Some(nodes)=>result.extend(nodes.iter()),
+            _=>()
+        }
+        match &self.using_node{
+            Some(n)=>result.push(n),
+            _=>()
+        }
+        return Some(result);
+    }
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
     }
@@ -1863,6 +2016,12 @@ impl IAstNode for AstOQLFromNode {
         result.extend(self.join_nodes.iter().map(|n| {n.as_ast_node()}));
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.source_node);
+        result.extend(self.join_nodes.iter());
+        return Some(result);
+    }
     fn get_identifier(&self) -> String {
         self.alias_token.get_value()
     }
@@ -1881,6 +2040,11 @@ impl IAstNode for AstOQLJoin {
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.cond_node.as_ast_node());
+        return Some(result);
+    }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.cond_node);
         return Some(result);
     }
     fn get_identifier(&self) -> String {
@@ -1903,6 +2067,11 @@ impl IAstNode for AstOQLOrderBy {
         result.push(self.field_node.as_ast_node());
         return Some(result);
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.push(&self.field_node);
+        return Some(result);
+    }
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
     }
@@ -1923,6 +2092,15 @@ impl IAstNode for AstOQLFetch {
         result.extend(self.into_field_nodes.iter().map(|n| {n.as_ast_node()}));
         match &self.using_node{
             Some(n) => {result.push(n.as_ast_node());}
+            _=> ()
+        }
+        return Some(result);
+    }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        let mut result = Vec::new();
+        result.extend(self.into_field_nodes.iter());
+        match &self.using_node{
+            Some(n) => {result.push(n);}
             _=> ()
         }
         return Some(result);
