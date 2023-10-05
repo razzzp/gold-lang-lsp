@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::sync::Arc;
 
 use crate::lexer::tokens::Token;
 use crate::utils::{Position, Range, IRange, DynamicChild};
@@ -40,7 +41,7 @@ macro_rules! implem_iastnode_common {
     };
 }
 
-pub trait IAstNode: std::fmt::Debug + IRange + Send {
+pub trait IAstNode: std::fmt::Debug + IRange + Send + Sync{
     /// returns node type, for display?
     fn get_type(&self) -> &'static str;
     fn get_raw_pos(&self) -> usize;
@@ -49,12 +50,15 @@ pub trait IAstNode: std::fmt::Debug + IRange + Send {
     }
     // fn get_range(&self) -> Range;
     fn as_any(&self) -> &dyn Any;
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>>{
+    fn get_children_ref<'a>(&'a self) -> Option<Vec<&dyn IAstNode>>{
+        None
+    }
+    fn get_children<'a>(&'a self) -> Option<Vec<&'a Arc<dyn IAstNode>>>{
         None
     }
     /// gets children wrapped in DynamicChild object, to provide parent node
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>>{
-        if let Some(children) = self.get_children() {
+    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>>{
+        if let Some(children) = self.get_children_ref() {
             return Some(children.into_iter().map(|child| {
                 DynamicChild::new(child, Some(self.as_ast_node()))
             }).collect())
@@ -82,10 +86,10 @@ pub trait IAstNode: std::fmt::Debug + IRange + Send {
 
 #[derive(Debug)]
 pub struct AstRoot{
-    pub statements: Vec<Box<dyn IAstNode>>,
+    pub statements: Vec<Arc<dyn IAstNode>>,
 }
 impl AstRoot {
-    pub fn new(statements: Vec<Box<dyn IAstNode>>) -> AstRoot{
+    pub fn new(statements: Vec<Arc<dyn IAstNode>>) -> AstRoot{
         return AstRoot{
             statements,
         }
@@ -118,13 +122,14 @@ impl IAstNode for AstRoot{
     fn to_string_type(&self) -> String {
         "root".to_string()
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         self.statements.iter().for_each(|n|{
             result.push(n.as_ast_node())
         });
         return Some(result);
     }
+    
 }
 
 #[derive(Debug)]
@@ -317,7 +322,7 @@ pub struct AstTypeEnum{
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub variants: Vec<Box<AstEnumVariant>>,
+    pub variants: Vec<Arc<AstEnumVariant>>,
 }
 implem_irange!(AstTypeEnum);
 impl IAstNode for AstTypeEnum {
@@ -328,7 +333,7 @@ impl IAstNode for AstTypeEnum {
     fn get_raw_pos(&self) -> usize {
         return self.raw_pos;
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         return Some(
             self.variants.iter().map(|n| n.as_ast_node()).collect()
         )
@@ -391,7 +396,7 @@ impl IAstNode for AstTypeReference {
 pub struct AstTypeSet {
     pub raw_pos: usize,
     pub range: Range,
-    pub set_type: Box<dyn IAstNode>,
+    pub set_type: Arc<dyn IAstNode>,
 }
 implem_irange!(AstTypeSet);
 impl IAstNode for AstTypeSet {
@@ -415,7 +420,7 @@ impl IAstNode for AstTypeSet {
     fn get_identifier(&self) -> String {
         self.set_type.get_identifier()
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.set_type.as_ref());
         return Some(result);
@@ -432,7 +437,7 @@ pub struct AstTypeDeclaration {
     pub pos: Position,
     pub range: Range,
     pub identifier: Token,
-    pub type_node: Box<dyn IAstNode>
+    pub type_node: Arc<dyn IAstNode>
 }
 implem_irange!(AstTypeDeclaration);
 impl IAstNode for AstTypeDeclaration {
@@ -453,12 +458,12 @@ impl IAstNode for AstTypeDeclaration {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.type_node.as_ref().as_ast_node());
         return Some(result);
     }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
         let mut result = Vec::new();
         result.push(DynamicChild::new(self.type_node.as_ref(), Some(self)));
         return Some(result);
@@ -513,8 +518,8 @@ pub struct AstGlobalVariableDeclaration {
     pub pos: Position,
     pub range: Range,
     pub identifier: Token,
-    pub type_node: Box<dyn IAstNode>,
-    pub modifiers: Option<Box<AstMemberModifiers>>,
+    pub type_node: Arc<dyn IAstNode>,
+    pub modifiers: Option<Arc<AstMemberModifiers>>,
     pub is_memory: bool
 }
 implem_irange!(AstGlobalVariableDeclaration);
@@ -536,12 +541,12 @@ impl IAstNode for AstGlobalVariableDeclaration {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.type_node.as_ref().as_ast_node());
         return Some(result);
     }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
         let mut result = Vec::new();
         result.push(DynamicChild::new(self.type_node.as_ref(), Some(self)));
         return Some(result);
@@ -558,7 +563,7 @@ impl IAstNode for AstGlobalVariableDeclaration {
 pub struct AstProcedure {
     pub raw_pos: usize,
     pub range: Range,
-    pub identifier: Box<dyn IAstNode>,
+    pub identifier: Arc<dyn IAstNode>,
     pub parameter_list: Option<AstParameterDeclarationList>,
     pub modifiers: Option<AstMethodModifiers>,
     pub body: Option<AstMethodBody>,
@@ -567,7 +572,7 @@ pub struct AstProcedure {
 implem_irange!(AstProcedure);
 impl IAstNode for AstProcedure {
     implem_iastnode_common!(AstProcedure, "proc_decl");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.identifier.as_ast_node());
         if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
@@ -585,9 +590,9 @@ impl IAstNode for AstProcedure {
 pub struct AstFunction {
     pub raw_pos: usize,
     pub range: Range,
-    pub identifier: Box<dyn IAstNode>,
+    pub identifier: Arc<dyn IAstNode>,
     pub parameter_list: Option<AstParameterDeclarationList>,
-    pub return_type: Box<dyn IAstNode>,
+    pub return_type: Arc<dyn IAstNode>,
     pub modifiers: Option<AstMethodModifiers>,
     pub body: Option<AstMethodBody>,
     pub end_token: Option<Token>,
@@ -595,7 +600,7 @@ pub struct AstFunction {
 implem_irange!(AstFunction);
 impl IAstNode for AstFunction {
     implem_iastnode_common!(AstFunction, "func_decl");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.identifier.as_ast_node());
         if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
@@ -614,7 +619,7 @@ pub struct AstParameterDeclarationList {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub parameter_list: Vec<Box<dyn IAstNode>>
+    pub parameter_list: Vec<Arc<dyn IAstNode>>
 }
 implem_irange!(AstParameterDeclarationList);
 impl IAstNode for AstParameterDeclarationList {
@@ -632,10 +637,10 @@ impl IAstNode for AstParameterDeclarationList {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         return Some(self.parameter_list.iter().map(|node| {node.as_ref()}).collect());
     }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
         return Some(self.parameter_list.iter().map(|node| {
             DynamicChild::new(node.as_ref(), Some(self))        
         }).collect());
@@ -657,7 +662,7 @@ pub struct AstParameterDeclaration {
     pub pos: Position,
     pub range: Range,
     pub identifier: Token,
-    pub type_node: Option<Box<dyn IAstNode>>,
+    pub type_node: Option<Arc<dyn IAstNode>>,
     pub modifier: Option<Token>
 }
 implem_irange!(AstParameterDeclaration);
@@ -676,12 +681,12 @@ impl IAstNode for AstParameterDeclaration {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         if self.type_node.is_some() {result.push(self.type_node.as_ref().unwrap().as_ref())}
         return Some(result);
     }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
         let mut result = Vec::new();
         if self.type_node.is_some() {result.push(DynamicChild::new(self.type_node.as_ref().unwrap().as_ref(), Some(self)));}
         return Some(result);
@@ -739,12 +744,12 @@ impl IAstNode for AstMethodModifiers {
 pub struct AstMethodBody {
     pub raw_pos: usize,
     pub range: Range,
-    pub statements: Vec<Box<dyn IAstNode>>,
+    pub statements: Vec<Arc<dyn IAstNode>>,
 }
 implem_irange!(AstMethodBody);
 impl IAstNode for AstMethodBody {
     implem_iastnode_common!(AstMethodBody, "method_body");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         return Some(self.statements.iter().map(|node| {node.as_ref()}).collect());
     }
     fn get_identifier(&self) -> String {
@@ -791,8 +796,8 @@ pub struct AstBinaryOp {
     pub raw_pos: usize,
     pub range: Range,
     pub op_token: Token,
-    pub left_node: Box<dyn IAstNode>,
-    pub right_node: Box<dyn IAstNode>
+    pub left_node: Arc<dyn IAstNode>,
+    pub right_node: Arc<dyn IAstNode>
 }
 implem_irange!(AstBinaryOp);
 impl IAstNode for AstBinaryOp {
@@ -800,7 +805,7 @@ impl IAstNode for AstBinaryOp {
     fn get_identifier(&self) -> String {
         self.op_token.get_value()
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.left_node.as_ref());
         result.push(self.right_node.as_ref());
@@ -813,8 +818,8 @@ pub struct AstCast {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub type_node: Box<dyn IAstNode>,
-    pub expr_node: Box<dyn IAstNode>
+    pub type_node: Arc<dyn IAstNode>,
+    pub expr_node: Arc<dyn IAstNode>
 }
 implem_irange!(AstCast);
 impl IAstNode for AstCast {
@@ -836,13 +841,13 @@ impl IAstNode for AstCast {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.type_node.as_ref());
         result.push(self.expr_node.as_ref());
         return Some(result);
     }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
         let mut result = Vec::new();
         result.push(DynamicChild::new(self.type_node.as_ref(), Some(self)));
         result.push(DynamicChild::new(self.expr_node.as_ref(),Some(self)));
@@ -862,7 +867,7 @@ pub struct AstUnaryOp {
     pub pos: Position,
     pub range: Range,
     pub op_token: Token,
-    pub expr_node: Box<dyn IAstNode>
+    pub expr_node: Arc<dyn IAstNode>
 }
 implem_irange!(AstUnaryOp);
 impl IAstNode for AstUnaryOp {
@@ -884,12 +889,12 @@ impl IAstNode for AstUnaryOp {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.expr_node.as_ref());
         return Some(result);
     }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
         let mut result = Vec::new();
         result.push(DynamicChild::new(self.expr_node.as_ref(),Some(self)));
         return Some(result);
@@ -907,13 +912,13 @@ pub struct AstMethodCall {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub identifier: Box<dyn IAstNode>,
-    pub parameter_list: Vec<Box<dyn IAstNode>>
+    pub identifier: Arc<dyn IAstNode>,
+    pub parameter_list: Vec<Arc<dyn IAstNode>>
 }
 implem_irange!(AstMethodCall);
 impl IAstNode for AstMethodCall {
     implem_iastnode_common!(AstMethodCall, "method_call");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.identifier.as_ast_node());
         self.parameter_list.iter().for_each(|node| {result.push(node.as_ast_node())});
@@ -928,18 +933,18 @@ impl IAstNode for AstMethodCall {
 pub struct AstConditionalBlock {
     pub raw_pos: usize,
     pub range: Range,
-    pub condition: Option<Box<dyn IAstNode>>,
-    pub statements: Vec<Box<dyn IAstNode>>,
+    pub condition: Option<Arc<dyn IAstNode>>,
+    pub statements: Vec<Arc<dyn IAstNode>>,
 }
 impl AstConditionalBlock{
-    pub fn append_node(&mut self, node: Box<dyn IAstNode>) {
+    pub fn append_node(&mut self, node: Arc<dyn IAstNode>) {
         self.statements.push(node);
     }
 }
 implem_irange!(AstConditionalBlock);
 impl IAstNode for AstConditionalBlock {
     implem_iastnode_common!(AstConditionalBlock, "cond_block");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         if self.condition.is_some() {result.push(self.condition.as_ref().unwrap().as_ast_node());}
         result.extend(self.statements.iter().map(|n| {
@@ -957,17 +962,14 @@ pub struct AstIfBlock {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub if_block: Box<AstConditionalBlock>,
+    pub if_block: Arc<AstConditionalBlock>,
     // else block also goes here, with conditional node being an empty node
-    pub else_if_blocks: Option<Vec<Box<AstConditionalBlock>>>,
+    pub else_if_blocks: Vec<Arc<AstConditionalBlock>>,
     pub end_token: Option<Token>
 }
 impl AstIfBlock {
-    pub fn add_else_if_block(&mut self, block: Box<AstConditionalBlock>){
-        if self.else_if_blocks.is_none() {
-            self.else_if_blocks = Some(Vec::new());
-        }
-        self.else_if_blocks.as_mut().unwrap().push(block)
+    pub fn add_else_if_block(&mut self, block: Arc<AstConditionalBlock>){
+        self.else_if_blocks.push(block)
     }
 }
 implem_irange!(AstIfBlock);
@@ -986,30 +988,22 @@ impl IAstNode for AstIfBlock {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.if_block.as_ast_node());
-        match self.else_if_blocks.as_ref() {
-            Some(else_if_block) =>{
-                result.extend(else_if_block.iter().map(|n| {
-                    n.as_ast_node()
-                }))
-            }
-            _=> ()
-        }
+
+        result.extend(self.else_if_blocks.iter().map(|n| {
+            n.as_ast_node()
+        }));
         return Some(result);
     }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
         let mut result = Vec::new();
         result.push(DynamicChild::new(self.if_block.as_ast_node(), Some(self)));
-        match self.else_if_blocks.as_ref() {
-            Some(else_if_block) =>{
-                result.extend(else_if_block.iter().map(|n| {
-                    DynamicChild::new(n.as_ast_node(), Some(self))
-                }))
-            }
-            _=> ()
-        }
+
+        result.extend(self.else_if_blocks.iter().map(|n| {
+            DynamicChild::new(n.as_ast_node(), Some(self))
+        }));
         return Some(result);
     }
     fn as_ast_node(&self) -> &dyn IAstNode{
@@ -1029,9 +1023,9 @@ pub struct AstForBlock {
     pub pos: Position,
     pub range: Range,
     pub counter_token: Token,
-    pub range_node: Box<dyn IAstNode>,
-    pub step_node: Option<Box<dyn IAstNode>>,
-    pub statements: Option<Vec<Box<dyn IAstNode>>>,
+    pub range_node: Arc<dyn IAstNode>,
+    pub step_node: Option<Arc<dyn IAstNode>>,
+    pub statements: Option<Vec<Arc<dyn IAstNode>>>,
     pub end_token: Option<Token>
 }
 impl AstForBlock {
@@ -1053,7 +1047,7 @@ impl IAstNode for AstForBlock {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.range_node.as_ast_node());
         match &self.step_node {
@@ -1070,7 +1064,7 @@ impl IAstNode for AstForBlock {
         }
         return Some(result);
     }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
         let mut result = Vec::new();
         result.push(DynamicChild::new(self.range_node.as_ast_node(), Some(self)));
         match &self.step_node {
@@ -1103,9 +1097,9 @@ pub struct AstForEachBlock {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub in_expr_node: Box<dyn IAstNode>,
-    pub using_var: Option<Box<dyn IAstNode>>,
-    pub statements: Option<Vec<Box<dyn IAstNode>>>,
+    pub in_expr_node: Arc<dyn IAstNode>,
+    pub using_var: Option<Arc<dyn IAstNode>>,
+    pub statements: Option<Vec<Arc<dyn IAstNode>>>,
     pub end_token: Option<Token>,
     pub is_downto: bool
 }
@@ -1128,7 +1122,7 @@ impl IAstNode for AstForEachBlock {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.in_expr_node.as_ast_node());
         if let Some(using_var) = self.using_var.as_ref() {
@@ -1160,7 +1154,7 @@ pub struct AstWhileBlock {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub cond_block: Box<AstConditionalBlock>,
+    pub cond_block: Arc<AstConditionalBlock>,
     pub end_token: Option<Token>
 }
 impl AstWhileBlock {
@@ -1182,12 +1176,12 @@ impl IAstNode for AstWhileBlock {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.cond_block.as_ast_node());
         return Some(result);
     }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
         let mut result = Vec::new();
         result.push(DynamicChild::new(self.cond_block.as_ast_node(), Some(self)));
         return Some(result);
@@ -1208,7 +1202,7 @@ pub struct AstLoopBlock {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub statements: Vec<Box<dyn IAstNode>>,
+    pub statements: Vec<Arc<dyn IAstNode>>,
     pub end_token: Option<Token>
 }
 impl AstLoopBlock {
@@ -1230,14 +1224,14 @@ impl IAstNode for AstLoopBlock {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.extend(self.statements.iter().map(|n| {
             n.as_ast_node()
         }));
         return Some(result);
     }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
         let mut result = Vec::new();
         result.extend(self.statements.iter().map(|n| {
             DynamicChild::new(n.as_ast_node(), Some(self))
@@ -1261,8 +1255,8 @@ pub struct AstLocalVariableDeclaration {
     pub pos: Position,
     pub range: Range,
     pub identifier: Token,
-    pub type_node: Box<dyn IAstNode>,
-    pub absolute: Option<Box<dyn IAstNode>>,
+    pub type_node: Arc<dyn IAstNode>,
+    pub absolute: Option<Arc<dyn IAstNode>>,
 }
 implem_irange!(AstLocalVariableDeclaration);
 impl IAstNode for AstLocalVariableDeclaration {
@@ -1283,7 +1277,7 @@ impl IAstNode for AstLocalVariableDeclaration {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.type_node.as_ref().as_ast_node());
         if let Some(node) = &self.absolute {
@@ -1291,9 +1285,9 @@ impl IAstNode for AstLocalVariableDeclaration {
         }
         return Some(result);
     }
-    fn get_children_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
+    fn get_children_ref_dynamic(&self) -> Option<Vec<DynamicChild<dyn IAstNode>>> {
 
-        if let Some(children) = self.get_children() {
+        if let Some(children) = self.get_children_ref() {
             return Some(children.into_iter().map(|child| {
                 DynamicChild::new(child, Some(self.as_ast_node()))
             }).collect())
@@ -1314,7 +1308,7 @@ pub struct AstReturnNode {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub return_expr: Box<dyn IAstNode>,
+    pub return_expr: Arc<dyn IAstNode>,
 }
 implem_irange!(AstReturnNode);
 impl IAstNode for AstReturnNode {
@@ -1335,7 +1329,7 @@ impl IAstNode for AstReturnNode {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.return_expr.as_ref().as_ast_node());
         return Some(result);
@@ -1352,7 +1346,7 @@ impl IAstNode for AstReturnNode {
 pub struct AstSetLiteral {
     pub raw_pos: usize,
     pub range: Range,
-    pub set_items: Vec<Box<dyn IAstNode>>,
+    pub set_items: Vec<Arc<dyn IAstNode>>,
 }
 implem_irange!(AstSetLiteral);
 impl IAstNode for AstSetLiteral {
@@ -1373,7 +1367,7 @@ impl IAstNode for AstSetLiteral {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         return Some(
             self.set_items.iter().map(|n| n.as_ast_node()).collect()
         );
@@ -1391,8 +1385,8 @@ impl IAstNode for AstSetLiteral {
 pub struct AstWhenBlock {
     pub raw_pos: usize,
     pub range: Range,
-    pub when_expr: Option<Box<dyn IAstNode>>,
-    pub statements: Vec<Box<dyn IAstNode>>,
+    pub when_expr: Option<Arc<dyn IAstNode>>,
+    pub statements: Vec<Arc<dyn IAstNode>>,
 }
 implem_irange!(AstWhenBlock);
 impl IAstNode for AstWhenBlock {
@@ -1406,7 +1400,7 @@ impl IAstNode for AstWhenBlock {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         if self.when_expr.is_some() {result.push(self.when_expr.as_ref().unwrap().as_ast_node());}
         result.extend(self.statements.iter().map(|n| {
@@ -1429,13 +1423,13 @@ impl IAstNode for AstWhenBlock {
 pub struct AstSwitchBlock {
     pub raw_pos: usize,
     pub range: Range,
-    pub switch_expr: Box<dyn IAstNode>,
+    pub switch_expr: Arc<dyn IAstNode>,
     // else block also goes here, with conditional node being an empty node
-    pub when_blocks: Vec<Box<AstWhenBlock>>,
+    pub when_blocks: Vec<Arc<AstWhenBlock>>,
     pub end_token: Option<Token>
 }
 impl AstSwitchBlock {
-    pub fn add_case_block(&mut self, block: Box<AstWhenBlock>){
+    pub fn add_case_block(&mut self, block: Arc<AstWhenBlock>){
         self.when_blocks.push(block);
     }
 }
@@ -1451,7 +1445,7 @@ impl IAstNode for AstSwitchBlock {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.switch_expr.as_ast_node());
         result.extend(self.when_blocks.iter().map(|n| {
@@ -1475,7 +1469,7 @@ pub struct AstTypeRecordField{
     pub raw_pos: usize,
     pub range: Range,
     pub identifier : Token,
-    pub type_node: Box<dyn IAstNode>
+    pub type_node: Arc<dyn IAstNode>
 }
 implem_irange!(AstTypeRecordField);
 impl IAstNode for AstTypeRecordField {
@@ -1489,7 +1483,7 @@ impl IAstNode for AstTypeRecordField {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.type_node.as_ref());
         return Some(result);
@@ -1509,13 +1503,13 @@ impl IAstNode for AstTypeRecordField {
 pub struct AstTypeRecord{
     pub raw_pos: usize,
     pub range: Range,
-    pub fields : Vec<Box<dyn IAstNode>>,
-    pub parent : Option<Box<dyn IAstNode>>
+    pub fields : Vec<Arc<dyn IAstNode>>,
+    pub parent : Option<Arc<dyn IAstNode>>
 }
 implem_irange!(AstTypeRecord);
 impl IAstNode for AstTypeRecord {
     implem_iastnode_common!(AstTypeRecord,"type_record");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         match &self.parent {
             Some(p) => result.push(p.as_ast_node()),
@@ -1535,7 +1529,7 @@ impl IAstNode for AstTypeRecord {
 pub struct AstTypePointer{
     pub raw_pos: usize,
     pub range: Range,
-    pub type_node : Box<dyn IAstNode>
+    pub type_node : Arc<dyn IAstNode>
 }
 implem_irange!(AstTypePointer);
 impl IAstNode for AstTypePointer {
@@ -1549,7 +1543,7 @@ impl IAstNode for AstTypePointer {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.type_node.as_ref());
         return Some(result);
@@ -1570,8 +1564,8 @@ pub struct AstTypeArray{
     pub raw_pos: usize,
     pub range: Range,
     pub array_seq_token: Token,
-    pub index_nodes : Vec<Box<dyn IAstNode>>,
-    pub object_type : Box<dyn IAstNode>
+    pub index_nodes : Vec<Arc<dyn IAstNode>>,
+    pub object_type : Arc<dyn IAstNode>
 }
 implem_irange!(AstTypeArray);
 impl IAstNode for AstTypeArray {
@@ -1585,7 +1579,7 @@ impl IAstNode for AstTypeArray {
     fn as_any(&self) -> &dyn Any {
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         self.index_nodes.iter().for_each(|node|{
             result.push(node.as_ast_node());
@@ -1608,8 +1602,8 @@ impl IAstNode for AstTypeArray {
 pub struct AstTypeRange{
     pub raw_pos: usize,
     pub range: Range,
-    pub from: Box<dyn IAstNode>,
-    pub to: Box<dyn IAstNode>,
+    pub from: Arc<dyn IAstNode>,
+    pub to: Arc<dyn IAstNode>,
 }
 implem_irange!(AstTypeRange);
 impl IAstNode for AstTypeRange {
@@ -1626,7 +1620,7 @@ impl IAstNode for AstTypeRange {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.from.as_ref());
         result.push(self.to.as_ref());
@@ -1661,7 +1655,7 @@ impl IAstNode for AstTypeProcedure {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
         return Some(result);
@@ -1680,7 +1674,7 @@ pub struct AstTypeFunction {
     pub raw_pos: usize,
     pub range: Range,
     pub parameter_list: Option<AstParameterDeclarationList>,
-    pub return_type: Box<dyn IAstNode>
+    pub return_type: Arc<dyn IAstNode>
 }
 implem_irange!(AstTypeFunction);
 impl IAstNode for AstTypeFunction {
@@ -1697,7 +1691,7 @@ impl IAstNode for AstTypeFunction {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
         result.push(self.return_type.as_ast_node());
@@ -1715,7 +1709,7 @@ impl IAstNode for AstTypeFunction {
 pub struct AstTypeInstanceOf {
     pub raw_pos: usize,
     pub range: Range,
-    pub instance_type: Box<dyn IAstNode>,
+    pub instance_type: Arc<dyn IAstNode>,
 }
 implem_irange!(AstTypeInstanceOf);
 impl IAstNode for AstTypeInstanceOf {
@@ -1734,7 +1728,7 @@ impl IAstNode for AstTypeInstanceOf {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.instance_type.as_ast_node());
         return Some(result);
@@ -1748,8 +1742,8 @@ impl IAstNode for AstTypeInstanceOf {
 pub struct AstArrayAccess {
     pub raw_pos: usize,
     pub range: Range,
-    pub left_node: Box<dyn IAstNode>,
-    pub index_node: Box<dyn IAstNode>
+    pub left_node: Arc<dyn IAstNode>,
+    pub index_node: Arc<dyn IAstNode>
 }
 implem_irange!(AstArrayAccess);
 impl IAstNode for AstArrayAccess {
@@ -1757,7 +1751,7 @@ impl IAstNode for AstArrayAccess {
     fn get_identifier(&self) -> String {
         return self.left_node.get_identifier()
     }
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.left_node.as_ast_node());
         result.push(self.index_node.as_ast_node());
@@ -1769,13 +1763,13 @@ impl IAstNode for AstArrayAccess {
 pub struct AstRepeatBlock {
     pub raw_pos: usize,
     pub range: Range,
-    pub cond_block: Box<AstConditionalBlock>,
+    pub cond_block: Arc<AstConditionalBlock>,
     pub end_token: Option<Token>
 }
 implem_irange!(AstRepeatBlock);
 impl IAstNode for AstRepeatBlock {
     implem_iastnode_common!(AstRepeatBlock, "repeat");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.cond_block.as_ast_node());
         return Some(result);
@@ -1789,13 +1783,13 @@ impl IAstNode for AstRepeatBlock {
 pub struct AstMethodNameWithEvent {
     pub raw_pos: usize,
     pub range: Range,
-    pub method_name: Box<dyn IAstNode>,
-    pub event: Box<dyn IAstNode>
+    pub method_name: Arc<dyn IAstNode>,
+    pub event: Arc<dyn IAstNode>
 }
 implem_irange!(AstMethodNameWithEvent);
 impl IAstNode for AstMethodNameWithEvent {
     implem_iastnode_common!(AstMethodNameWithEvent, "method_name_w_event");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.method_name.as_ast_node());
         result.push(self.event.as_ast_node());
@@ -1810,18 +1804,18 @@ impl IAstNode for AstMethodNameWithEvent {
 pub struct AstOQLSelect {
     pub raw_pos: usize,
     pub range: Range,
-    pub limit_node: Option<Box<dyn IAstNode>>,
-    pub select_nodes: Vec<Box<dyn IAstNode>>,
-    pub from_nodes: Vec<Box<dyn IAstNode>>,
-    pub where_node: Option<Box<dyn IAstNode>>,
-    pub order_by_nodes: Option<Vec<Box<dyn IAstNode>>>,
-    pub using_node: Option<Box<dyn IAstNode>>,
+    pub limit_node: Option<Arc<dyn IAstNode>>,
+    pub select_nodes: Vec<Arc<dyn IAstNode>>,
+    pub from_nodes: Vec<Arc<dyn IAstNode>>,
+    pub where_node: Option<Arc<dyn IAstNode>>,
+    pub order_by_nodes: Option<Vec<Arc<dyn IAstNode>>>,
+    pub using_node: Option<Arc<dyn IAstNode>>,
     pub is_distinct : bool,
 }
 implem_irange!(AstOQLSelect);
 impl IAstNode for AstOQLSelect {
     implem_iastnode_common!(AstOQLSelect, "oql_select");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         match &self.limit_node{
             Some(n) => {result.push(n.as_ast_node());}
@@ -1853,8 +1847,8 @@ pub struct AstOQLFromNode {
     pub raw_pos: usize,
     pub range: Range,
     pub alias_token : Token,
-    pub source_node: Box<dyn IAstNode>,
-    pub join_nodes: Vec<Box<dyn IAstNode>>,
+    pub source_node: Arc<dyn IAstNode>,
+    pub join_nodes: Vec<Arc<dyn IAstNode>>,
     pub is_conditional : bool,
     pub is_all_versions: bool,
     pub is_phantoms_too:bool,
@@ -1863,7 +1857,7 @@ pub struct AstOQLFromNode {
 implem_irange!(AstOQLFromNode);
 impl IAstNode for AstOQLFromNode {
     implem_iastnode_common!(AstOQLFromNode, "oql_from_node");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.source_node.as_ast_node());
         result.extend(self.join_nodes.iter().map(|n| {n.as_ast_node()}));
@@ -1879,12 +1873,12 @@ pub struct AstOQLJoin {
     pub raw_pos: usize,
     pub range: Range,
     pub join_token : Token,
-    pub cond_node: Box<dyn IAstNode>,
+    pub cond_node: Arc<dyn IAstNode>,
 }
 implem_irange!(AstOQLJoin);
 impl IAstNode for AstOQLJoin {
     implem_iastnode_common!(AstOQLJoin, "oql_join_node");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.cond_node.as_ast_node());
         return Some(result);
@@ -1898,13 +1892,13 @@ impl IAstNode for AstOQLJoin {
 pub struct AstOQLOrderBy {
     pub raw_pos: usize,
     pub range: Range,
-    pub field_node: Box<dyn IAstNode>,
+    pub field_node: Arc<dyn IAstNode>,
     pub is_descending: bool
 }
 implem_irange!(AstOQLOrderBy);
 impl IAstNode for AstOQLOrderBy {
     implem_iastnode_common!(AstOQLOrderBy, "oql_order_by_node");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.field_node.as_ast_node());
         return Some(result);
@@ -1918,13 +1912,13 @@ impl IAstNode for AstOQLOrderBy {
 pub struct AstOQLFetch {
     pub raw_pos: usize,
     pub range: Range,
-    pub into_field_nodes: Vec<Box<dyn IAstNode>>,
-    pub using_node: Option<Box<dyn IAstNode>>,
+    pub into_field_nodes: Vec<Arc<dyn IAstNode>>,
+    pub using_node: Option<Arc<dyn IAstNode>>,
 }
 implem_irange!(AstOQLFetch);
 impl IAstNode for AstOQLFetch {
     implem_iastnode_common!(AstOQLFetch, "oql_fetch");
-    fn get_children(&self) -> Option<Vec<&dyn IAstNode>> {
+    fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.extend(self.into_field_nodes.iter().map(|n| {n.as_ast_node()}));
         match &self.using_node{

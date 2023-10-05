@@ -199,7 +199,7 @@ fn _write_ast_brief(result: &mut String, ast_node: &dyn IAstNode, indent_level: 
         write!(result, "  ").unwrap();
     }
     writeln!(result, "[{}:{}]", ast_node.get_type(), ast_node.get_identifier()).unwrap();
-    let children = ast_node.get_children();
+    let children = ast_node.get_children_ref();
     match children {
         Some(children) =>{
             for child in children {
@@ -218,7 +218,7 @@ pub fn inorder(ast_node: &dyn IAstNode) -> Vec<&dyn IAstNode>  {
 }
 
 fn _inorder<'a>(ast_node: &'a dyn IAstNode, result: &mut Vec<&'a dyn IAstNode>){
-    let children = match ast_node.get_children() {
+    let children = match ast_node.get_children_ref() {
         Some(c) => c,
         None => {result.push(ast_node); return}
     };
@@ -235,7 +235,7 @@ pub fn dfs(ast_node: &dyn IAstNode) -> Vec<&dyn IAstNode> {
 }
 
 fn _dfs<'a>(ast_node: &'a dyn IAstNode, result: &mut Vec<&'a dyn IAstNode>){
-    let children = match ast_node.get_children() {
+    let children = match ast_node.get_children_ref() {
         Some(c) => c,
         None => {result.push(ast_node); return}
     };
@@ -249,7 +249,7 @@ pub fn bfs(ast_node: &dyn IAstNode) -> Vec<DynamicChild<dyn IAstNode>> {
     queue.push_back(DynamicChild::new(ast_node, None));
     while !queue.is_empty(){
         let cur = queue.pop_front().unwrap();
-        match cur.data.get_children_dynamic(){
+        match cur.data.get_children_ref_dynamic(){
             Some(children) => {
                 queue.extend(children.into_iter());
             },
@@ -263,9 +263,11 @@ pub fn bfs(ast_node: &dyn IAstNode) -> Vec<DynamicChild<dyn IAstNode>> {
 
 #[cfg(test)]
 pub mod test_utils{
+    use std::sync::Arc;
+
     use crate::parser::ast::IAstNode;
 
-    pub fn cast_and_unwrap<'a, T: 'static>(node: &'a Box<dyn IAstNode>) -> &'a T{
+    pub fn cast_and_unwrap<'a, T: 'static>(node: &'a Arc<dyn IAstNode>) -> &'a T{
         return node.as_ref().as_any().downcast_ref::<T>().unwrap();
     }
 }

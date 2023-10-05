@@ -1,4 +1,6 @@
 
+use std::sync::Arc;
+
 use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, Range}};
 
 use super::{ParseError, exp_token, utils::{parse_separated_list_w_context, alt_parse_w_context, parse_until_w_context, parse_until_no_match_w_context, opt_parse_w_context}, alt_parse, parse_type_basic, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::{AstArrayAccess, AstRepeatBlock}, IParserContext, ParserContext, oql_parser::parse_oql_expr};
@@ -28,18 +30,18 @@ impl<'a> BlockParser<'a> {
 }
 
 
-fn parse_literal_set<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+fn parse_literal_set<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
     let (next, obracket_token) = exp_token(TokenType::OSqrBracket)(input)?;
     let (next, set_items) = parse_separated_list_w_context(parse_primary, TokenType::Comma)(next,context)?;
     let (next, cbracket_token) = exp_token(TokenType::CSqrBracket)(next)?;
-    return Ok((next, Box::new(AstSetLiteral{
+    return Ok((next, Arc::new(AstSetLiteral{
         raw_pos: obracket_token.get_raw_pos(),
         range: create_new_range(obracket_token.get_range(), cbracket_token.get_range()),
         set_items,
     })))
 }
 
-pub fn parse_literal_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], _context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+pub fn parse_literal_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], _context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
     let (next, ident_token) = alt_parse(&[
         exp_token(TokenType::StringLiteral),
         exp_token(TokenType::NumericLiteral),
@@ -47,7 +49,7 @@ pub fn parse_literal_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: 
         exp_token(TokenType::BooleanFalse),
         exp_token(TokenType::Nil),
     ])(input)?;
-    return Ok((next, Box::new(AstTerminal{
+    return Ok((next, Arc::new(AstTerminal{
         token: ident_token
     })))
 }
@@ -74,27 +76,27 @@ pub fn parse_ident_token<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'
     ])(input);
 }
 
-pub fn parse_identifier<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+pub fn parse_identifier<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
     // reserved keywords can also be used a class members
     let (next, ident_token) = parse_ident_token(input, context)?;
-    return Ok((next, Box::new(AstTerminal{
+    return Ok((next, Arc::new(AstTerminal{
         token: ident_token
     })))
 }
 
-fn parse_literals<'a, C: IParserContext<ParserDiagnostic> + 'a >(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+fn parse_literals<'a, C: IParserContext<ParserDiagnostic> + 'a >(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
     return alt_parse_w_context([
         parse_literal_basic,
         parse_literal_set,
     ].as_ref())(input, context);
 }
 
-fn parse_method_call<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+fn parse_method_call<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
     let (next, ident_node) = parse_identifier(input, context)?;
     let (next, _) = exp_token(TokenType::OBracket)(next)?;
     let (next, parameter_list) = parse_separated_list_w_context(parse_expr, TokenType::Comma)(next, context)?;
     let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
-    return Ok((next, Box::new(AstMethodCall{
+    return Ok((next, Arc::new(AstMethodCall{
         raw_pos: ident_node.get_raw_pos(),
         pos: ident_node.get_pos(),
         range: create_new_range_from_irange(ident_node.as_range(), cbracket_token.as_range()),
@@ -103,17 +105,17 @@ fn parse_method_call<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
     })))
 }
 
-fn _test_parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+fn _test_parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
     let mut collector = ParserContext::new();
     return alt_parse_w_context([parse_method_call].as_ref())(input, &mut collector);
 }
 
-fn parse_array_access<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+fn parse_array_access<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
     let (next, ident_node) = parse_identifier(input, context)?;
     let (next, _) = exp_token(TokenType::OSqrBracket)(next)?;
     let (next, index_node) = parse_expr(next, context)?;
     let (next, cbracket_token) = exp_token(TokenType::CSqrBracket)(next)?;
-    return Ok((next, Box::new(AstArrayAccess{
+    return Ok((next, Arc::new(AstArrayAccess{
         raw_pos: ident_node.get_raw_pos(),
         range: create_new_range(ident_node.get_range(), cbracket_token.get_range()),
         left_node: ident_node,
@@ -121,12 +123,12 @@ fn parse_array_access<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[T
     })))
 }
 
-// fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError> {
+// fn parse_dot_op_left<'a>(input: &'a[Token]) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError> {
 //     let (next, ident_node) = parse_identifier(input)?;
 //     return Ok((next, ident_node))
 // }
 
-fn parse_dot_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+fn parse_dot_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
     let parsers = [
         parse_method_call,
         parse_array_access,
@@ -135,12 +137,12 @@ fn parse_dot_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token],
     return alt_parse_w_context(&parsers)(input, context);
 }
 
-pub fn parse_dot_ops<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+pub fn parse_dot_ops<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_parser = exp_token(TokenType::Dot);
     return parse_binary_ops_w_context(input, &op_parser, &parse_dot_op, context);
 } 
 
-fn parse_bracket_closure<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_bracket_closure<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     // should we make a separate node for this?
     let (next, _obracket_token) = exp_token(TokenType::OBracket)(input)?;
     let (next, expr_node) = parse_expr(next, context)?;
@@ -150,12 +152,12 @@ fn parse_bracket_closure<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'
     return Ok((next,expr_node))
 }
 
-fn parse_cast<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_cast<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, type_node) = parse_type_basic(input, context)?;
     let (next, _) = exp_token(TokenType::OBracket)(next)?;
     let (next, expr_node) = parse_expr(next, context)?;
     let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
-    return Ok((next, Box::new(AstCast{
+    return Ok((next, Arc::new(AstCast{
         raw_pos: type_node.get_raw_pos(),
         pos: type_node.get_pos(),
         range: create_new_range_from_irange(type_node.as_range(), cbracket_token.as_range()),
@@ -164,7 +166,7 @@ fn parse_cast<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], c
     })));
 }
 
-fn parse_unary_op_pre<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_unary_op_pre<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_parsers = [
         exp_token(TokenType::Not),
         exp_token(TokenType::BNot),
@@ -174,7 +176,7 @@ fn parse_unary_op_pre<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[T
     ];
     let (next, op_token) = alt_parse(&op_parsers)(input)?;
     let (next, expr_node) = parse_primary(next, context)?;
-    return Ok((next, Box::new(AstUnaryOp{
+    return Ok((next, Arc::new(AstUnaryOp{
         raw_pos: op_token.get_raw_pos(),
         pos: op_token.get_pos(),
         range: create_new_range_from_irange(op_token.as_range(), expr_node.as_range()),
@@ -183,14 +185,14 @@ fn parse_unary_op_pre<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[T
     })))
 }
 
-fn parse_unary_op_post<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_unary_op_post<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_parsers = [
         exp_token(TokenType::Increment),
         exp_token(TokenType::Decrement),
     ];
     let (next, expr_node) = parse_dot_ops(input, context)?;
     let (next, op_token) = alt_parse(&op_parsers)(next)?;
-    return Ok((next, Box::new(AstUnaryOp{
+    return Ok((next, Arc::new(AstUnaryOp{
         raw_pos: expr_node.get_raw_pos(),
         pos: expr_node.get_pos(),
         range: create_new_range_from_irange(expr_node.as_range(), op_token.as_range()),
@@ -199,14 +201,14 @@ fn parse_unary_op_post<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[
     })))
 }
 
-fn parse_unary_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_unary_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     return alt_parse_w_context([
         parse_unary_op_pre,
         parse_unary_op_post,
     ].as_ref())(input,context);
 }
 
-pub fn parse_primary<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+pub fn parse_primary<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let parsers = [
         parse_bracket_closure,
         parse_unary_op,
@@ -219,7 +221,7 @@ pub fn parse_primary<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
     return Ok((next, node));
 }
 
-fn parse_factors<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_factors<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::Asterisk),
         exp_token(TokenType::Divide),
@@ -229,7 +231,7 @@ fn parse_factors<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token]
     return parse_binary_ops_w_context(input, &op_parser, &parse_primary, context);
 } 
 
-fn parse_terms<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_terms<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::Plus),
         exp_token(TokenType::Minus),
@@ -240,7 +242,7 @@ fn parse_terms<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], 
     return parse_binary_ops_w_context(input, &op_parser, &parse_factors, context);
 } 
 
-fn parse_bit_ops_1<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_bit_ops_1<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::BAnd),
     ];
@@ -249,7 +251,7 @@ fn parse_bit_ops_1<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
 } 
 
 
-fn parse_bit_ops_2<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_bit_ops_2<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::BOr),
         exp_token(TokenType::BXor),
@@ -258,7 +260,7 @@ fn parse_bit_ops_2<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     return parse_binary_ops_w_context(input, &op_parser, &parse_bit_ops_1, context);
 } 
 
-fn parse_shifts<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_shifts<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::LeftShift),
         exp_token(TokenType::RightShift),
@@ -267,7 +269,7 @@ fn parse_shifts<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token],
     return parse_binary_ops_w_context(input, &op_parser, &parse_bit_ops_2, context);
 } 
 
-pub fn parse_compare<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+pub fn parse_compare<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::Equals),
         exp_token(TokenType::NotEquals),
@@ -282,7 +284,7 @@ pub fn parse_compare<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
     return parse_binary_ops_w_context(input, &op_parser, &parse_shifts, context);
 } 
 
-fn parse_logical_and<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_logical_and<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::And),
     ];
@@ -290,7 +292,7 @@ fn parse_logical_and<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
     return parse_binary_ops_w_context(input, &op_parser, &parse_compare, context);
 }
 
-fn parse_logical_or<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_logical_or<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::Or),
     ];
@@ -298,7 +300,7 @@ fn parse_logical_or<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
     return parse_binary_ops_w_context(input, &op_parser, &parse_logical_and, context);
 }
 
-pub fn parse_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>> {
+pub fn parse_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Arc<dyn IAstNode>), ParseError<'a>> {
     let parser = [
         parse_logical_or,
     ];
@@ -308,7 +310,7 @@ pub fn parse_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Tok
 
 
 
-fn parse_assignment<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_assignment<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, left_node) = parse_dot_ops(input, context)?;
     let op_parsers = [
         exp_token(TokenType::Equals),
@@ -318,7 +320,7 @@ fn parse_assignment<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
     ];
     let (next, op_token) = alt_parse(&op_parsers)(next)?;
     let (next, right_node) = parse_expr(next, context)?;
-    return Ok((next, Box::new(AstBinaryOp{
+    return Ok((next, Arc::new(AstBinaryOp{
         raw_pos: left_node.get_raw_pos(),
         range: create_new_range_from_irange(left_node.as_range(), right_node.as_range()),
         op_token,
@@ -327,7 +329,7 @@ fn parse_assignment<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
     })));
 }
 
-fn parse_if_block_v3<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_if_block_v3<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, if_token) = exp_token(TokenType::If)(input)?;
 
     let stop_tokens = [
@@ -340,22 +342,18 @@ fn parse_if_block_v3<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
 
     // parse first if conditional node
     let (next, if_cond_node) = parse_expr(next, context)?;
-    // initialize the if node
-    let mut result: AstIfBlock = AstIfBlock{
+    let if_cond_node_range = if_cond_node.get_range();
+    let mut if_block = AstConditionalBlock{
         raw_pos: if_token.get_raw_pos(),
-        pos: if_token.get_pos(),
-        range: create_new_range(if_token.get_range(), if_cond_node.get_range()),
-        if_block: Box::new(AstConditionalBlock{
-            raw_pos: if_token.get_raw_pos(),
-            range: create_new_range(if_token.get_range(), if_token.get_range()),
-            condition: Some(if_cond_node),
-            statements: Vec::new()
-        }),
-        else_if_blocks: None,
-        end_token: None
+        range: create_new_range(if_token.get_range(), if_token.get_range()),
+        condition: Some(if_cond_node),
+        statements: Vec::new()
     };
-    let mut cur_cond_block = result.if_block.as_mut();
+    // initialize the if node
+    
+    let mut cur_cond_block = &mut if_block;
     let mut next = next;
+    let mut else_if_blocks = Vec::new();
     // parse statements until it reaches the stop tokens
     let (next, end_token)  = loop {
         if next.len() == 0 {break (next, None);}
@@ -393,13 +391,13 @@ fn parse_if_block_v3<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
                     }
                 };
                 // create new block to append to
-                result.add_else_if_block(Box::new(AstConditionalBlock { 
+                else_if_blocks.push(AstConditionalBlock { 
                     raw_pos: t.get_raw_pos(), 
                     range: t.get_range(), 
                     condition: cur_cond_node, 
                     statements: Vec::new() 
-                }));
-                cur_cond_block = result.else_if_blocks.as_mut().unwrap().last_mut().unwrap();
+                });
+                cur_cond_block = else_if_blocks.last_mut().unwrap();
                 next
             },
             None => {
@@ -409,25 +407,33 @@ fn parse_if_block_v3<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
             }
         };
     };
+    let mut result: AstIfBlock = AstIfBlock{
+        raw_pos: if_token.get_raw_pos(),
+        pos: if_token.get_pos(),
+        range: create_new_range(if_token.get_range(), if_cond_node_range),
+        if_block: Arc::new(if_block),
+        else_if_blocks: else_if_blocks.into_iter().map(|b|{Arc::new(b)}).collect(),
+        end_token: None
+    };
     match end_token {
         Some(t) => {
             result.set_range(create_new_range(result.get_range(), t.get_range()));
             result.end_token = Some(t);
-            return Ok((next,Box::new(result)));
+            return Ok((next,Arc::new(result)));
         },
         None => {
-            return Ok((next,Box::new(result)));
+            return Ok((next,Arc::new(result)));
         }
     }
 }
 
-fn parse_to_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_to_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, left) = parse_literal_basic(input,context)?;
     let (next, op_tok) = exp_token(TokenType::To)(next)?;
     let (next, right) = parse_literal_basic(next,context)?;
     return Ok((
         next,
-        Box::new(AstBinaryOp{
+        Arc::new(AstBinaryOp{
             raw_pos: left.get_raw_pos(),
             range: create_new_range(left.get_range(), right.get_range()),
             op_token: op_tok,
@@ -437,7 +443,7 @@ fn parse_to_op<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], 
     ))
 }
 
-fn parse_separated_values<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_separated_values<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let parser = alt_parse_w_context([
         parse_literal_basic,
         parse_identifier
@@ -452,28 +458,28 @@ fn parse_separated_values<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &
         start = Default::default();
         end = Default::default();
     }
-    return Ok((next, Box::new(AstSetLiteral{
+    return Ok((next, Arc::new(AstSetLiteral{
         raw_pos: set_items.first().unwrap().get_raw_pos(),
         range: create_new_range(start, end),
         set_items,
     })))
 }
 
-fn parse_when_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a[Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_when_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a[Token], Arc<dyn IAstNode>), ParseError<'a>>{
     return alt_parse_w_context([
         parse_to_op,
         parse_separated_values,
     ].as_ref())(input, context);
 }
 
-fn parse_when_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a[Token], Box<AstWhenBlock>), ParseError<'a>>{
+fn parse_when_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a[Token], Arc<AstWhenBlock>), ParseError<'a>>{
     let (next, when_tok) = exp_token(TokenType::When)(input)?;
     let (next, when_expr) = parse_when_expr(next, context)?;
     let (next, statements, end_tok) = parse_until_w_context(next, exp_token(TokenType::EndWhen), parse_statement_v2, context);
     let end = end_tok.as_ref().unwrap_or(&when_tok).get_range();
     return Ok((
         next,
-        Box::new(AstWhenBlock { 
+        Arc::new(AstWhenBlock { 
             raw_pos: when_tok.get_raw_pos(), 
             range: create_new_range(when_tok.get_range(), end), 
             when_expr: Some(when_expr), 
@@ -481,7 +487,7 @@ fn parse_when_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
     ));
 }
 
-fn parse_switch_else_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a[Token], Option<Box<AstWhenBlock>>, Option<Token>), ParseError<'a>>{
+fn parse_switch_else_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a[Token], Option<Arc<AstWhenBlock>>, Option<Token>), ParseError<'a>>{
     let (next, else_tok) = match exp_token(TokenType::Else)(input){
         Ok((n, tok)) => (n, tok),
         Err(_e) => {
@@ -497,7 +503,7 @@ fn parse_switch_else_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: 
     }
     return Ok((
         next,
-        Some(Box::new(AstWhenBlock{
+        Some(Arc::new(AstWhenBlock{
             raw_pos: else_tok.get_raw_pos(),
             range: create_new_range(else_tok.get_range(), end),
             when_expr: None,
@@ -507,7 +513,7 @@ fn parse_switch_else_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: 
     ))
 }
 
-fn parse_switch_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token],Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_switch_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token],Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, switch_tok) = exp_token(TokenType::Switch)(input)?;
     let (next, switch_expr) = parse_expr(next, context)?;
 
@@ -523,7 +529,7 @@ fn parse_switch_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[T
     return Ok((
         next,
         (
-            Box::new(AstSwitchBlock{
+            Arc::new(AstSwitchBlock{
             raw_pos: switch_tok.get_raw_pos(),
             range: create_new_range(switch_tok.get_range(), end),
             switch_expr: switch_expr,
@@ -534,10 +540,10 @@ fn parse_switch_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[T
     ))
 }
 
-// fn parse_for_block_condition<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Box<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
+// fn parse_for_block_condition<'a>(input: &'a[Token]) -> Result<(&'a [Token], (Arc<dyn IAstNode>, Vec<GoldParserError>)), GoldParserError>{
 // }
 
-fn parse_for_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_for_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, for_token) = exp_token(TokenType::For)(input)?;
     let (next, var_token) = exp_token(TokenType::Identifier)(next)?;
     let (next, _eq_token) = exp_token(TokenType::Equals)(next)?;
@@ -547,7 +553,7 @@ fn parse_for_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     let (next, range_node) = parse_binary_ops_w_context(next, &range_op_parsers, &parse_expr, context)?;
     let (mut next, step_token) = opt_parse(exp_token(TokenType::Step))(next)?;
 
-    let mut step_expr: Option<Box<dyn IAstNode>>= None;
+    let mut step_expr: Option<Arc<dyn IAstNode>>= None;
     if step_token.is_some(){
         (next, step_expr) = opt_parse_w_context(parse_expr)(next, context)?;
     }
@@ -561,7 +567,7 @@ fn parse_for_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     };
     return Ok((
         next, 
-        Box::new(AstForBlock{
+        Arc::new(AstForBlock{
             raw_pos: for_token.get_raw_pos(),
             pos: for_token.get_pos(),
             range: create_new_range(for_token.get_range(), end_pos_token.get_range()),
@@ -574,7 +580,7 @@ fn parse_for_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     ));
 }
 
-fn parse_foreach_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_foreach_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, foreach_token) = exp_token(TokenType::ForEach)(input)?;
     // curVar in List
     let in_op_parser = exp_token(TokenType::In);
@@ -583,7 +589,7 @@ fn parse_foreach_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[
     let (next, downto_token) = opt_parse(exp_token(TokenType::DownTo))(next)?;
     // using someVar
     let (mut next, using_token) = opt_parse(exp_token(TokenType::Using))(next)?;
-    let mut using_var : Option<Box<dyn IAstNode>> = None;
+    let mut using_var : Option<Arc<dyn IAstNode>> = None;
     if using_token.is_some() {
         (next, using_var) = match parse_identifier(next, context){
             Ok((n, using_node)) => (n, Some(using_node)),
@@ -599,7 +605,7 @@ fn parse_foreach_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[
     };
     return Ok((
         next, 
-        Box::new(AstForEachBlock{
+        Arc::new(AstForEachBlock{
             raw_pos: foreach_token.get_raw_pos(),
             pos: foreach_token.get_pos(),
             range: create_new_range(foreach_token.get_range(), end_pos_token.get_range()),
@@ -612,7 +618,7 @@ fn parse_foreach_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[
     ));
 }
 
-fn parse_while_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_while_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, while_token) = exp_token(TokenType::While)(input)?;
     let (next, cond_node) = parse_expr(next, context)?;
     
@@ -632,7 +638,7 @@ fn parse_while_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
         raw_pos: while_token.get_raw_pos(),
         pos: while_token.get_pos(),
         range: create_new_range(while_token.get_range(), end_pos_token.get_range()),
-        cond_block: Box::new(AstConditionalBlock { 
+        cond_block: Arc::new(AstConditionalBlock { 
             raw_pos: cond_node.get_raw_pos(), 
             range: create_new_range(while_token.get_range(), end_pos_token.get_range()), 
             condition: Some(cond_node), 
@@ -642,11 +648,11 @@ fn parse_while_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
     };
     return Ok((
         next, 
-        Box::new(result)
+        Arc::new(result)
     ));
 }
 
-fn parse_loop_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_loop_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, loop_token) = exp_token(TokenType::Loop)(input)?;
     
     let stop_tokens = [exp_token(TokenType::EndLoop), exp_token(TokenType::End)];
@@ -665,11 +671,11 @@ fn parse_loop_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
     };
     return Ok((
         next, 
-        Box::new(result)));
+        Arc::new(result)));
 }
 
 
-fn parse_repeat_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_repeat_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, repeat_token) = exp_token(TokenType::Repeat)(input)?;
     
     let stop_parser = exp_token(TokenType::Until);
@@ -690,7 +696,7 @@ fn parse_repeat_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[T
     let result = AstRepeatBlock{
         raw_pos: repeat_token.get_raw_pos(),
         range: create_new_range(repeat_token.get_range(), end.clone()),
-        cond_block: Box::new(AstConditionalBlock { 
+        cond_block: Arc::new(AstConditionalBlock { 
             raw_pos: repeat_token.get_raw_pos(), 
             range: create_new_range(repeat_token.get_range(), end), 
             condition: cond_node, 
@@ -700,7 +706,7 @@ fn parse_repeat_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[T
     };
     return Ok((
         next, 
-        Box::new(result)
+        Arc::new(result)
     ));
 }
 
@@ -716,7 +722,7 @@ fn update_cond_block_range(cond_block: &mut AstConditionalBlock){
     cond_block.set_range(create_new_range(cond_block.get_range(), end_node.get_range()))
 }
 
-fn parse_local_var_decl<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_local_var_decl<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Arc<dyn IAstNode>), ParseError<'a>>{
     // var
     let (next, var_token) = exp_token(TokenType::Var)(input)?;
     // ident
@@ -728,7 +734,7 @@ fn parse_local_var_decl<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'
     let mut end_range = type_node.get_range();
     // parse absolute
     let (mut next, abs_token) = opt_parse(exp_token(TokenType::Absolute))(next)?;
-    let mut absolute_node : Option<Box<dyn IAstNode>>= None;
+    let mut absolute_node : Option<Arc<dyn IAstNode>>= None;
     if abs_token.is_some() {
         (next, absolute_node) = match parse_identifier(next, context) {
             Ok((n, node)) => {
@@ -741,7 +747,7 @@ fn parse_local_var_decl<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'
 
     return Ok((
         next,
-        Box::new(AstLocalVariableDeclaration {
+        Arc::new(AstLocalVariableDeclaration {
             raw_pos: var_token.get_raw_pos(),
             pos: var_token.get_pos(),
             range: create_new_range(var_token.get_range(), end_range),
@@ -752,10 +758,10 @@ fn parse_local_var_decl<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'
     ));
  }
 
-fn parse_return_statement<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_return_statement<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, return_token) = exp_token(TokenType::Return)(input)?;
     let (next, return_expr) = parse_expr(next, context)?;
-    return Ok((next, Box::new(AstReturnNode{
+    return Ok((next, Arc::new(AstReturnNode{
         raw_pos: return_token.get_raw_pos(),
         pos: return_token.get_pos(),
         range: create_new_range(return_token.get_range(), return_expr.get_range()),
@@ -763,25 +769,25 @@ fn parse_return_statement<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : 
     })));
 }
 
-fn _parse_control_statements<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+fn _parse_control_statements<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, control_token) = alt_parse([
         exp_token(TokenType::Exit),
         exp_token(TokenType::Break),
         exp_token(TokenType::Continue),
     ].as_ref())(input)?;
-    return Ok((next, Box::new(AstTerminal{
+    return Ok((next, Arc::new(AstTerminal{
         token: control_token,
     })));
 }
 
-fn parse_control_statements<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_control_statements<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Arc<dyn IAstNode>), ParseError<'a>>{
     return alt_parse_w_context([
         _parse_control_statements,
         parse_return_statement,
     ].as_ref())(input,context);
 }
 
-pub fn parse_statement_v2<'a, C: IParserContext<ParserDiagnostic>+'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+pub fn parse_statement_v2<'a, C: IParserContext<ParserDiagnostic>+'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     // try match block statements first
     let mut last_error;
     // TODO can't use alt_parse, why?
@@ -839,9 +845,9 @@ pub fn parse_statement_v2<'a, C: IParserContext<ParserDiagnostic>+'a>(input: &'a
 pub fn parse_binary_ops<'a>(
     input: &'a[Token],
     op_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Token), ParseError>,
-    expr_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParseError>,
+    expr_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Arc<dyn IAstNode>), ParseError>,
 ) 
--> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+-> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (mut next, left_node) = expr_parser(input)?;
     let mut left_node = Some(left_node);
     loop {
@@ -858,10 +864,10 @@ pub fn parse_binary_ops<'a>(
 
 fn parse_binary_op<'a>(
     input: &'a[Token],
-    left_node: Box<dyn IAstNode>,
+    left_node: Arc<dyn IAstNode>,
     op_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Token), ParseError>,
-    expr_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Box<dyn IAstNode>), ParseError>) 
--> Result<(&'a [Token], Box<dyn IAstNode>), Box<dyn IAstNode>>{
+    expr_parser: &impl Fn(&[Token]) -> Result<(&[Token],  Arc<dyn IAstNode>), ParseError>) 
+-> Result<(&'a [Token], Arc<dyn IAstNode>), Arc<dyn IAstNode>>{
 
     let (next, op_token) = match op_parser(input){
         Ok(r) => r,
@@ -871,7 +877,7 @@ fn parse_binary_op<'a>(
         Ok(r) => r,
         Err(_e) => return Err(left_node)
     };
-    return Ok((next, Box::new(AstBinaryOp{
+    return Ok((next, Arc::new(AstBinaryOp{
         raw_pos: left_node.get_raw_pos(),
         range: create_new_range_from_irange(left_node.as_range(), right_node.as_range()),
         op_token,
@@ -883,10 +889,10 @@ fn parse_binary_op<'a>(
 pub fn parse_binary_ops_w_context<'a, 'b, C:IParserContext<ParserDiagnostic> +'a>(
     input: &'a[Token],
     op_parser: &impl Fn(&'a [Token]) -> Result<(&'a[Token],  Token), ParseError<'a>>,
-    expr_parser: &impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token],  Box<dyn IAstNode>), ParseError<'a>>,
+    expr_parser: &impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token],  Arc<dyn IAstNode>), ParseError<'a>>,
     context : &mut C
 ) 
--> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+-> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (mut next, left_node) = expr_parser(input, context)?;
     let mut left_node = Some(left_node);
     loop {
@@ -903,11 +909,11 @@ pub fn parse_binary_ops_w_context<'a, 'b, C:IParserContext<ParserDiagnostic> +'a
 
 fn parse_binary_op_w_context<'a, C:IParserContext<ParserDiagnostic> +'a>(
     input: &'a[Token],
-    left_node: Box<dyn IAstNode>,
+    left_node: Arc<dyn IAstNode>,
     op_parser: &impl Fn(&'a [Token]) -> Result<(&[Token],  Token), ParseError>,
-    expr_parser: &impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token],  Box<dyn IAstNode>), ParseError<'a>>,
+    expr_parser: &impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token],  Arc<dyn IAstNode>), ParseError<'a>>,
     context : &mut C)
--> Result<(&'a [Token], Box<dyn IAstNode>), Box<dyn IAstNode>>{
+-> Result<(&'a [Token], Arc<dyn IAstNode>), Arc<dyn IAstNode>>{
 
     let (next, op_token) = match op_parser(input){
         Ok(r) => r,
@@ -927,13 +933,13 @@ fn parse_binary_op_w_context<'a, C:IParserContext<ParserDiagnostic> +'a>(
                     Some(t) => t.get_range(),
                     _=> start.clone()
                 };
-                let right_node = Box::new(AstEmpty{
+                let right_node = Arc::new(AstEmpty{
                     raw_pos: op_token.get_raw_pos()+1,
                     range: create_new_range(start, end)
                 });
                 return Ok((
                     next,
-                    Box::new(AstBinaryOp{
+                    Arc::new(AstBinaryOp{
                         raw_pos: left_node.get_raw_pos(),
                         range: create_new_range(left_node.get_range(), right_node.get_range()),
                         left_node,
@@ -946,7 +952,7 @@ fn parse_binary_op_w_context<'a, C:IParserContext<ParserDiagnostic> +'a>(
             }
         }
     };
-    return Ok((next, Box::new(AstBinaryOp{
+    return Ok((next, Arc::new(AstBinaryOp{
         raw_pos: left_node.get_raw_pos(),
         range: create_new_range_from_irange(left_node.as_range(), right_node.as_range()),
         op_token,
@@ -1290,7 +1296,7 @@ mod test{
         let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
         assert_eq!(node.op_token.get_value(), "++");
         assert_eq!(node.expr_node.get_identifier(), ".");
-        assert_eq!(node.expr_node.get_children().unwrap().get(0).unwrap().get_identifier(), ".");
+        assert_eq!(node.expr_node.get_children_ref().unwrap().get(0).unwrap().get_identifier(), ".");
     }
 
     #[test]
@@ -1507,9 +1513,9 @@ mod test{
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
         let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
-        assert_eq!(if_node.if_block.get_children().unwrap().len(), 2);
-        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().len(), 1);
-        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 1);
+        assert_eq!(if_node.if_block.get_children_ref().unwrap().len(), 2);
+        assert_eq!(if_node.else_if_blocks.len(), 1);
+        assert_eq!(if_node.else_if_blocks.get(0).unwrap().get_children_ref().unwrap().len(), 1);
     }
 
     #[test]
@@ -1534,10 +1540,10 @@ mod test{
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
         let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
-        assert_eq!(if_node.if_block.get_children().unwrap().len(), 2);
-        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().len(), 2);
-        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 2);
-        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(1).unwrap().get_children().unwrap().len(), 1);
+        assert_eq!(if_node.if_block.get_children_ref().unwrap().len(), 2);
+        assert_eq!(if_node.else_if_blocks.len(), 2);
+        assert_eq!(if_node.else_if_blocks.get(0).unwrap().get_children_ref().unwrap().len(), 2);
+        assert_eq!(if_node.else_if_blocks.get(1).unwrap().get_children_ref().unwrap().len(), 1);
     }
 
     #[test]
@@ -1559,10 +1565,10 @@ mod test{
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
         let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
-        assert_eq!(if_node.if_block.get_children().unwrap().len(), 1);
-        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().len(), 2);
-        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(0).unwrap().get_children().unwrap().len(), 1);
-        assert_eq!(if_node.else_if_blocks.as_ref().unwrap().get(1).unwrap().get_children().unwrap().len(), 0);
+        assert_eq!(if_node.if_block.get_children_ref().unwrap().len(), 1);
+        assert_eq!(if_node.else_if_blocks.len(), 2);
+        assert_eq!(if_node.else_if_blocks.get(0).unwrap().get_children_ref().unwrap().len(), 1);
+        assert_eq!(if_node.else_if_blocks.get(1).unwrap().get_children_ref().unwrap().len(), 0);
     }
 
     #[test]
@@ -1597,12 +1603,12 @@ mod test{
         check_node_pos_and_range(node.as_ast_node(), &input);
         
         let if_node = node.as_any().downcast_ref::<AstIfBlock>().unwrap();
-        assert_eq!(if_node.if_block.get_children().unwrap().len(), 4);
-        assert!(if_node.else_if_blocks.is_none());
-        let children = if_node.if_block.get_children().unwrap();
+        assert_eq!(if_node.if_block.get_children_ref().unwrap().len(), 4);
+        assert_eq!(if_node.else_if_blocks.len(), 0);
+        let children = if_node.if_block.get_children_ref().unwrap();
         let nested_if = children.get(1).unwrap();
         let nested_if = nested_if.as_any().downcast_ref::<AstIfBlock>().unwrap();
-        assert_eq!(nested_if.if_block.get_children().unwrap().len(), 3);
+        assert_eq!(nested_if.if_block.get_children_ref().unwrap().len(), 3);
 
     }
 
@@ -1859,8 +1865,8 @@ mod test{
         let while_node = node.as_any().downcast_ref::<AstLoopBlock>().unwrap();
         // check counter var
         assert_eq!(while_node.to_string_type_pos(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(while_node.get_children().unwrap().len(), 1);
-        assert_eq!(while_node.get_children().unwrap().first().unwrap().get_identifier(), "=".to_string());
+        assert_eq!(while_node.get_children_ref().unwrap().len(), 1);
+        assert_eq!(while_node.get_children_ref().unwrap().first().unwrap().get_identifier(), "=".to_string());
         assert_eq!(while_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
         // bfs.iter().for_each(|n|{
@@ -1884,7 +1890,7 @@ mod test{
         
         // check ident
         assert_eq!(var_decl.get_identifier(), input.get(1).unwrap().get_value());
-        assert_eq!(var_decl.get_children().unwrap().len(), 1);  
+        assert_eq!(var_decl.get_children_ref().unwrap().len(), 1);  
     }
 
     #[test]
@@ -1905,9 +1911,9 @@ mod test{
         
         // check ident
         assert_eq!(var_decl.get_identifier(), input.get(1).unwrap().get_value());
-        assert_eq!(var_decl.get_children().unwrap().len(), 2);
+        assert_eq!(var_decl.get_children_ref().unwrap().len(), 2);
         // check abs
-        assert_eq!(var_decl.get_children().unwrap().get(1).unwrap().get_identifier(), input.last().unwrap().get_value());  
+        assert_eq!(var_decl.get_children_ref().unwrap().get(1).unwrap().get_identifier(), input.last().unwrap().get_value());  
     }
 
     #[test]
@@ -1987,9 +1993,9 @@ mod test{
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
         let switch_node = node.as_any().downcast_ref::<AstSwitchBlock>().unwrap();
-        assert_eq!(switch_node.get_children().unwrap().len(), 3);
+        assert_eq!(switch_node.get_children_ref().unwrap().len(), 3);
         // check when expr
-        assert_eq!(switch_node.get_children().unwrap().get(1).unwrap().get_children().unwrap().len(), 2);
+        assert_eq!(switch_node.get_children_ref().unwrap().get(1).unwrap().get_children_ref().unwrap().len(), 2);
     }
 
     #[test]
@@ -2014,9 +2020,9 @@ mod test{
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
 
         let switch_node = node.as_any().downcast_ref::<AstSwitchBlock>().unwrap();
-        assert_eq!(switch_node.get_children().unwrap().len(), 2);
+        assert_eq!(switch_node.get_children_ref().unwrap().len(), 2);
         // check when expr
-        assert_eq!(switch_node.get_children().unwrap().get(1).unwrap().get_children().unwrap().len(), 2);
+        assert_eq!(switch_node.get_children_ref().unwrap().get(1).unwrap().get_children_ref().unwrap().len(), 2);
     }
 
     #[test]
@@ -2041,7 +2047,7 @@ mod test{
         let repeat_node = node.as_any().downcast_ref::<AstRepeatBlock>().unwrap();
 
         assert_eq!(repeat_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(repeat_node.cond_block.get_children().unwrap().len(), 2);
+        assert_eq!(repeat_node.cond_block.get_children_ref().unwrap().len(), 2);
      
     }
 }

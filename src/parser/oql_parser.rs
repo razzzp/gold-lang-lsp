@@ -1,17 +1,19 @@
+use std::sync::Arc;
+
 use crate::{lexer::tokens::{Token, TokenType}, utils::{IRange, create_new_range}};
 
 use super::{IParserContext, ParserDiagnostic, ast::{IAstNode, AstTerminal, AstOQLSelect, AstOQLFromNode, AstOQLJoin, AstOQLOrderBy, AstMethodCall, AstOQLFetch}, ParseError, utils::{exp_token, alt_parse_w_context, opt_parse, opt_parse_w_context, parse_separated_list_w_context, exp_ident_with_value, alt_parse, parse_until_no_match_w_context}, body_parser::{parse_literal_basic, parse_identifier, parse_compare, parse_expr, parse_dot_ops}};
 
 
 
-pub fn parse_oql_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+pub fn parse_oql_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     return alt_parse_w_context([
         parse_oql_select,
         parse_oql_fetch
     ].as_ref())(input, context);
 }
 
-fn parse_oql_select<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_oql_select<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     //     OQL Select {Top <n>} {Distinct} <Select variable list> 
     //    from {Conditional} {allVersionsOf} {PhantomsToo} <Alias variable 1> in <Class identifier 1>{++ {RestrictTo <ClassId>}} {<OuterJoins>}
     //    {, <Alias variable 2> in <Class 2 identifier>{++ {RestrictTo <ClassId2>}} {<OuterJoins>}...}
@@ -65,7 +67,7 @@ fn parse_oql_select<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
 
     return Ok((
         next,
-        Box::new(
+        Arc::new(
             AstOQLSelect{
                 raw_pos: oql_token.get_raw_pos(),
                 range: create_new_range(oql_token.get_range(), end),
@@ -81,7 +83,7 @@ fn parse_oql_select<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
     ))
 }
 
-fn parse_top_n<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_top_n<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, _top_token) = exp_token(TokenType::Top)(input)?;
     return alt_parse_w_context([
         parse_literal_basic,
@@ -89,7 +91,7 @@ fn parse_top_n<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], 
     ].as_ref())(next, context);
 }
 
-fn parse_select_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_select_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     return alt_parse_w_context([
         parse_asterisk,
         parse_oql_method_call,
@@ -97,14 +99,14 @@ fn parse_select_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
     ].as_ref())(input, context);
 }
 
-fn parse_oql_method_call<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>> {
+fn parse_oql_method_call<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
     // to handle asterisk in method calls
     //  e.g. OQLCount(*)
     let (next, ident_node) = parse_identifier(input, context)?;
     let (next, _) = exp_token(TokenType::OBracket)(next)?;
     let (next, parameter_list) = parse_separated_list_w_context(parse_asterisk, TokenType::Comma)(next, context)?;
     let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
-    return Ok((next, Box::new(AstMethodCall{
+    return Ok((next, Arc::new(AstMethodCall{
         raw_pos: ident_node.get_raw_pos(),
         pos: ident_node.get_pos(),
         range: create_new_range(ident_node.get_range(), cbracket_token.get_range()),
@@ -113,17 +115,17 @@ fn parse_oql_method_call<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'
     })))
 }
 
-fn parse_asterisk<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], _context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_asterisk<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], _context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, top_token) = exp_token(TokenType::Asterisk)(input)?;
     return Ok((
         next,
-        Box::new(
+        Arc::new(
             AstTerminal::new(top_token)
         )
     )) 
 }
 
-fn parse_from_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_from_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     // [conditional] {alias} in {source_class}[++]
     // conditional
     let (next, cond_token) = opt_parse(exp_token(TokenType::Conditional))(input)?;
@@ -156,7 +158,7 @@ fn parse_from_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     };
     return Ok((
         next,
-        Box::new(
+        Arc::new(
             AstOQLFromNode{
                 raw_pos: s_raw_pos,
                 range: create_new_range(start, end),
@@ -172,7 +174,7 @@ fn parse_from_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     )) 
 }
 
-fn parse_join_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_join_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, join_token) = alt_parse([
         exp_ident_with_value("outerjoinon"),
         exp_ident_with_value("leftouterjoinon"),
@@ -182,7 +184,7 @@ fn parse_join_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     let (next, cond_node) = parse_compare(next, context)?;
     return Ok((
         next,
-        Box::new(
+        Arc::new(
             AstOQLJoin{
                 raw_pos: join_token.get_raw_pos(),
                 range: create_new_range(join_token.get_range(), cond_node.get_range()),
@@ -193,18 +195,18 @@ fn parse_join_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     ))
 }
 
-fn parse_where<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_where<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, _where_token) = exp_token(TokenType::Where)(input)?;
     return parse_expr(next, context);
 }
 
-fn parse_order_by<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Vec<Box<dyn IAstNode>>), ParseError<'a>>{
+fn parse_order_by<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Vec<Arc<dyn IAstNode>>), ParseError<'a>>{
     let (next, _order_token) = exp_token(TokenType::Order)(input)?;
     let (next, _by_token) = exp_token(TokenType::By)(next)?;
     return parse_separated_list_w_context(parse_order_by_item, TokenType::Comma)(next, context);
 }
 
-fn parse_order_by_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_order_by_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     
     let (next, field_node) = parse_dot_ops(input, context)?;
     let (next, desc_token) = opt_parse(exp_token(TokenType::Descending))(next)?;
@@ -214,7 +216,7 @@ fn parse_order_by_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[
     };
     return Ok((
         next,
-        Box::new(
+        Arc::new(
             AstOQLOrderBy{
                 raw_pos: field_node.get_raw_pos(),
                 range: create_new_range(field_node.get_range(), end),
@@ -225,7 +227,7 @@ fn parse_order_by_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[
     ))
 }
 
-fn parse_oql_fetch<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_oql_fetch<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let(next, oql_token) = exp_token(TokenType::OQL)(input)?;
     let(next, _fetch_token) = exp_token(TokenType::Fetch)(next)?;
     let(next, _into_token) = exp_token(TokenType::Into)(next)?;
@@ -244,7 +246,7 @@ fn parse_oql_fetch<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     };
     return Ok((
         next,
-        Box::new(AstOQLFetch{
+        Arc::new(AstOQLFetch{
             raw_pos: oql_token.get_raw_pos(),
             range: create_new_range(oql_token.get_range(), end),
             into_field_nodes: into_nodes,
@@ -253,7 +255,7 @@ fn parse_oql_fetch<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     ))
 }
 
-fn parse_using<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Box<dyn IAstNode>), ParseError<'a>>{
+fn parse_using<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, _using_token) = exp_token(TokenType::Using)(input)?;
     return parse_identifier(next, context);
 }
@@ -308,7 +310,7 @@ mod test{
         assert_eq!(next.len(), 0);
         assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
-        assert_eq!(node.get_children_dynamic().unwrap().len(), 8);
+        assert_eq!(node.get_children_ref_dynamic().unwrap().len(), 8);
         let downcasted = node.as_any().downcast_ref::<AstOQLSelect>().unwrap();
 
         assert_eq!(downcasted.limit_node.as_ref().unwrap().get_identifier(), "10");
@@ -344,7 +346,7 @@ mod test{
         assert_eq!(next.len(), 0);
         assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
-        assert_eq!(node.get_children_dynamic().unwrap().len(), 3);
+        assert_eq!(node.get_children_ref_dynamic().unwrap().len(), 3);
         let downcasted = node.as_any().downcast_ref::<AstOQLFromNode>().unwrap();
 
         assert_eq!(downcasted.alias_token.get_value(), "y");
@@ -379,7 +381,7 @@ mod test{
         assert_eq!(next.len(), 0);
         assert_eq!(context.get_diagnostics().len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
-        assert_eq!(node.get_children_dynamic().unwrap().len(), 4);
+        assert_eq!(node.get_children_ref_dynamic().unwrap().len(), 4);
         let downcasted = node.as_any().downcast_ref::<AstOQLFetch>().unwrap();
 
         assert_eq!(downcasted.into_field_nodes.len(), 3);

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::{
     parser::ast::IAstNode,
     lexer::tokens::{Token, TokenType},
@@ -15,10 +17,10 @@ pub fn prepend_msg_to_error<'a>(s: &str, mut error: ParseError<'a>) -> ParseErro
 
 pub fn parse_separated_list_allow_empty<'a, T: IAstNode + ?Sized>(
     input: &'a [Token],
-    parser: impl Fn(&[Token]) -> Result<(&[Token], Box<T>), ParseError>,
+    parser: impl Fn(&[Token]) -> Result<(&[Token], Arc<T>), ParseError>,
     separator: TokenType,
-) -> Result<(&'a [Token], Vec<Box<T>>), ParseError<'a>> {
-    let mut identifiers = Vec::<Box<T>>::new();
+) -> Result<(&'a [Token], Vec<Arc<T>>), ParseError<'a>> {
+    let mut identifiers = Vec::<Arc<T>>::new();
     // match first identifier, if doesn't match return empty vec
     let next = match parser(input) {
         Ok((next, node)) => {
@@ -43,10 +45,10 @@ pub fn parse_separated_list_allow_empty<'a, T: IAstNode + ?Sized>(
 
 pub fn parse_separated_list<'a, T: IAstNode + ?Sized>(
     input: &'a [Token],
-    parser: impl Fn(&[Token]) -> Result<(&[Token], Box<T>), ParseError>,
+    parser: impl Fn(&[Token]) -> Result<(&[Token], Arc<T>), ParseError>,
     separator: TokenType,
-) -> Result<(&'a [Token], Vec<Box<T>>), ParseError<'a>> {
-    let mut identifiers = Vec::<Box<T>>::new();
+) -> Result<(&'a [Token], Vec<Arc<T>>), ParseError<'a>> {
+    let mut identifiers = Vec::<Arc<T>>::new();
     // match first identifier
     let r = _parse_seperated_list_recursive(input, &parser, &separator, &mut identifiers);
     match r {
@@ -57,9 +59,9 @@ pub fn parse_separated_list<'a, T: IAstNode + ?Sized>(
 
 fn _parse_seperated_list_recursive<'a, 'b, T: IAstNode + ?Sized>(
     input: &'a [Token],
-    parser: &'b impl Fn(&[Token]) -> Result<(&[Token], Box<T>), ParseError>,
+    parser: &'b impl Fn(&[Token]) -> Result<(&[Token], Arc<T>), ParseError>,
     sep: &'b TokenType,
-    result: &'b mut Vec<Box<T>>,
+    result: &'b mut Vec<Arc<T>>,
 ) -> Result<&'a [Token], ParseError<'a>> {
     // match first identifier
     let next = match parser(input) {
@@ -308,14 +310,14 @@ pub fn create_closure_w_context<'a, 'b, T, C: IParserContext<ParserDiagnostic> +
 pub fn parse_until<'a, T: IAstNode + ?Sized>(
     input: &'a [Token],
     stop_parser: impl Fn(&[Token]) -> Result<(&[Token], Token), ParseError>,
-    parser: impl Fn(&[Token]) -> Result<(&[Token], (Box<T>, Vec<ParserDiagnostic>)), ParseError>,
+    parser: impl Fn(&[Token]) -> Result<(&[Token], (Arc<T>, Vec<ParserDiagnostic>)), ParseError>,
 ) -> (
     &'a [Token],
-    Vec<Box<T>>,
+    Vec<Arc<T>>,
     Vec<ParserDiagnostic>,
     Option<Token>,
 ) {
-    let mut result: Vec<Box<T>> = Vec::new();
+    let mut result: Vec<Arc<T>> = Vec::new();
     let mut errors: Vec<ParserDiagnostic> = Vec::new();
     let mut next = input;
     loop {
@@ -365,13 +367,13 @@ pub fn parse_until<'a, T: IAstNode + ?Sized>(
 pub fn parse_until_strict<'a, T: ?Sized>(
     input: &'a [Token],
     stop_parser: impl Fn(&[Token]) -> Result<(&[Token], Token), ParseError>,
-    parser: impl Fn(&[Token]) -> Result<(&[Token], Box<T>), ParseError>,
+    parser: impl Fn(&[Token]) -> Result<(&[Token], Arc<T>), ParseError>,
 ) -> Result<(
     &'a [Token],
-    Vec<Box<T>>,
+    Vec<Arc<T>>,
     Option<Token>,
 ), ParseError> {
-    let mut result: Vec<Box<T>> = Vec::new();
+    let mut result: Vec<Arc<T>> = Vec::new();
     let mut next = input;
     loop {
         if next.len() == 0 {
@@ -397,9 +399,9 @@ pub fn parse_until_strict<'a, T: ?Sized>(
 /// parses using the parser until it doesn't match
 pub fn parse_until_no_match<'a, T: IAstNode + ?Sized>(
     input: &'a [Token],
-    parser: impl Fn(&[Token]) -> Result<(&[Token], Box<T>, Vec<ParserDiagnostic>), ParseError>,
-) -> (&'a [Token], Vec<Box<T>>, Vec<ParserDiagnostic>) {
-    let mut result: Vec<Box<T>> = Vec::new();
+    parser: impl Fn(&[Token]) -> Result<(&[Token], Arc<T>, Vec<ParserDiagnostic>), ParseError>,
+) -> (&'a [Token], Vec<Arc<T>>, Vec<ParserDiagnostic>) {
+    let mut result: Vec<Arc<T>> = Vec::new();
     let mut errors: Vec<ParserDiagnostic> = Vec::new();
     let mut next = input;
     loop {
@@ -427,9 +429,9 @@ pub fn parse_until_no_match<'a, T: IAstNode + ?Sized>(
 pub fn parse_repeat<'a>(
     input: &'a [Token],
     parser: impl Fn(&[Token],)
-        -> Result<(&[Token], (Box<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>,
-) -> (&'a [Token], Vec<Box<dyn IAstNode>>, Vec<ParserDiagnostic>) {
-    let mut result: Vec<Box<dyn IAstNode>> = Vec::new();
+        -> Result<(&[Token], (Arc<dyn IAstNode>, Vec<ParserDiagnostic>)), ParseError>,
+) -> (&'a [Token], Vec<Arc<dyn IAstNode>>, Vec<ParserDiagnostic>) {
+    let mut result: Vec<Arc<dyn IAstNode>> = Vec::new();
     let mut errors: Vec<ParserDiagnostic> = Vec::new();
     let mut next = input;
     loop {
@@ -496,12 +498,12 @@ pub fn alt_parse_w_context<'a, 'b, T, C: IParserContext<ParserDiagnostic>>(
 /// this version doesn't fail if one item fails to parse
 ///  collect the errors instead
 pub fn parse_separated_list_w_context<'a, T: ?Sized, C: IParserContext<ParserDiagnostic> + 'a>(
-    parser: impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], Box<T>), ParseError<'a>>,
+    parser: impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], Arc<T>), ParseError<'a>>,
     separator: TokenType,
-) -> impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], Vec<Box<T>>), ParseError<'a>> {
+) -> impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], Vec<Arc<T>>), ParseError<'a>> {
 
     move |input : &[Token], context: &mut C| {
-        let mut identifiers = Vec::<Box<T>>::new();
+        let mut identifiers = Vec::<Arc<T>>::new();
         // match first identifier
 
         // match first identifier, if doesn't match return empty vec
@@ -529,9 +531,9 @@ pub fn parse_separated_list_w_context<'a, T: ?Sized, C: IParserContext<ParserDia
 fn _parse_seperated_list_recursive_w_context<'a, 'b, T:?Sized, C: IParserContext<ParserDiagnostic> + 'a>(
     input: &'a [Token],
     context: &mut C,
-    parser: &'b impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], Box<T>), ParseError<'a>>,
+    parser: &'b impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], Arc<T>), ParseError<'a>>,
     sep: &'b TokenType,
-    result: &'b mut Vec<Box<T>>,
+    result: &'b mut Vec<Arc<T>>,
 ) -> Result<&'a [Token], ParseError<'a>> {
     // match first identifier
     let next = match parser(input, context) {
@@ -576,10 +578,10 @@ fn _parse_seperated_list_recursive_w_context<'a, 'b, T:?Sized, C: IParserContext
 pub fn parse_repeat_w_context<'a, T:?Sized, C: IParserContext<ParserDiagnostic> + 'a>(
     input: &'a [Token],
     parser: impl Fn(&'a[Token], &mut C)
-        -> Result<(&'a[Token], Box<T>), ParseError<'a>>,
+        -> Result<(&'a[Token], Arc<T>), ParseError<'a>>,
     context: &mut C,
-) -> (&'a [Token], Vec<Box<T>>) {
-    let mut result: Vec<Box<T>> = Vec::new();
+) -> (&'a [Token], Vec<Arc<T>>) {
+    let mut result: Vec<Arc<T>> = Vec::new();
     let mut next = input;
     loop {
         if next.len() == 0 {
@@ -618,14 +620,14 @@ pub fn parse_repeat_w_context<'a, T:?Sized, C: IParserContext<ParserDiagnostic> 
 pub fn parse_until_w_context<'a, T: ?Sized,  C: IParserContext<ParserDiagnostic> + 'a>(
     input: &'a [Token],
     stop_parser: impl Fn(&'a [Token]) -> Result<(&[Token], Token), ParseError>,
-    parser: impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token], Box<T>), ParseError<'a>>,
+    parser: impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token], Arc<T>), ParseError<'a>>,
     context: &mut C,
 ) -> (
     &'a [Token],
-    Vec<Box<T>>,
+    Vec<Arc<T>>,
     Option<Token>,
 ) {
-    let mut result: Vec<Box<T>> = Vec::new();
+    let mut result: Vec<Arc<T>> = Vec::new();
     let mut next = input;
     loop {
         if next.len() == 0 {
@@ -718,14 +720,14 @@ pub fn opt_parse_w_context<'a, T, C: IParserContext<ParserDiagnostic> + 'a>(
 pub fn parse_until_strict_w_context<'a, T: ?Sized, C: IParserContext<ParserDiagnostic> + 'a>(
     input: &'a [Token],
     stop_parser: impl Fn(&'a [Token]) -> Result<(&'a [Token], Token), ParseError<'a>>,
-    parser: impl Fn(&'a [Token], &mut C) -> Result<(&'a [Token], Box<T>), ParseError<'a>>,
+    parser: impl Fn(&'a [Token], &mut C) -> Result<(&'a [Token], Arc<T>), ParseError<'a>>,
     context: &mut C
 ) -> Result<(
     &'a [Token],
-    Vec<Box<T>>,
+    Vec<Arc<T>>,
     Option<Token>,
 ), ParseError<'a>> {
-    let mut result: Vec<Box<T>> = Vec::new();
+    let mut result: Vec<Arc<T>> = Vec::new();
     let mut next = input;
     loop {
         if next.len() == 0 {

@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use crate::parser::ast::IAstNode;
 use crate::utils::DynamicChild;
@@ -27,7 +28,7 @@ where V: IVisitor + ?Sized
             analyzer.borrow_mut().visit(node);
         }
         if self.recursive{
-            match node.data.get_children_dynamic() {
+            match node.data.get_children_ref_dynamic() {
                 Some(children) =>{
                     for dyn_child in children{
                         self.visit(&dyn_child);
@@ -44,8 +45,8 @@ where V: IVisitor + ?Sized
         }
     }
 
-    pub fn run(&mut self, ast: &dyn IAstNode){
-        for dyn_node in ast.get_children_dynamic().unwrap_or_default().iter(){
+    pub fn run(&mut self, ast: &Arc<dyn IAstNode>){
+        for dyn_node in ast.get_children_ref_dynamic().unwrap_or_default().iter(){
             self.visit(dyn_node);
         }
         self.notify_end();

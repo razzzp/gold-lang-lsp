@@ -4,7 +4,7 @@ use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDec
 use core::fmt::Debug;
 use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard}, ops::{DerefMut, Deref}, result};
 use crate::utils::{OptionExt};
-use super::{ProjectManager, SymbolTableRequestOptions, annotated_node::AnnotatedNode};
+use super::{ProjectManager, SymbolTableRequestOptions, annotated_node::AnnotatedNode, data_structs::Document};
 
 #[derive(Debug,Default)]
 pub enum SymbolType{
@@ -152,7 +152,7 @@ pub struct SymbolTableGenerator<'a> {
     project_manager : &'a mut ProjectManager,
     logger: Arc<Mutex<dyn ILogger>>,
     diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
-
+    already_requested_classes: HashSet<String>
 }
 
 // ensure generator is not used after this!
@@ -176,37 +176,39 @@ impl<'a> SymbolTableGenerator<'a> {
             project_manager,
             logger: logger,
             diag_collector,
+            already_requested_classes: HashSet::new()
         }
     }
 
-    pub fn generate<'b>(&mut self, root_node: &'b dyn IAstNode) -> Arc<RwLock<AnnotatedNode<'b, dyn IAstNode>>>{
-        let annotated_tree = self.generate_annotated_tree(root_node);
+    pub fn generate(&mut self, doc: Arc<Mutex<Document>>) -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>{
+        let root_node = doc.lock().unwrap().get_ast().clone();
+        let annotated_tree = self.generate_annotated_tree(&root_node);
         self.walk_tree(&annotated_tree);
         return annotated_tree;
     }
 
-    fn generate_annotated_tree<'b>(&self, root_node: &'b dyn IAstNode) -> Arc<RwLock<AnnotatedNode<'b, dyn IAstNode>>>{
+    fn generate_annotated_tree<'b>(&self, root_node: &Arc<dyn IAstNode>) -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>{
         let new_annotated_node = Arc::new(RwLock::new(AnnotatedNode::new(root_node, None)));
-        let children = match root_node.get_children_dynamic(){
+        let children = match root_node.get_children(){
             Some(c) => c,
             _=> return new_annotated_node
         };
         for child in children {
-            let new_child_node = self.generate_annotated_tree(child.data);
+            let new_child_node = self.generate_annotated_tree(child);
             new_child_node.write().unwrap().parent = Some(Arc::downgrade(&new_annotated_node.clone()));
             new_annotated_node.write().unwrap().children.push(new_child_node.clone())
         }
         return new_annotated_node;
     }
 
-    fn walk_tree(&mut self, node: &Arc<RwLock<AnnotatedNode<'_, dyn IAstNode>>>){
+    fn walk_tree(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
         self.visit(node);
         for child in &node.read().unwrap().children {
             self.walk_tree(child)
         }
     }
 
-    fn visit(&mut self, node : &Arc<RwLock<AnnotatedNode<'_, dyn IAstNode>>>){
+    fn visit(&mut self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
         let write_lock = node.write().unwrap();
         self.handle_class(&write_lock);
         self.handle_constant_decl(&write_lock);
@@ -241,13 +243,17 @@ impl<'a> SymbolTableGenerator<'a> {
     }
 
     fn get_symbol_table_for_class(&mut self, class : &String) -> Option<Arc<Mutex<dyn ISymbolTable>>>{
+        let doc: Arc<Mutex<Document>> = match self.project_manager.get_parsed_document_for_class(class, false){
+            Ok(doc) => doc,
+            _=> return None
+        };
         match self.project_manager.get_symbol_table_for_class(class){
             Ok(st) => Some(st),
             _=> None
         }
     }
 
-    fn handle_class(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+    fn handle_class(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
         let node = match node.data.as_any().downcast_ref::<AstClass>(){
             Some(node) => node,
             _=> return
@@ -265,7 +271,7 @@ impl<'a> SymbolTableGenerator<'a> {
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
 
-    fn handle_constant_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+    fn handle_constant_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
         let node = match node.data.as_any().downcast_ref::<AstConstantDeclaration>(){
             Some(node) => node,
             _=> return
@@ -281,7 +287,7 @@ impl<'a> SymbolTableGenerator<'a> {
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
 
-    fn handle_type_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+    fn handle_type_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
         let node = match node.data.as_any().downcast_ref::<AstTypeDeclaration>(){
             Some(node) => node,
             _=> return
@@ -296,7 +302,7 @@ impl<'a> SymbolTableGenerator<'a> {
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
 
-    fn handle_proc_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+    fn handle_proc_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
         let node = match node.data.as_any().downcast_ref::<AstProcedure>(){
             Some(node) => node,
             _=> return
@@ -309,7 +315,7 @@ impl<'a> SymbolTableGenerator<'a> {
         self.notify_new_scope();
     }
 
-    fn handle_func_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+    fn handle_func_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
         let node = match node.data.as_any().downcast_ref::<AstFunction>(){
             Some(node) => node,
             _=> return
@@ -326,7 +332,7 @@ impl<'a> SymbolTableGenerator<'a> {
         self.notify_new_scope();
     }
 
-    fn handle_field_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+    fn handle_field_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
         let node = match node.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
             Some(node) => node,
             _=> return
@@ -338,7 +344,7 @@ impl<'a> SymbolTableGenerator<'a> {
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
 
-    fn handle_uses(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<'_, dyn IAstNode>>){
+    fn handle_uses(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
         let node = match node.data.as_any().downcast_ref::<AstUses>(){
             Some(node) => node,
             _=> return

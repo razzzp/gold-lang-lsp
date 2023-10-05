@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, fmt::{Display, Debug}, error::Error, collections::HashMap};
+use std::{sync::{Arc, Mutex, RwLock}, fmt::{Display, Debug}, error::Error, collections::HashMap};
 
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, RelatedFullDocumentDiagnosticReport, error_codes};
@@ -6,26 +6,28 @@ use nom::error;
 
 use crate::parser::{ast::IAstNode, ParserDiagnostic};
 
-use super::symbol_generator::ISymbolTable;
+use super::{symbol_generator::ISymbolTable, annotated_node::AnnotatedNode};
 
 #[derive(Debug)]
 pub struct Document{
-    ast: Box<dyn IAstNode>,
+    ast: Arc<dyn IAstNode>,
     parser_diagnostics: Vec<ParserDiagnostic>,
     analyzer_diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>,
-    symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>
+    symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>,
+    annotated_ast: Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
 }
 impl Document{
-    pub fn new(ast: Box<dyn IAstNode>, parser_diagnostics: Vec<ParserDiagnostic>) -> Document {
+    pub fn new(ast: Arc<dyn IAstNode>, parser_diagnostics: Vec<ParserDiagnostic>) -> Document {
         return Document{
             ast,
             parser_diagnostics,
             analyzer_diagnostics:None,
-            symbol_table: None
+            symbol_table: None,
+            annotated_ast: None
         };
     }
-    pub fn get_ast<'a>(&'a self) -> &'a dyn IAstNode{
-        self.ast.as_ast_node()
+    pub fn get_ast<'a>(&'a self) -> &'a Arc<dyn IAstNode>{
+        &self.ast
     }
     pub fn get_symbol_table(&self)-> Option<Arc<Mutex<dyn ISymbolTable>>>{
         match &self.symbol_table {

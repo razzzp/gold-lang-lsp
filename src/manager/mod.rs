@@ -145,6 +145,11 @@ impl ProjectManager{
         Ok(new_doc_info)
     }
 
+    pub fn get_parsed_document_for_class(&mut self, class: &String, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+        let uri = self.get_uri_for_class(class)?;
+        return self.get_parsed_document(&uri, wait_on_lock);
+    }
+
     pub fn get_parsed_document(&mut self, uri: &Url, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         let read_doc_info = match doc_info.try_read(){
@@ -220,7 +225,7 @@ impl ProjectManager{
             Box::new(GenericDiagnosticCollector::new())
         );
         // TODO set annotated tree to doc
-        let annotated_tree = symbol_generator.generate(doc.lock().unwrap().get_ast());
+        let annotated_tree = symbol_generator.generate(doc);
         let result = match symbol_generator.take_symbol_table() {
             Some(st) => Ok(st),
             _=> Err(ProjectManagerError::new("failed to generate symbol table for ", ErrorCode::InternalError))
@@ -298,7 +303,7 @@ impl ProjectManager{
         return result;
     }
 
-    fn analyze_ast<'a>(&self, ast : &'a dyn IAstNode) -> Vec<lsp_types::Diagnostic>{
+    fn analyze_ast(&self, ast : &Arc<dyn IAstNode>) -> Vec<lsp_types::Diagnostic>{
         // let result = Vec::new();
         let mut ast_walker: AstWalker<dyn IAnalyzer> = AstWalker::new(true);
         let analyzers: Vec<Rc<RefCell<dyn IAnalyzer>>> = vec![
@@ -354,7 +359,7 @@ mod test{
 
     use super::ProjectManager;
 
-    fn parse_and_analyze(file_path: &str) -> (Box<dyn IAstNode>, Vec<ParserDiagnostic>){
+    fn parse_and_analyze(file_path: &str) -> (Arc<dyn IAstNode>, Vec<ParserDiagnostic>){
         let  mut f = File::open(file_path).expect("file not found");
         let mut file_contents = String::new();
         match f.read_to_string(&mut file_contents){
@@ -413,7 +418,7 @@ mod test{
         // println!("{:#?}", tokens);
         let ast = parse_gold(&tokens);
         // println!("{:#?}", ast.0.0);
-        for node in ast.0.1.get_children().unwrap_or_default().iter(){
+        for node in ast.0.1.get_children_ref().unwrap_or_default().iter(){
             println!("{}",ast_to_string_brief_recursive(node.as_ast_node()));
         }
         // println!("{:#?}", ast.1.len());
@@ -436,7 +441,7 @@ mod test{
 
         assert_eq!(ast.1.len(), 0);
         // println!("{:#?}", ast.0.0);
-        for node in ast.0.1.get_children().unwrap_or_default().iter(){
+        for node in ast.0.1.get_children_ref().unwrap_or_default().iter(){
             println!("{}",ast_to_string_brief_recursive(node.as_ast_node()));
         }
         // println!("{:#?}", ast.1.len());
@@ -459,7 +464,7 @@ mod test{
 
         assert_eq!(ast.1.len(), 0);
         // println!("{:#?}", ast.0.0);
-        for node in ast.0.1.get_children().unwrap_or_default().iter(){
+        for node in ast.0.1.get_children_ref().unwrap_or_default().iter(){
             println!("{}",ast_to_string_brief_recursive(node.as_ast_node()));
         }
         // println!("{:#?}", ast.1.len());
@@ -471,7 +476,7 @@ mod test{
         let mut walker = create_test_ast_walker::<dyn IAnalyzer>();
         let mut analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(UnusedVarAnalyzer::new()));
         walker.register_visitor(&analyzer);
-        walker.run(asts.as_ast_node());
+        walker.run(&asts);
         // for diag in diags{
         //     print!("{:#?}",diag);
         // }
@@ -484,7 +489,7 @@ mod test{
         let mut walker = create_test_ast_walker::<dyn IAnalyzer>();
         let mut analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(InoutParamChecker::new()));
         walker.register_visitor(&analyzer);
-        let diags = walker.run(asts.as_ast_node());
+        let diags = walker.run(&asts);
         // for diag in diags{
         //     print!("{:#?}",diag);
         // }
@@ -497,7 +502,7 @@ mod test{
         let mut walker = create_test_ast_walker::<dyn IAnalyzer>();
         let analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(FunctionReturnTypeChecker::new()));
         walker.register_visitor(&analyzer);
-        let diags = walker.run(asts.as_ast_node());
+        let diags = walker.run(&asts);
         // for diag in diags{
         //     print!("{:#?}",diag);
         // }
