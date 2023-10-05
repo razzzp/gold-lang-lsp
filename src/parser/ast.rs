@@ -185,7 +185,7 @@ pub struct AstClass {
     pub raw_pos: usize,
     pub range: Range,
     pub identifier: Token,
-    pub parent_class: String,
+    pub parent_class: Option<Token>,
 }
 implem_irange!(AstClass);
 impl IAstNode for AstClass {

@@ -1,10 +1,11 @@
-use lsp_types::{DocumentSymbol, SymbolKind};
+use lsp_server::ErrorCode;
+use lsp_types::{DocumentSymbol, SymbolKind, Url};
 
 use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector}, lexer::tokens::TokenType};
 use core::fmt::Debug;
 use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard}, ops::{DerefMut, Deref}, result};
 use crate::utils::{OptionExt};
-use super::{ProjectManager, SymbolTableRequestOptions, annotated_node::AnnotatedNode, data_structs::Document};
+use super::{ProjectManager, SymbolTableRequestOptions, annotated_node::AnnotatedNode, data_structs::{Document, ProjectManagerError}};
 
 #[derive(Debug,Default)]
 pub enum SymbolType{
@@ -146,17 +147,17 @@ impl ISymbolTable for SymbolTable {
 
 
 #[derive(Debug)]
-pub struct SymbolTableGenerator<'a> {
+pub struct SemanticAnalysisService<'a> {
     root_symbol_table : Option<SymbolTable>,
     symbol_table_stack: Vec<SymbolTable>,
     project_manager : &'a mut ProjectManager,
     logger: Arc<Mutex<dyn ILogger>>,
     diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
-    already_requested_classes: HashSet<String>
+    already_seen_classes: HashSet<String>
 }
 
 // ensure generator is not used after this!
-impl<'a> ISymbolTableGenerator for SymbolTableGenerator<'a>{
+impl<'a> ISymbolTableGenerator for SemanticAnalysisService<'a>{
     fn take_symbol_table(&mut self) -> Option<Arc<Mutex<dyn ISymbolTable>>> {
         match self.root_symbol_table.take(){
             Some(t) => return Some(Arc::new(Mutex::new(t))),
@@ -165,26 +166,53 @@ impl<'a> ISymbolTableGenerator for SymbolTableGenerator<'a>{
     }
 }
 
-impl<'a> SymbolTableGenerator<'a> {
-    pub fn new(project_manager: &'a mut ProjectManager, 
-    logger: Arc<Mutex<dyn ILogger>>, 
-    diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
-) -> SymbolTableGenerator{
-        return SymbolTableGenerator {  
+impl<'a> SemanticAnalysisService<'a> {
+    pub fn new(
+        project_manager: &'a mut ProjectManager, 
+        logger: Arc<Mutex<dyn ILogger>>, 
+        diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
+        already_seen_classes : Option<HashSet<String>>
+) -> SemanticAnalysisService{
+        return SemanticAnalysisService {  
             root_symbol_table: Some(SymbolTable::new()),
             symbol_table_stack: Vec::new(),
             project_manager,
             logger: logger,
             diag_collector,
-            already_requested_classes: HashSet::new()
+            already_seen_classes: already_seen_classes.unwrap_or_default()
         }
     }
+    fn get_symbol_table_for_class(&mut self, class: &String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+        if self.already_seen_classes.contains(class){
+            return Err(ProjectManagerError::new(format!("{} already locked in request session",class).as_str(), ErrorCode::RequestFailed));
+        }
+        return self.project_manager.get_symbol_table_for_class(&class, Some(self.already_seen_classes.clone()));
+    }
 
-    pub fn generate(&mut self, doc: Arc<Mutex<Document>>) -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>{
+    pub fn get_symbol_table_for_uri(&mut self, uri : &Url) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+        let doc: Arc<Mutex<Document>> = self.project_manager.get_parsed_document(uri, true)?;
+        return self.get_symbol_table(doc);
+    }
+
+    fn get_symbol_table(&mut self, doc:Arc<Mutex<Document>>) -> Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
+        if doc.lock().unwrap().get_symbol_table().is_some(){
+            return Ok(doc.lock().unwrap().get_symbol_table().unwrap());
+        } 
+
+        let (_, sym_table) = self.generate(doc.clone())?;
+        doc.lock().unwrap().set_symbol_table(Some(sym_table.clone()));
+        return Ok(sym_table)
+    }
+
+    fn generate(&mut self, doc: Arc<Mutex<Document>>) -> 
+    Result<(Arc<RwLock<AnnotatedNode<dyn IAstNode>>>,Arc<Mutex<dyn ISymbolTable>>), ProjectManagerError>{
         let root_node = doc.lock().unwrap().get_ast().clone();
         let annotated_tree = self.generate_annotated_tree(&root_node);
         self.walk_tree(&annotated_tree);
-        return annotated_tree;
+        let sym_table = Arc::new(Mutex::new(self.root_symbol_table.take().unwrap()));
+        doc.lock().unwrap().symbol_table = Some(sym_table.clone());
+        doc.lock().unwrap().annotated_ast = Some(annotated_tree.clone());
+        return Ok((annotated_tree,sym_table));
     }
 
     fn generate_annotated_tree<'b>(&self, root_node: &Arc<dyn IAstNode>) -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>{
@@ -242,29 +270,23 @@ impl<'a> SymbolTableGenerator<'a> {
         cur_st.insert_symbol_info(id, symbol)
     }
 
-    fn get_symbol_table_for_class(&mut self, class : &String) -> Option<Arc<Mutex<dyn ISymbolTable>>>{
-        let doc: Arc<Mutex<Document>> = match self.project_manager.get_parsed_document_for_class(class, false){
-            Ok(doc) => doc,
-            _=> return None
-        };
-        match self.project_manager.get_symbol_table_for_class(class){
-            Ok(st) => Some(st),
-            _=> None
-        }
-    }
-
     fn handle_class(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
         let node = match node.data.as_any().downcast_ref::<AstClass>(){
             Some(node) => node,
             _=> return
         };
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Class);
+        // TODO there is probably a better place to put this
+        self.already_seen_classes.insert(node.get_identifier());
 
-        sym_info.parent = Some(node.parent_class.clone());
-        let parent_symbol_table = self.get_symbol_table_for_class(&node.parent_class);
-        match parent_symbol_table{
-            Some(st) => self.root_symbol_table.unwrap_mut().set_parent_symbol_table(st),
-            _=> ()
+        if let Some(parent_class) = &node.parent_class{
+            let parent_class = parent_class.get_value();
+            sym_info.parent = Some(parent_class.clone());
+            let parent_symbol_table = self.get_symbol_table_for_class(&parent_class);
+            match parent_symbol_table{
+                Ok(st) => self.root_symbol_table.unwrap_mut().set_parent_symbol_table(st),
+                _=> ()
+            }
         }
         sym_info.range = node.get_range();
         sym_info.selection_range = node.identifier.get_range();

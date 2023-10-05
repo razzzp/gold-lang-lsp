@@ -1,4 +1,4 @@
-class aRootClass (aLightObject)
+class aRootClass 
 
 const cRootConstant = 'adasdsadas'
 

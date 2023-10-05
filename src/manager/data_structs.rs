@@ -6,15 +6,15 @@ use nom::error;
 
 use crate::parser::{ast::IAstNode, ParserDiagnostic};
 
-use super::{symbol_generator::ISymbolTable, annotated_node::AnnotatedNode};
+use super::{semantic_analysis_service::ISymbolTable, annotated_node::AnnotatedNode};
 
 #[derive(Debug)]
 pub struct Document{
-    ast: Arc<dyn IAstNode>,
-    parser_diagnostics: Vec<ParserDiagnostic>,
-    analyzer_diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>,
-    symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>,
-    annotated_ast: Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
+    pub ast: Arc<dyn IAstNode>,
+    pub parser_diagnostics: Vec<ParserDiagnostic>,
+    pub analyzer_diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>,
+    pub symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>,
+    pub annotated_ast: Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
 }
 impl Document{
     pub fn new(ast: Arc<dyn IAstNode>, parser_diagnostics: Vec<ParserDiagnostic>) -> Document {

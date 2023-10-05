@@ -9,7 +9,7 @@ use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum,
 
 use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent, AstTerminal, AstModule, MemberModifiers, AstTypeSized, AstRoot};
 use self::body_parser::{parse_statement_v2, parse_literal_basic, parse_ident_token, parse_binary_ops_w_context};
-use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, opt_token, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context, parse_until_no_match_w_context};
+use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, opt_token, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context, parse_until_no_match_w_context, seq_parse_w_context};
 
 pub mod utils;
 pub mod body_parser;
@@ -181,28 +181,36 @@ fn parse_class<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token]
       Ok(r) => (r.0, r.1),
       Err(e) => return Err(e)
    };
-   // '('
-   let (next, _) =  match exp_token(TokenType::OBracket)(next) {
-      Ok(r)=> (r.0, r.1),
-      Err(e) => return Err(e)
-   };
+
    // parent class
-   let (next, parent_class_name) =  match exp_token(TokenType::Identifier)(next) {
-      Ok(r)=> (r.0, r.1),
-      Err(e) => return Err(e)
+   let (next, result) =  opt_parse_w_context(parse_parent_class)(next, context)?;
+   let parent_class_token = match &result{
+      Some(r) => Some(r.0.clone()),
+      _=> None
    };
-   // ')'
-   let (next, end_token) =  match exp_token(TokenType::CBracket)(next) {
-      Ok(r)=> (r.0, r.1),
-      Err(e) => return Err(e)
+   let end =  match &result {
+      // end tok
+      Some(r)=> r.1.get_range(),
+      _ => class_name_token.get_range()
    };
 
    return Ok((next, Arc::new(AstClass{
       raw_pos: class_token.raw_pos,
-      range: create_new_range_from_irange(&class_token, &end_token),
+      range: create_new_range(class_token.get_range(), end),
       identifier: class_name_token,
-      parent_class: parent_class_name.get_value()
+      parent_class: parent_class_token
    }))); 
+}
+
+fn parse_parent_class<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  (Token,Token)), ParseError<'a>> {
+   let (next, mut tokens) = seq_parse(&[
+      exp_token(TokenType::OBracket),
+      exp_token(TokenType::Identifier),
+      exp_token(TokenType::CBracket)
+   ])(input)?;
+   let end_tok = tokens.remove(2);
+   let parent_class_tok = tokens.remove(1);
+   return Ok((next, (parent_class_tok, end_tok)));
 }
 
 fn parse_module<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Arc<dyn IAstNode>), ParseError<'a>> {
@@ -1243,7 +1251,7 @@ mod test {
       assert_eq!(r.0.len(), 0);
       assert_eq!(class.get_identifier(), "aTestClass");
       assert_eq!(class.raw_pos, 0);
-      assert_eq!(class.parent_class, "aParentClass");
+      assert_eq!(class.parent_class.as_ref().unwrap().get_value(), "aParentClass");
    }
 
    #[test]
@@ -1262,15 +1270,15 @@ mod test {
    }
 
    #[test]
-   fn test_parse_class_too_short(){
+   fn test_parse_class_no_parent(){
       let input = gen_list_of_tokens(&[
          (TokenType::Class, Some("class".to_string())),
          (TokenType::Identifier, Some("aTestClass".to_string())),
-         (TokenType::OBracket, Some("(".to_string())),
-         (TokenType::Identifier, Some("aParentClass".to_string())),
       ]);
       let mut context = create_context();
-      assert!(parse_class(&input, &mut context).is_err());
+      let (_,class) = parse_class(&input, &mut context).unwrap();
+      let class = class.as_any().downcast_ref::<AstClass>().unwrap();
+      assert!(class.parent_class.is_none());
    }
 
    #[test]

@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock, Weak};
 
 use crate::parser::ast::IAstNode;
 
-use super::symbol_generator::ISymbolTable;
+use super::semantic_analysis_service::ISymbolTable;
 
 #[derive(Debug)]
 pub struct TypeInfo{

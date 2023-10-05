@@ -1,15 +1,15 @@
-use std::{collections::HashMap, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, error::Error, fmt::Display};
+use std::{collections::{HashMap, HashSet}, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, error::Error, fmt::Display};
 
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool, manager::symbol_generator::ISymbolTableGenerator};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool, manager::semantic_analysis_service::ISymbolTableGenerator};
 use data_structs::*;
 
-use self::symbol_generator::{ISymbolTable, SymbolTableGenerator, DocumentSymbolGenerator};
+use self::semantic_analysis_service::{ISymbolTable, SemanticAnalysisService, DocumentSymbolGenerator};
 
 pub mod data_structs;
-pub mod symbol_generator;
+pub mod semantic_analysis_service;
 pub mod annotated_node;
 
 #[derive(Debug,Default,Clone,Copy)]
@@ -208,43 +208,24 @@ impl ProjectManager{
         }
     }
 
-    pub fn get_symbol_table_for_class(&mut self, class: &String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+    pub fn get_symbol_table_for_class(&mut self, class: &String, already_seen_classes: Option<HashSet<String>>) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         let uri = self.get_uri_for_class(&class)?;
-        return self.get_symbol_table_for_uri(&uri);
+        return self.get_symbol_table_for_uri(&uri, already_seen_classes);
     }
 
-    pub fn get_symbol_table_for_uri(&mut self, uri : &Url) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
-        let doc: Arc<Mutex<Document>> = self.get_parsed_document(uri, true)?;
-        return self.get_symbol_table(doc);
-    }
-
-    fn generate_symbol_table(&mut self, doc: Arc<Mutex<Document>>)->Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
-        let mut symbol_generator = SymbolTableGenerator::new(
+    pub fn get_symbol_table_for_uri(&mut self, uri : &Url, already_seen_classes: Option<HashSet<String>>) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+        let mut symbol_generator = SemanticAnalysisService::new(
             self, 
             self.logger.clone(),
-            Box::new(GenericDiagnosticCollector::new())
+            Box::new(GenericDiagnosticCollector::new()),
+            already_seen_classes
         );
-        // TODO set annotated tree to doc
-        let annotated_tree = symbol_generator.generate(doc);
-        let result = match symbol_generator.take_symbol_table() {
-            Some(st) => Ok(st),
-            _=> Err(ProjectManagerError::new("failed to generate symbol table for ", ErrorCode::InternalError))
-        };
-        result
-    }
-
-    fn get_symbol_table(&mut self, doc:Arc<Mutex<Document>>) -> Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
-        if doc.lock().unwrap().get_symbol_table().is_some(){
-            return Ok(doc.lock().unwrap().get_symbol_table().unwrap());
-        } 
-
-        let sym_table = self.generate_symbol_table(doc.clone())?;
-        doc.lock().unwrap().set_symbol_table(Some(sym_table.clone()));
-        return Ok(sym_table)
+        let sym_table = symbol_generator.get_symbol_table_for_uri(uri)?;
+        return Ok(sym_table);
     }
 
     pub fn generate_document_symbols(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
-        let sym_table = self.get_symbol_table_for_uri(uri)?;
+        let sym_table = self.get_symbol_table_for_uri(uri, None)?;
         let sym_gen = DocumentSymbolGenerator {};
         return Ok(sym_gen.generate_symbols(sym_table))
     }
@@ -568,7 +549,7 @@ mod test{
     fn test_get_symbol_table(){
         let mut proj_manager= create_test_project_manager("./test/workspace");
         proj_manager.index_files();
-        let result = proj_manager.get_symbol_table_for_class(&"aRootClass".to_string()).unwrap();
+        let result = proj_manager.get_symbol_table_for_class(&"aRootClass".to_string(), None).unwrap();
         let result = result.lock().unwrap();
         assert_eq!(result.iter_symbols().count(), 6);
     }
