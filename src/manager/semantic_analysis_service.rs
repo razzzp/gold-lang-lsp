@@ -193,30 +193,20 @@ impl<'a> SemanticAnalysisService<'a> {
         return self.project_manager.get_symbol_table_for_class(&class, Some(self.already_seen_classes.clone()));
     }
 
-    pub fn get_symbol_table_for_uri(&mut self, uri : &Url) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+    pub fn analyze_uri(&mut self, uri : &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let doc: Arc<Mutex<Document>> = self.project_manager.get_parsed_document(uri, true)?;
-        return self.get_symbol_table(doc);
+        return self.analyze(doc);
     }
-
-    fn get_symbol_table(&mut self, doc:Arc<Mutex<Document>>) -> Result<Arc<Mutex<dyn ISymbolTable>>,ProjectManagerError>{
-        if doc.lock().unwrap().get_symbol_table().is_some(){
-            return Ok(doc.lock().unwrap().get_symbol_table().unwrap());
-        } 
-
-        let (_, sym_table) = self.generate(doc.clone())?;
-        doc.lock().unwrap().set_symbol_table(Some(sym_table.clone()));
-        return Ok(sym_table)
-    }
-
-    fn generate(&mut self, doc: Arc<Mutex<Document>>) -> 
-    Result<(Arc<RwLock<AnnotatedNode<dyn IAstNode>>>,Arc<Mutex<dyn ISymbolTable>>), ProjectManagerError>{
+    
+    fn analyze(&mut self, doc: Arc<Mutex<Document>>) -> 
+    Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let root_node = doc.lock().unwrap().get_ast().clone();
         let annotated_tree = self.generate_annotated_tree(&root_node);
         self.walk_tree(&annotated_tree);
         let sym_table = Arc::new(Mutex::new(self.root_symbol_table.take().unwrap()));
         doc.lock().unwrap().symbol_table = Some(sym_table.clone());
         doc.lock().unwrap().annotated_ast = Some(annotated_tree.clone());
-        return Ok((annotated_tree,sym_table));
+        return Ok(doc);
     }
 
     fn generate_annotated_tree<'b>(&self, root_node: &Arc<dyn IAstNode>) -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>{

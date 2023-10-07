@@ -11,6 +11,7 @@ use self::semantic_analysis_service::{ISymbolTable, SemanticAnalysisService, Doc
 pub mod data_structs;
 pub mod semantic_analysis_service;
 pub mod annotated_node;
+pub mod definition_service;
 
 #[derive(Debug,Default,Clone,Copy)]
 pub struct SymbolTableRequestOptions{
@@ -208,20 +209,28 @@ impl ProjectManager{
         }
     }
 
+    pub fn analyze_doc(&mut self, uri : &Url, already_seen_classes: Option<HashSet<String>>) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+        let mut semantic_analysis_service = SemanticAnalysisService::new(
+            self, 
+            self.logger.clone(),
+            Box::new(GenericDiagnosticCollector::new()),
+            already_seen_classes
+        );
+        let doc = semantic_analysis_service.analyze_uri(uri)?;
+        return Ok(doc);
+    }
+
     pub fn get_symbol_table_for_class(&mut self, class: &String, already_seen_classes: Option<HashSet<String>>) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         let uri = self.get_uri_for_class(&class)?;
         return self.get_symbol_table_for_uri(&uri, already_seen_classes);
     }
 
     pub fn get_symbol_table_for_uri(&mut self, uri : &Url, already_seen_classes: Option<HashSet<String>>) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
-        let mut symbol_generator = SemanticAnalysisService::new(
-            self, 
-            self.logger.clone(),
-            Box::new(GenericDiagnosticCollector::new()),
-            already_seen_classes
-        );
-        let sym_table = symbol_generator.get_symbol_table_for_uri(uri)?;
-        return Ok(sym_table);
+        let doc = self.analyze_doc(uri, already_seen_classes)?;
+        let _ = match &doc.lock().unwrap().symbol_table{
+            Some(st) => return Ok(st.clone()),
+            _=> return Err(ProjectManagerError::new("Unable to generate symbol table", ErrorCode::InternalError))
+        };
     }
 
     pub fn generate_document_symbols(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
