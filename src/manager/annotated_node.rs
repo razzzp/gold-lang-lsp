@@ -4,25 +4,44 @@ use crate::parser::ast::IAstNode;
 
 use super::semantic_analysis_service::ISymbolTable;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeInfo{
-    name: String,
-    location: lsp_types::Location
+    pub id: String,
+    pub definition: Location
+}
+impl TypeInfo {
+    pub fn new(id: &String, definition: Location) -> TypeInfo{
+        TypeInfo{
+            id: id.clone(),
+            definition
+        }
+    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum NativeType{
     Int,
     Numeric,
     String,
+    CString
 
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct Location{
+    pub in_doc: String,
+}
+impl Location{
+    pub fn new(in_doc: &String) -> Location{
+        Location { in_doc: in_doc.clone(), }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum EvalType{
-    Natve(NativeType),
+    Native(NativeType),
     Defined(TypeInfo),
-    Class(TypeInfo)
+    Unknown
 }
 
 #[derive(Debug)]

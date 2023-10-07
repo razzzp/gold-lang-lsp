@@ -3,9 +3,9 @@ use lsp_types::{DocumentSymbol, SymbolKind, Url};
 
 use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector}, lexer::tokens::TokenType};
 use core::fmt::Debug;
-use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard}, ops::{DerefMut, Deref}, result};
+use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard}, ops::{DerefMut, Deref}, result, f32::consts::E};
 use crate::utils::{OptionExt};
-use super::{ProjectManager, SymbolTableRequestOptions, annotated_node::AnnotatedNode, data_structs::{Document, ProjectManagerError}};
+use super::{ProjectManager, SymbolTableRequestOptions, annotated_node::{AnnotatedNode, EvalType, TypeInfo, Location, NativeType}, data_structs::{Document, ProjectManagerError}};
 
 #[derive(Debug,Default)]
 pub enum SymbolType{
@@ -23,7 +23,8 @@ pub enum SymbolType{
 pub struct SymbolInfo {
     pub id: String,
     pub sym_type: SymbolType,
-    pub eval_type: Option<String>,
+    pub type_str: Option<String>,
+    pub eval_type: Option<EvalType>,
     pub owner: Option<String>,
     pub in_class: Option<String>,
     pub parent: Option<String>,
@@ -49,6 +50,7 @@ pub trait ISymbolTable: Debug + Send{
     fn insert_symbol_info(& mut self, id : String, info: SymbolInfo) -> & SymbolInfo;
     fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Arc<SymbolInfo>> + 'a >;
     fn get_parent_symbol_table(&self) -> Option<Arc<Mutex<dyn ISymbolTable>>>;
+    fn identifier_exists(&mut self, id : &String, search_uses: bool) -> bool;
     // for debug only
     fn print_all_symbols(&self);
 }
@@ -139,6 +141,10 @@ impl ISymbolTable for SymbolTable {
             eprintln!("{}", s.id)
         })
     }
+
+    fn identifier_exists(&mut self, id : &String, search_uses: bool) -> bool {
+        return self.get_symbol_info(id, search_uses).is_some();
+    }
 }
 
 
@@ -149,7 +155,8 @@ pub struct SemanticAnalysisService<'a> {
     project_manager : &'a mut ProjectManager,
     logger: Arc<Mutex<dyn ILogger>>,
     diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
-    already_seen_classes: HashSet<String>
+    already_seen_classes: HashSet<String>,
+    cur_method_node : Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
 }
 
 // ensure generator is not used after this!
@@ -175,7 +182,8 @@ impl<'a> SemanticAnalysisService<'a> {
             project_manager,
             logger: logger,
             diag_collector,
-            already_seen_classes: already_seen_classes.unwrap_or_default()
+            already_seen_classes: already_seen_classes.unwrap_or_default(),
+            cur_method_node:None
         }
     }
     fn get_symbol_table_for_class(&mut self, class: &String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
@@ -237,8 +245,8 @@ impl<'a> SemanticAnalysisService<'a> {
         self.handle_class(&write_lock);
         self.handle_constant_decl(&write_lock);
         self.handle_type_decl(&write_lock);
-        self.handle_proc_decl(&write_lock);
-        self.handle_func_decl(&write_lock);
+        self.handle_proc_decl(&write_lock, node);
+        self.handle_func_decl(&write_lock, node);
         self.handle_field_decl(&write_lock);
         self.handle_uses(&write_lock);
     }
@@ -247,8 +255,8 @@ impl<'a> SemanticAnalysisService<'a> {
         self.symbol_table_stack.push(SymbolTable::new())
     }
 
-    fn pop_last_scope(&mut self){
-        self.symbol_table_stack.pop();
+    fn pop_last_scope(&mut self) -> Option<SymbolTable>{
+        return self.symbol_table_stack.pop();
     }
 
     /// Inserts the symbol to the current scope, last in stack/root
@@ -260,33 +268,91 @@ impl<'a> SemanticAnalysisService<'a> {
         return cur_st;
     }
 
+    fn check_identifier_already_defined(&mut self, id: &String, range: Range) -> bool{
+        // do we need to check uses?
+        match self.get_cur_sym_table().get_symbol_info(id, false){
+            Some(sym)=>{
+                self.diag_collector.add_diagnostic(
+                    AnalyzerDiagnostic::new(
+                        format!("Identifier already defined. In {}", sym.in_class.unwrap_clone_or_empty_string()).as_str(), 
+                        range
+                    )
+                );
+                return true;
+            }
+            _=> {return false;}
+        }
+    } 
+
     /// Inserts the symbol to the current scope, last in stack/root
     fn insert_symbol_info(&mut self, id: String, symbol: SymbolInfo) -> &SymbolInfo{
         let cur_st = self.get_cur_sym_table();
         cur_st.insert_symbol_info(id, symbol)
     }
 
+    fn get_eval_type(&mut self, type_node : &Arc<dyn IAstNode>)-> EvalType{
+        let mut result = EvalType::Unknown;
+        result = match type_node.as_any().downcast_ref::<AstTypeBasic>(){
+            Some(t) =>{
+                match t.get_identifier().to_uppercase().as_str() {
+                    "INT1" | "INT2" | "INT4" | "INT8" => EvalType::Native(NativeType::Int),
+                    "NUMERIC" => EvalType::Native(NativeType::Numeric),
+                    "STRING" =>  EvalType::Native(NativeType::String),
+                    "CSTRING" =>  EvalType::Native(NativeType::CString),
+                    _=> EvalType::Unknown
+                }
+            }
+            _=> result,
+        };
+        return result;
+    }
+
+    // fn lock_and_cast<'b,T:IAstNode>(&self, node : Arc<RwLock<AnnotatedNode<dyn IAstNode>>>) -> 
+    // Option<(RwLockWriteGuard<'b, AnnotatedNode<dyn IAstNode>>, &'b T)>{
+    //     let w_lock = node.write().unwrap();
+    //     let downcast = match w_lock.data.as_any().downcast_ref::<T>(){
+    //         Some(d) => d,
+    //         _=> return None
+    //     };
+    //     return Some((w_lock, downcast))
+    // }
+
     fn handle_class(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
-        let node = match node.data.as_any().downcast_ref::<AstClass>(){
+        let ori_node = match node.data.as_any().downcast_ref::<AstClass>(){
             Some(node) => node,
             _=> return
         };
-        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Class);
+        let class_name = ori_node.get_identifier();
+        let mut sym_info = SymbolInfo::new(class_name.clone(), SymbolType::Class);
         // TODO there is probably a better place to put this
-        self.already_seen_classes.insert(node.get_identifier());
+        self.already_seen_classes.insert(class_name.clone());
 
-        if let Some(parent_class) = &node.parent_class{
-            let parent_class = parent_class.get_value();
-            sym_info.parent = Some(parent_class.clone());
-            let parent_symbol_table = self.get_symbol_table_for_class(&parent_class);
+        if let Some(parent_class) = &ori_node.parent_class{
+            let parent_class_name = parent_class.get_value();
+            if parent_class_name == class_name{
+                // parent class can't be itself
+                self.diag_collector.add_diagnostic(
+                    AnalyzerDiagnostic::new("Parent class cannot be itself", parent_class.get_range())
+                );
+            }
+            sym_info.parent = Some(parent_class_name.clone());
+            let parent_symbol_table = self.get_symbol_table_for_class(&parent_class_name);
             match parent_symbol_table{
-                Ok(st) => self.root_symbol_table.unwrap_mut().set_parent_symbol_table(st),
-                _=> ()
+                Ok(st) => {
+                    // set parent symbol table
+                    self.root_symbol_table.unwrap_mut().set_parent_symbol_table(st);
+                },
+                Err(e)=> {
+                    // parent class not found/cannot be parsed
+                    self.diag_collector.add_diagnostic(
+                        AnalyzerDiagnostic::new(format!("Parent class not defined; {}", e).as_str(), parent_class.get_range())
+                    );
+                }
             }
         }
-        sym_info.range = node.get_range();
-        sym_info.selection_range = node.identifier.get_range();
-        self.insert_symbol_info(node.get_identifier(), sym_info);
+        sym_info.range = ori_node.get_range();
+        sym_info.selection_range = ori_node.identifier.get_range();
+        self.insert_symbol_info(ori_node.get_identifier(), sym_info);
     }
 
     fn handle_constant_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
@@ -294,11 +360,13 @@ impl<'a> SemanticAnalysisService<'a> {
             Some(node) => node,
             _=> return
         };
+        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+        
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Constant);
         sym_info.eval_type = match &node.value.token_type{
-            TokenType::StringLiteral => Some("string".to_string()),
-            TokenType::NumericLiteral => Some("numeric".to_string()),
-            _=> Some("unknown".to_string())
+            TokenType::StringLiteral => Some(EvalType::Native(NativeType::String)),
+            TokenType::NumericLiteral => Some(EvalType::Native(NativeType::Numeric)),
+            _=> Some(EvalType::Unknown)
         };
         sym_info.range = node.get_range();
         sym_info.selection_range = node.identifier.get_range();
@@ -310,44 +378,81 @@ impl<'a> SemanticAnalysisService<'a> {
             Some(node) => node,
             _=> return
         };
+        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+        
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Type);
-        match node.type_node.as_any().downcast_ref::<AstTypeBasic>(){
-            Some(n) => {sym_info.eval_type = Some(n.get_identifier())},
-            _=> ()
-        }
+        sym_info.type_str = Some(node.type_node.get_identifier());
+        // set eval type
+        sym_info.eval_type = Some(self.get_eval_type(&node.type_node));
         sym_info.range = node.get_range();
         sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
+
     }
 
-    fn handle_proc_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
+    fn handle_proc_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>, arc_node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
         let node = match node.data.as_any().downcast_ref::<AstProcedure>(){
             Some(node) => node,
             _=> return
         };
-        self.pop_last_scope();
+        // set sym table to last method
+        if let Some(sym_table) = self.pop_last_scope(){
+            // should always be Some
+            self.cur_method_node.as_ref().unwrap().write().unwrap().symbol_table = Some(Box::new(sym_table))
+        }
+
+        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Proc);
         sym_info.range = node.get_range();
         sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
+
+        //set cur method
+        self.cur_method_node = Some(arc_node.clone());
         self.notify_new_scope();
     }
 
-    fn handle_func_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
+    fn handle_func_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>, arc_node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
         let node = match node.data.as_any().downcast_ref::<AstFunction>(){
             Some(node) => node,
             _=> return
         };
-        self.pop_last_scope();
-        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Func);
-        match node.return_type.as_any().downcast_ref::<AstTypeBasic>(){
-            Some(n) => {sym_info.eval_type = Some(n.get_identifier())},
-            _=> ()
+        // set sym table to last method
+        if let Some(sym_table) = self.pop_last_scope(){
+            // should always be Some
+            self.cur_method_node.as_ref().unwrap().write().unwrap().symbol_table = Some(Box::new(sym_table))
         }
+
+        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+
+        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Func);
+        sym_info.type_str = Some(node.return_type.get_identifier());
+        // set eval type
+        sym_info.eval_type = Some(self.get_eval_type(&node.return_type));
         sym_info.range = node.get_range();
         sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
+
+        // start symbol table for method 
         self.notify_new_scope();
+        //set cur method
+        self.cur_method_node = Some(arc_node.clone());
+    }
+
+    fn handl_param_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
+        let node = match node.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
+            Some(node) => node,
+            _=> return
+        };
+        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+
+        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Field);
+        sym_info.type_str = Some(node.type_node.get_identifier());
+        sym_info.eval_type = Some(self.get_eval_type(&node.type_node));
+        sym_info.range = node.get_range();
+        sym_info.selection_range = node.identifier.get_range();
+        self.insert_symbol_info(node.get_identifier(), sym_info);
     }
 
     fn handle_field_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
@@ -355,8 +460,11 @@ impl<'a> SemanticAnalysisService<'a> {
             Some(node) => node,
             _=> return
         };
+        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Field);
-        sym_info.eval_type = Some(node.type_node.get_identifier());
+        sym_info.type_str = Some(node.type_node.get_identifier());
+        sym_info.eval_type = Some(self.get_eval_type(&node.type_node));
         sym_info.range = node.get_range();
         sym_info.selection_range = node.identifier.get_range();
         self.insert_symbol_info(node.get_identifier(), sym_info);
@@ -426,7 +534,7 @@ impl DocumentSymbolGenerator{
     fn generate_constant_symbol(&self, symbol: &SymbolInfo)-> Option<DocumentSymbol>{
         Some(DocumentSymbol { 
             name: symbol.id.clone(), 
-            detail: symbol.eval_type.unwrap_clone(), 
+            detail: symbol.type_str.unwrap_clone(), 
             kind: SymbolKind::CONSTANT, 
             range: symbol.range.as_lsp_type_range(), 
             selection_range: symbol.selection_range.as_lsp_type_range(), 
@@ -452,7 +560,7 @@ impl DocumentSymbolGenerator{
     fn generate_field_symbol(&self, symbol: &SymbolInfo)-> Option<DocumentSymbol>{
         Some(DocumentSymbol { 
             name: symbol.id.clone(), 
-            detail: symbol.eval_type.unwrap_clone(), 
+            detail: symbol.type_str.unwrap_clone(), 
             kind: SymbolKind::FIELD, 
             range: symbol.range.as_lsp_type_range(), 
             selection_range: symbol.selection_range.as_lsp_type_range(), 
@@ -478,7 +586,7 @@ impl DocumentSymbolGenerator{
     fn generate_func_symbol(&self, symbol: &SymbolInfo)-> Option<DocumentSymbol>{
         Some(DocumentSymbol { 
             name: symbol.id.clone(), 
-            detail: symbol.eval_type.unwrap_clone(), 
+            detail: symbol.type_str.unwrap_clone(), 
             kind: SymbolKind::FUNCTION, 
             range: symbol.range.as_lsp_type_range(), 
             selection_range: symbol.selection_range.as_lsp_type_range(), 

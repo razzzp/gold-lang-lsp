@@ -1,5 +1,5 @@
 
-use crate::{parser::ast::IAstNode, utils::DynamicChild};
+use crate::{parser::ast::IAstNode, utils::{DynamicChild, Range}};
 
 pub mod ast_walker;
 pub mod unused_var_analyzer;
@@ -28,7 +28,13 @@ macro_rules! implem_as_ivisitor {
 
 #[derive(Debug)]
 pub struct AnalyzerDiagnostic{
-
+    msg: String,
+    range: Range
+}
+impl AnalyzerDiagnostic {
+    pub fn new(msg: &str, range: Range) -> AnalyzerDiagnostic{
+        AnalyzerDiagnostic { msg: msg.to_string(), range, }
+    }
 }
 
 pub trait IAnalyzer: IVisitor{
