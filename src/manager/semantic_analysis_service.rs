@@ -1,7 +1,7 @@
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector}, lexer::tokens::TokenType};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses, AstParameterDeclaration, AstLocalVariableDeclaration}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector}, lexer::tokens::TokenType};
 use core::fmt::Debug;
 use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard}, ops::{DerefMut, Deref}, result, f32::consts::E};
 use crate::utils::{OptionExt};
@@ -249,6 +249,8 @@ impl<'a> SemanticAnalysisService<'a> {
         self.handle_func_decl(&write_lock, node);
         self.handle_field_decl(&write_lock);
         self.handle_uses(&write_lock);
+        self.handle_param_decl(&write_lock);
+        self.handle_var_decl(&write_lock);
     }
 
     fn notify_new_scope(&mut self){
@@ -440,20 +442,7 @@ impl<'a> SemanticAnalysisService<'a> {
         self.cur_method_node = Some(arc_node.clone());
     }
 
-    fn handl_param_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
-        let node = match node.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
-            Some(node) => node,
-            _=> return
-        };
-        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
-
-        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Field);
-        sym_info.type_str = Some(node.type_node.get_identifier());
-        sym_info.eval_type = Some(self.get_eval_type(&node.type_node));
-        sym_info.range = node.get_range();
-        sym_info.selection_range = node.identifier.get_range();
-        self.insert_symbol_info(node.get_identifier(), sym_info);
-    }
+    
 
     fn handle_field_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
         let node = match node.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
@@ -485,6 +474,40 @@ impl<'a> SemanticAnalysisService<'a> {
             };
             self.get_cur_sym_table().add_uses_symbol_table(uses_sym_table);
         }
+    }
+
+    fn handle_param_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
+        let node = match node.data.as_any().downcast_ref::<AstParameterDeclaration>(){
+            Some(node) => node,
+            _=> return
+        };
+        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+
+        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Field);
+        match &node.type_node{
+            Some(t) => {
+                sym_info.type_str = Some(t.get_identifier());
+                sym_info.eval_type = Some(self.get_eval_type(&t));
+            },
+            _=> ()
+        }
+        sym_info.range = node.get_range();
+        sym_info.selection_range = node.identifier.get_range();
+        self.insert_symbol_info(node.get_identifier(), sym_info);
+    }
+    fn handle_var_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
+        let node = match node.data.as_any().downcast_ref::<AstLocalVariableDeclaration>(){
+            Some(node) => node,
+            _=> return
+        };
+        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+
+        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Field);
+        sym_info.type_str = Some(node.type_node.get_identifier());
+        sym_info.eval_type = Some(self.get_eval_type(&node.type_node));
+        sym_info.range = node.get_range();
+        sym_info.selection_range = node.identifier.get_range();
+        self.insert_symbol_info(node.get_identifier(), sym_info);
     }
 }
 
