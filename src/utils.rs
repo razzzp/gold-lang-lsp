@@ -99,9 +99,13 @@ impl Range{
     pub fn as_lsp_type_range(&self) -> lsp_types::Range{
         lsp_types::Range {start: self.start.as_lsp_type_pos(), end: self.end.as_lsp_type_pos()}
     }
+    pub fn contains_pos(&self, pos: &Position)-> bool{
+        if *pos > self.start && *pos < self.end {return true} 
+        return false
+    }
 }
 
-#[derive(Debug,Clone,PartialEq, Default)]
+#[derive(Debug,Clone,PartialEq,Eq, Default)]
 pub struct Position {
     pub line: usize,
     pub character: usize
@@ -120,6 +124,16 @@ impl Position{
         let mut new = self.clone();
         new.character += offset;
         new
+    }
+}
+impl PartialOrd for Position{
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match self.line.partial_cmp(&other.line) {
+            Some(core::cmp::Ordering::Equal) => {
+                self.character.partial_cmp(&other.character)
+            }
+            ord => return ord,
+        }
     }
 }
 
