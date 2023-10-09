@@ -55,23 +55,6 @@ impl DefinitionService{
         }
     }
 
-    fn get_nearest_symbol_table(&self,node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
-    root_st: &Arc<Mutex<dyn ISymbolTable>>) -> Arc<Mutex<dyn ISymbolTable>>{
-        if let Some(sym_table) = node.symbol_table.as_ref(){
-            return sym_table.clone();
-        }
-        let mut cur_node = node.parent.clone();
-        while let Some(cur) = cur_node{
-            if let Some(cur) = cur.upgrade(){
-                if let Some(st) = &cur.read().unwrap().symbol_table{
-                    return st.clone()
-                }
-                cur_node = cur.read().unwrap().parent.clone();
-            } else {break}
-        }
-        return root_st.clone()
-    }
-
     fn handle_terminal(
         &mut self, 
         node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
@@ -88,7 +71,7 @@ impl DefinitionService{
                 todo!()
             } else {
                 // enough to check symbol table in current doc
-                let st = self.get_nearest_symbol_table(node, root_st);
+                let st = TypeResolver::get_nearest_symbol_table(node, root_st);
                 let mut st_lock =st.lock().unwrap();
                 match st_lock.get_symbol_info(&term_node.get_identifier()){
                     Some(s) =>{

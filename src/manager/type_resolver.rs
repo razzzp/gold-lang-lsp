@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 
 use crate::parser::ast::{IAstNode, AstTypeBasic, AstBinaryOp, AstTerminal};
 
@@ -77,14 +77,31 @@ impl TypeResolver {
         return result;
     }
 
+    pub fn get_nearest_symbol_table(node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
+    root_st: &Arc<Mutex<dyn ISymbolTable>>) -> Arc<Mutex<dyn ISymbolTable>>{
+        if let Some(sym_table) = node.symbol_table.as_ref(){
+            return sym_table.clone();
+        }
+        let mut cur_node = node.parent.clone();
+        while let Some(cur) = cur_node{
+            if let Some(cur) = cur.upgrade(){
+                if let Some(st) = &cur.read().unwrap().symbol_table{
+                    return st.clone()
+                }
+                cur_node = cur.read().unwrap().parent.clone();
+            } else {break}
+        }
+        return root_st.clone()
+    }
+
     pub fn resolve_annotated_node_type(
         &mut self, 
-        node: &Arc<Mutex<AnnotatedNode<dyn IAstNode>>>,
-        sym_table: &Arc<Mutex<dyn ISymbolTable>>
+        node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>,
+        root_sym_table: &Arc<Mutex<dyn ISymbolTable>>
     ) -> EvalType {
-        let mut result = EvalType::Unknown;
-        let inner = &node.lock().unwrap().data;
-        result = self.resolve_node_type(&inner,sym_table);
+        let node_lock = &node.read().unwrap();
+        let sym_table = TypeResolver::get_nearest_symbol_table(&node_lock, root_sym_table);
+        let result = self.resolve_node_type(&node_lock.data, &sym_table);
 
         return result
     }
