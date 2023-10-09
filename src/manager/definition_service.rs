@@ -7,19 +7,19 @@ use lsp_types::{LocationLink, Url};
 
 use crate::{parser::ast::{IAstNode, AstTerminal, AstBinaryOp}, utils::Position, lexer::tokens::TokenType};
 
-use super::{ProjectManager, data_structs::{ProjectManagerError, Document}, annotated_node::{AnnotatedNode, EvalType}, semantic_analysis_service::ISymbolTable, type_resolver::TypeResolver};
+use super::{ProjectManager, data_structs::{ProjectManagerError, Document}, annotated_node::{AnnotatedNode, EvalType}, semantic_analysis_service::{ISymbolTable, SemanticAnalysisService}, type_resolver::TypeResolver, document_service::DocumentService};
 
 
 
-pub struct DefinitionService<'a>{
-    proj_manager:&'a mut ProjectManager,
+pub struct DefinitionService{
+    semantic_analysis_service: SemanticAnalysisService,
     type_resolver: TypeResolver,
     source_uri: Url
 }
-impl<'a> DefinitionService<'a>{
-    pub fn new(proj_manager : &'a mut ProjectManager, source_uri: Url)->DefinitionService{
+impl DefinitionService{
+    pub fn new(semantic_analysis_service: SemanticAnalysisService, source_uri: Url)->DefinitionService{
         DefinitionService { 
-            proj_manager,
+            semantic_analysis_service,
             type_resolver: TypeResolver::new(),
             source_uri}
     }
@@ -121,7 +121,7 @@ impl<'a> DefinitionService<'a>{
     pub fn get_definition(&mut self, uri: &lsp_types::Url, pos : Position)
     -> Result<Vec<lsp_types::LocationLink>, ProjectManagerError>
     {
-        let doc = self.proj_manager.analyze_doc(uri, None)?;
+        let doc = self.semantic_analysis_service.analyze_uri(uri)?;
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         let root_st = doc.lock().unwrap().symbol_table.as_ref().unwrap().clone();
         let enc_node =self.search_encasing_node(&ast, &pos);
