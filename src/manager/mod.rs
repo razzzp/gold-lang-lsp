@@ -15,11 +15,6 @@ pub mod definition_service;
 pub mod type_resolver;
 pub mod document_service;
 
-#[derive(Debug,Default,Clone,Copy)]
-pub struct SymbolTableRequestOptions{
-    wait_on_lock: bool
-}
-
 #[derive(Debug)]
 pub struct ProjectManager{
     pub doc_service: Arc<RwLock<DocumentService>>,
@@ -165,7 +160,7 @@ mod test{
 
     use lsp_types::Url;
 
-    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILogger, ConsoleLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer}, manager::SymbolTableRequestOptions};
+    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILogger, ConsoleLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer}};
 
     use super::ProjectManager;
 

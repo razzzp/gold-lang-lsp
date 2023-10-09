@@ -7,7 +7,7 @@ use crate::{utils::ILogger, lexer::GoldLexer, parser::{ParserDiagnostic, parse_g
 
 use super::data_structs::{DocumentInfo, ProjectManagerError, Document};
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 /// provides caching and parsing of documents in
 /// workspace
 pub struct DocumentService {

@@ -5,7 +5,7 @@ use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDec
 use core::fmt::Debug;
 use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard, MutexGuard, LockResult}, ops::{DerefMut, Deref}, result, f32::consts::E};
 use crate::utils::{OptionExt};
-use super::{ProjectManager, SymbolTableRequestOptions, annotated_node::{AnnotatedNode, EvalType, TypeInfo, Location, NativeType, self}, data_structs::{Document, ProjectManagerError}, document_service::DocumentService};
+use super::{ProjectManager, annotated_node::{AnnotatedNode, EvalType, TypeInfo, Location, NativeType, self}, data_structs::{Document, ProjectManagerError}, document_service::DocumentService};
 
 #[derive(Debug,Default)]
 pub enum SymbolType{
