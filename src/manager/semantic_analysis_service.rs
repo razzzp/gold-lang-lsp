@@ -1,11 +1,11 @@
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses, AstParameterDeclaration, AstLocalVariableDeclaration}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector}, lexer::tokens::TokenType};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses, AstParameterDeclaration, AstLocalVariableDeclaration}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector, GenericDiagnosticCollector}, lexer::tokens::TokenType};
 use core::fmt::Debug;
 use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard, MutexGuard, LockResult}, ops::{DerefMut, Deref}, result, f32::consts::E};
 use crate::utils::{OptionExt};
-use super::{ProjectManager, SymbolTableRequestOptions, annotated_node::{AnnotatedNode, EvalType, TypeInfo, Location, NativeType}, data_structs::{Document, ProjectManagerError}};
+use super::{ProjectManager, SymbolTableRequestOptions, annotated_node::{AnnotatedNode, EvalType, TypeInfo, Location, NativeType}, data_structs::{Document, ProjectManagerError}, document_service::DocumentService};
 
 #[derive(Debug,Default)]
 pub enum SymbolType{
@@ -155,11 +155,11 @@ impl ISymbolTable for SymbolTable {
 
 
 #[derive(Debug)]
-pub struct SemanticAnalysisService<'a> {
+pub struct SemanticAnalysisService {
     root_symbol_table : Option<Arc<Mutex<SymbolTable>>>,
     // need to wrap in arc, to provide consistent api with root sym table -_-
     symbol_table_stack: Vec<Arc<Mutex<SymbolTable>>>,
-    project_manager : &'a mut ProjectManager,
+    doc_service : Arc<RwLock<DocumentService>>,
     logger: Arc<Mutex<dyn ILogger>>,
     diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
     already_seen_classes: HashSet<String>,
@@ -167,7 +167,7 @@ pub struct SemanticAnalysisService<'a> {
 }
 
 // ensure generator is not used after this!
-impl<'a> ISymbolTableGenerator for SemanticAnalysisService<'a>{
+impl ISymbolTableGenerator for SemanticAnalysisService{
     fn take_symbol_table(&mut self) -> Option<Arc<Mutex<dyn ISymbolTable>>> {
         match self.root_symbol_table.take(){
             Some(t) => return Some(t),
@@ -176,9 +176,9 @@ impl<'a> ISymbolTableGenerator for SemanticAnalysisService<'a>{
     }
 }
 
-impl<'a> SemanticAnalysisService<'a> {
+impl SemanticAnalysisService {
     pub fn new(
-        project_manager: &'a mut ProjectManager, 
+        project_manager: Arc<RwLock<DocumentService>>, 
         logger: Arc<Mutex<dyn ILogger>>, 
         diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
         already_seen_classes : Option<HashSet<String>>
@@ -186,7 +186,7 @@ impl<'a> SemanticAnalysisService<'a> {
         return SemanticAnalysisService {  
             root_symbol_table: Some(Arc::new(Mutex::new(SymbolTable::new()))),
             symbol_table_stack: Vec::new(),
-            project_manager,
+            doc_service: project_manager,
             logger: logger,
             diag_collector,
             already_seen_classes: already_seen_classes.unwrap_or_default(),
@@ -197,12 +197,24 @@ impl<'a> SemanticAnalysisService<'a> {
         if self.already_seen_classes.contains(class){
             return Err(ProjectManagerError::new(format!("{} already locked in request session",class).as_str(), ErrorCode::RequestFailed));
         }
-        return self.project_manager.get_symbol_table_for_class(&class, Some(self.already_seen_classes.clone()));
+        let uri = self.doc_service.read().unwrap().get_uri_for_class(class)?;
+        let mut semantic_analysis_service = SemanticAnalysisService::new(
+            self.doc_service.clone(), 
+            self.logger.clone(),
+            Box::new(GenericDiagnosticCollector::new()),
+            Some(self.already_seen_classes.clone())
+        );
+        let doc = semantic_analysis_service.analyze_uri(&uri)?;
+        let doc = doc.lock().unwrap();
+        match &doc.symbol_table{
+            Some(st) => return Ok(st.clone()),
+            _=> return Err(ProjectManagerError::new(format!("Unable to get Symbol table for {}",class).as_str(), ErrorCode::InternalError))
+        }
     }
 
     /// if no error occurs, annotated tree & symbol table is guranteed to be Some
     pub fn analyze_uri(&mut self, uri : &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        let doc: Arc<Mutex<Document>> = self.project_manager.get_parsed_document(uri, true)?;
+        let doc: Arc<Mutex<Document>> = self.doc_service.write().unwrap().get_parsed_document(uri, true)?;
         return self.analyze(doc);
     }
     

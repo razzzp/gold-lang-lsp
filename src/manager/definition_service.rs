@@ -2,21 +2,26 @@
 
 use std::sync::{Arc, RwLock, Mutex, RwLockWriteGuard, RwLockReadGuard, Weak};
 
+use lsp_server::ErrorCode;
 use lsp_types::{LocationLink, Url};
 
 use crate::{parser::ast::{IAstNode, AstTerminal, AstBinaryOp}, utils::Position, lexer::tokens::TokenType};
 
-use super::{ProjectManager, data_structs::{ProjectManagerError, Document}, annotated_node::AnnotatedNode, semantic_analysis_service::ISymbolTable};
+use super::{ProjectManager, data_structs::{ProjectManagerError, Document}, annotated_node::{AnnotatedNode, EvalType}, semantic_analysis_service::ISymbolTable, type_resolver::TypeResolver};
 
 
 
 pub struct DefinitionService<'a>{
     proj_manager:&'a mut ProjectManager,
+    type_resolver: TypeResolver,
     source_uri: Url
 }
 impl<'a> DefinitionService<'a>{
     pub fn new(proj_manager : &'a mut ProjectManager, source_uri: Url)->DefinitionService{
-        DefinitionService { proj_manager, source_uri}
+        DefinitionService { 
+            proj_manager,
+            type_resolver: TypeResolver::new(),
+            source_uri}
     }
 
     fn search_encasing_node(&self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, pos : &Position)
@@ -67,14 +72,18 @@ impl<'a> DefinitionService<'a>{
     }
 
     fn handle_terminal(
-        &self, 
+        &mut self, 
         node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
         root_st: &Arc<Mutex<dyn ISymbolTable>>
     )-> Option<Result<Vec<lsp_types::LocationLink>, ProjectManagerError>>{
         if let Some(term_node) = node.data.as_any().downcast_ref::<AstTerminal>(){
             // if part of dot ops, may need to check another class
             if self.is_bin_op_dot_ops(&node.parent){
-                // TODO
+                let bin_op_parent = match node.parent.as_ref().unwrap().upgrade(){
+                    Some(p) => p,
+                    None=> return Some(Err(ProjectManagerError::new("Failed to upgrade wek ref", ErrorCode::InternalError)))
+                };
+                let left_node_type = self.type_resolver.resolve_node_type(&bin_op_parent.read().unwrap().data);
                 todo!()
             } else {
                 // enough to check symbol table in current doc
@@ -98,7 +107,7 @@ impl<'a> DefinitionService<'a>{
     }
 
     fn handle_node(
-        &self, 
+        &mut self, 
         node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, 
         root_st: &Arc<Mutex<dyn ISymbolTable>>
     )-> Result<Vec<lsp_types::LocationLink>, ProjectManagerError>{
