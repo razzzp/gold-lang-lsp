@@ -46,13 +46,14 @@ pub trait ISymbolTableGenerator{
 }
 
 pub trait ISymbolTable: Debug + Send{
-    fn get_symbol_info(&mut self, id: &String, search_uses: bool) -> Option<Arc<SymbolInfo>>;
+    fn get_symbol_info(&mut self, id: &String) -> Option<Arc<SymbolInfo>>;
     fn insert_symbol_info(& mut self, id : String, info: SymbolInfo) -> & SymbolInfo;
     fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Arc<SymbolInfo>> + 'a >;
     fn get_parent_symbol_table(&self) -> Option<Arc<Mutex<dyn ISymbolTable>>>;
-    fn identifier_exists(&mut self, id : &String, search_uses: bool) -> bool;
+    fn identifier_exists(&mut self, id : &String) -> bool;
     fn as_isymbol_table_mut(&mut self) -> &mut dyn ISymbolTable;
     fn add_uses_entity(&mut self, entity_name:&String);
+    fn iter_uses<'a>(&'a mut self) -> Vec<&'a String>;
     // for debug only
     fn print_all_symbols(&self);
 }
@@ -88,12 +89,10 @@ impl SymbolTable{
         self.uses_symbol_table.push(symbol_table); 
     }
 
-    fn iter_uses_symbol_table<'a>(&'a mut self) -> Vec<&'a Arc<Mutex<dyn ISymbolTable>>>{
-        self.uses_symbol_table.iter().collect()
-    }
+   
 }
 impl ISymbolTable for SymbolTable {
-    fn get_symbol_info(&mut self, id: &String, search_uses: bool) -> Option<Arc<SymbolInfo>> {
+    fn get_symbol_info(&mut self, id: &String) -> Option<Arc<SymbolInfo>> {
         let idx = match self.hash_map.get(id) {
             Some(i) => i,
             _=> return None,
@@ -102,16 +101,13 @@ impl ISymbolTable for SymbolTable {
         if result.is_none() && self.parent_symbol_table.is_some(){
             let parent_st= self.parent_symbol_table.unwrap_ref();
             // don't need to search uses of parent
-            result = parent_st.lock().unwrap().get_symbol_info(id, false);
-        }
-        if search_uses && result.is_none(){
-            for st in self.iter_uses_symbol_table(){
-                // don't need to search uses of uses
-                result = st.lock().unwrap().get_symbol_info(&id, false);
-                if result.is_some() {break}
-            }
+            result = parent_st.lock().unwrap().get_symbol_info(id);
         }
         return result;
+    }
+
+    fn iter_uses<'a>(&'a mut self) -> Vec<&'a String>{
+        self.uses_entities.iter().collect()
     }
 
     fn insert_symbol_info(&mut self, id : String, symbol_info: SymbolInfo) -> &SymbolInfo {
@@ -141,8 +137,8 @@ impl ISymbolTable for SymbolTable {
         })
     }
 
-    fn identifier_exists(&mut self, id : &String, search_uses: bool) -> bool {
-        return self.get_symbol_info(id, search_uses).is_some();
+    fn identifier_exists(&mut self, id : &String) -> bool {
+        return self.get_symbol_info(id).is_some();
     }
 
     fn as_isymbol_table_mut(&mut self) -> &mut dyn ISymbolTable {
@@ -176,32 +172,26 @@ impl SemanticAnalysisService {
             already_seen_classes: already_seen_classes.unwrap_or_default(),
         }
     }
-    fn get_symbol_table_for_class(&mut self, class: &String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+    pub fn get_symbol_table_for_class(&self, class: &String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         if self.already_seen_classes.contains(class){
             return Err(ProjectManagerError::new(format!("{} already locked in request session",class).as_str(), ErrorCode::RequestFailed));
         }
         let uri = self.doc_service.read().unwrap().get_uri_for_class(class)?;
-        let mut semantic_analysis_service = SemanticAnalysisService::new(
-            self.doc_service.clone(), 
-            self.logger.clone(),
-            self.diag_collector.clone(),
-            Some(self.already_seen_classes.clone())
-        );
-        let doc = semantic_analysis_service.analyze_uri(&uri)?;
-        let doc = doc.lock().unwrap();
-        match &doc.symbol_table{
+        let doc: Arc<Mutex<Document>> = self.doc_service.write().unwrap().get_parsed_document(&uri, true)?;
+        let doc_lock = doc.lock().unwrap();
+        match &doc_lock.symbol_table{
             Some(st) => return Ok(st.clone()),
             _=> return Err(ProjectManagerError::new(format!("Unable to get Symbol table for {}",class).as_str(), ErrorCode::InternalError))
         }
     }
 
     /// if no error occurs, annotated tree & symbol table is guranteed to be Some
-    pub fn analyze_uri(&mut self, uri : &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn analyze_uri(&self, uri : &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let doc: Arc<Mutex<Document>> = self.doc_service.write().unwrap().get_parsed_document(uri, true)?;
         return self.analyze(doc);
     }
     
-    fn analyze(&mut self, doc: Arc<Mutex<Document>>) -> 
+    fn analyze(&self, doc: Arc<Mutex<Document>>) -> 
     Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let root_node = doc.lock().unwrap().get_ast().clone();
         // let mut semantic_analysis_service = SemanticAnalysisService::new(
@@ -216,6 +206,25 @@ impl SemanticAnalysisService {
         doc.lock().unwrap().annotated_ast = Some(annotated_tree.clone());
         return Ok(doc);
     }
+
+    pub fn search_sym_info(&self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<Arc<SymbolInfo>>{
+        let mut st_lock=sym_table.lock().unwrap();
+        let mut sym_info = st_lock.get_symbol_info(id);
+        if search_uses && sym_info.is_none() {
+            for uses in st_lock.iter_uses(){
+                let uses_sym_table = match self.get_symbol_table_for_class(uses){
+                    Ok(r) => r,
+                    _=> continue
+                };
+                sym_info=uses_sym_table.lock().unwrap().get_symbol_info(id);
+                if sym_info.is_some(){
+                    break;
+                }
+            }
+        }
+        return sym_info;
+    }
+
 }
 
 
@@ -226,13 +235,13 @@ pub struct AstAnnotator<'a> {
 
     logger: Arc<Mutex<dyn ILogger>>,
     diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
-    semantic_analysis_service: &'a mut SemanticAnalysisService,
+    semantic_analysis_service: &'a SemanticAnalysisService,
     already_seen_classes: HashSet<String>,
     cur_method_node : Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
 }
 impl<'a> AstAnnotator<'a>{
     pub fn new (
-        semantic_analysis_service: &'a mut SemanticAnalysisService,
+        semantic_analysis_service: &'a SemanticAnalysisService,
         diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
         logger: Arc<Mutex<dyn ILogger>>,
         already_seen_classes: Option<HashSet<String>>,
@@ -311,7 +320,7 @@ impl<'a> AstAnnotator<'a>{
 
     fn check_identifier_already_defined(&mut self, id: &String, range: Range) -> bool{
         // do we need to check uses?
-        match self.get_cur_sym_table().lock().unwrap().get_symbol_info(id, false){
+        match self.get_cur_sym_table().lock().unwrap().get_symbol_info(id){
             Some(sym)=>{
                 self.diag_collector.lock().unwrap().add_diagnostic(
                     AnalyzerDiagnostic::new(
@@ -365,6 +374,7 @@ impl<'a> AstAnnotator<'a>{
         };
         let class_name = ori_node.get_identifier();
         let mut sym_info = SymbolInfo::new(class_name.clone(), SymbolType::Class);
+        sym_info.eval_type = Some(EvalType::Class(class_name.clone()));
         // TODO there is probably a better place to put this
         self.already_seen_classes.insert(class_name.clone());
 

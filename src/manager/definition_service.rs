@@ -90,7 +90,7 @@ impl DefinitionService{
                 // enough to check symbol table in current doc
                 let st = self.get_nearest_symbol_table(node, root_st);
                 let mut st_lock =st.lock().unwrap();
-                match st_lock.get_symbol_info(&term_node.get_identifier(), false){
+                match st_lock.get_symbol_info(&term_node.get_identifier()){
                     Some(s) =>{
                         let mut result = Vec::new();
                         result.push(LocationLink{

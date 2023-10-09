@@ -41,6 +41,7 @@ impl Location{
 pub enum EvalType{
     Native(NativeType),
     Defined(TypeInfo),
+    Class(String),
     Unknown
 }
 
