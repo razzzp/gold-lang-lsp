@@ -67,7 +67,7 @@ impl ProjectManager{
         let mut semantic_analysis_service = SemanticAnalysisService::new(
             self.doc_service.clone(), 
             self.logger.clone(),
-            Box::new(GenericDiagnosticCollector::new()),
+            Arc::new(Mutex::new(GenericDiagnosticCollector::new())),
             already_seen_classes
         );
         let doc = semantic_analysis_service.analyze_uri(uri)?;

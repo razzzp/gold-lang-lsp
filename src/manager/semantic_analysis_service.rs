@@ -5,7 +5,7 @@ use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDec
 use core::fmt::Debug;
 use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard, MutexGuard, LockResult}, ops::{DerefMut, Deref}, result, f32::consts::E};
 use crate::utils::{OptionExt};
-use super::{ProjectManager, SymbolTableRequestOptions, annotated_node::{AnnotatedNode, EvalType, TypeInfo, Location, NativeType}, data_structs::{Document, ProjectManagerError}, document_service::DocumentService};
+use super::{ProjectManager, SymbolTableRequestOptions, annotated_node::{AnnotatedNode, EvalType, TypeInfo, Location, NativeType, self}, data_structs::{Document, ProjectManagerError}, document_service::DocumentService};
 
 #[derive(Debug,Default)]
 pub enum SymbolType{
@@ -154,43 +154,26 @@ impl ISymbolTable for SymbolTable {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SemanticAnalysisService {
-    root_symbol_table : Option<Arc<Mutex<SymbolTable>>>,
-    // need to wrap in arc, to provide consistent api with root sym table -_-
-    symbol_table_stack: Vec<Arc<Mutex<SymbolTable>>>,
     doc_service : Arc<RwLock<DocumentService>>,
     logger: Arc<Mutex<dyn ILogger>>,
-    diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
+    diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
     already_seen_classes: HashSet<String>,
-    cur_method_node : Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
-}
-
-// ensure generator is not used after this!
-impl ISymbolTableGenerator for SemanticAnalysisService{
-    fn take_symbol_table(&mut self) -> Option<Arc<Mutex<dyn ISymbolTable>>> {
-        match self.root_symbol_table.take(){
-            Some(t) => return Some(t),
-            _=> return None
-        }
-    }
 }
 
 impl SemanticAnalysisService {
     pub fn new(
-        project_manager: Arc<RwLock<DocumentService>>, 
+        doc_service: Arc<RwLock<DocumentService>>, 
         logger: Arc<Mutex<dyn ILogger>>, 
-        diag_collector: Box<dyn IDiagnosticCollector<AnalyzerDiagnostic>>,
+        diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
         already_seen_classes : Option<HashSet<String>>
 ) -> SemanticAnalysisService{
         return SemanticAnalysisService {  
-            root_symbol_table: Some(Arc::new(Mutex::new(SymbolTable::new()))),
-            symbol_table_stack: Vec::new(),
-            doc_service: project_manager,
+            doc_service,
             logger: logger,
             diag_collector,
             already_seen_classes: already_seen_classes.unwrap_or_default(),
-            cur_method_node:None
         }
     }
     fn get_symbol_table_for_class(&mut self, class: &String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
@@ -201,7 +184,7 @@ impl SemanticAnalysisService {
         let mut semantic_analysis_service = SemanticAnalysisService::new(
             self.doc_service.clone(), 
             self.logger.clone(),
-            Box::new(GenericDiagnosticCollector::new()),
+            self.diag_collector.clone(),
             Some(self.already_seen_classes.clone())
         );
         let doc = semantic_analysis_service.analyze_uri(&uri)?;
@@ -221,12 +204,56 @@ impl SemanticAnalysisService {
     fn analyze(&mut self, doc: Arc<Mutex<Document>>) -> 
     Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let root_node = doc.lock().unwrap().get_ast().clone();
-        let annotated_tree = self.generate_annotated_tree(&root_node);
-        self.walk_tree(&annotated_tree);
-        let sym_table = self.root_symbol_table.take().unwrap();
+        // let mut semantic_analysis_service = SemanticAnalysisService::new(
+        //     self.doc_service.clone(), 
+        //     self.logger.clone(),
+        //     self.diag_collector.clone(),
+        //     Some(self.already_seen_classes.clone())
+        // );
+        let mut annotator = AstAnnotator::new(self, self.diag_collector.clone(), self.logger.clone(), Some(self.already_seen_classes.clone()));
+        let (annotated_tree, sym_table) = annotator.analyze(&root_node)?;
         doc.lock().unwrap().symbol_table = Some(sym_table.clone());
         doc.lock().unwrap().annotated_ast = Some(annotated_tree.clone());
         return Ok(doc);
+    }
+}
+
+
+pub struct AstAnnotator<'a> {
+    root_symbol_table : Option<Arc<Mutex<SymbolTable>>>,
+    // need to wrap in arc, to provide consistent api with root sym table
+    symbol_table_stack: Vec<Arc<Mutex<SymbolTable>>>,
+
+    logger: Arc<Mutex<dyn ILogger>>,
+    diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
+    semantic_analysis_service: &'a mut SemanticAnalysisService,
+    already_seen_classes: HashSet<String>,
+    cur_method_node : Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
+}
+impl<'a> AstAnnotator<'a>{
+    pub fn new (
+        semantic_analysis_service: &'a mut SemanticAnalysisService,
+        diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
+        logger: Arc<Mutex<dyn ILogger>>,
+        already_seen_classes: Option<HashSet<String>>,
+    )->AstAnnotator<'a>{
+        return AstAnnotator{
+            root_symbol_table: Some(Arc::new(Mutex::new(SymbolTable::new()))),
+            symbol_table_stack: Vec::new(),
+            logger: logger,
+            diag_collector,
+            semantic_analysis_service,
+            already_seen_classes: already_seen_classes.unwrap_or_default(),
+            cur_method_node:None
+        }      
+    }
+
+    fn analyze(&mut self, root_node: &Arc<dyn IAstNode>) -> 
+    Result<(Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, Arc<Mutex<SymbolTable>>), ProjectManagerError>{
+        let annotated_tree = self.generate_annotated_tree(&root_node);
+        self.walk_tree(&annotated_tree);
+        let sym_table = self.root_symbol_table.take().unwrap();
+        return Ok((annotated_tree, sym_table));
     }
 
     fn generate_annotated_tree<'b>(&self, root_node: &Arc<dyn IAstNode>) -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>{
@@ -286,7 +313,7 @@ impl SemanticAnalysisService {
         // do we need to check uses?
         match self.get_cur_sym_table().lock().unwrap().get_symbol_info(id, false){
             Some(sym)=>{
-                self.diag_collector.add_diagnostic(
+                self.diag_collector.lock().unwrap().add_diagnostic(
                     AnalyzerDiagnostic::new(
                         format!("Identifier already defined. In {}", sym.in_class.unwrap_clone_or_empty_string()).as_str(), 
                         range
@@ -345,12 +372,12 @@ impl SemanticAnalysisService {
             let parent_class_name = parent_class.get_value();
             if parent_class_name == class_name{
                 // parent class can't be itself
-                self.diag_collector.add_diagnostic(
+                self.diag_collector.lock().unwrap().add_diagnostic(
                     AnalyzerDiagnostic::new("Parent class cannot be itself", parent_class.get_range())
                 );
             }
             sym_info.parent = Some(parent_class_name.clone());
-            let parent_symbol_table = self.get_symbol_table_for_class(&parent_class_name);
+            let parent_symbol_table = self.semantic_analysis_service.get_symbol_table_for_class(&parent_class_name);
             match parent_symbol_table{
                 Ok(st) => {
                     // set parent symbol table
@@ -358,7 +385,7 @@ impl SemanticAnalysisService {
                 },
                 Err(e)=> {
                     // parent class not found/cannot be parsed
-                    self.diag_collector.add_diagnostic(
+                    self.diag_collector.lock().unwrap().add_diagnostic(
                         AnalyzerDiagnostic::new(format!("Parent class not defined; {}", e).as_str(), parent_class.get_range())
                     );
                 }
@@ -522,7 +549,6 @@ impl SemanticAnalysisService {
         self.insert_symbol_info(node.get_identifier(), sym_info);
     }
 }
-
 
 pub struct DocumentSymbolGenerator{
 

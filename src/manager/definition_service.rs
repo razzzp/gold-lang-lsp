@@ -19,9 +19,10 @@ pub struct DefinitionService{
 impl DefinitionService{
     pub fn new(semantic_analysis_service: SemanticAnalysisService, source_uri: Url)->DefinitionService{
         DefinitionService { 
-            semantic_analysis_service,
-            type_resolver: TypeResolver::new(),
-            source_uri}
+            type_resolver: TypeResolver::new(semantic_analysis_service.clone()),
+            semantic_analysis_service: semantic_analysis_service,
+            source_uri
+        }
     }
 
     fn search_encasing_node(&self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, pos : &Position)
@@ -83,7 +84,7 @@ impl DefinitionService{
                     Some(p) => p,
                     None=> return Some(Err(ProjectManagerError::new("Failed to upgrade wek ref", ErrorCode::InternalError)))
                 };
-                let left_node_type = self.type_resolver.resolve_node_type(&bin_op_parent.read().unwrap().data);
+                let left_node_type = self.type_resolver.resolve_node_type(&bin_op_parent.read().unwrap().data, root_st);
                 todo!()
             } else {
                 // enough to check symbol table in current doc

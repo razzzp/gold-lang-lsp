@@ -1,18 +1,20 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::parser::ast::{IAstNode, AstTypeBasic, AstBinaryOp, AstTerminal};
 
-use super::{annotated_node::{EvalType, NativeType, AnnotatedNode}, ProjectManager};
+use super::{annotated_node::{EvalType, NativeType, AnnotatedNode}, ProjectManager, semantic_analysis_service::{ISymbolTable, SemanticAnalysisService}};
 
 pub struct TypeResolver {
-    // proj_manager: &'a mut ProjectManager,
+    semantic_analysis_service: SemanticAnalysisService,
 }
 impl TypeResolver {
-    pub fn new() ->TypeResolver{
-        return TypeResolver {}
+    pub fn new(semantic_analysis_service: SemanticAnalysisService) ->TypeResolver{
+        return TypeResolver {
+            semantic_analysis_service
+        }
     }
 
-    fn resolve_type_basic(&mut self, node: &Arc<dyn IAstNode>) -> Option<EvalType> {
+    fn resolve_type_basic(&mut self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let node = node.as_any().downcast_ref::<AstTypeBasic>()?; 
         //
         match node.get_identifier().to_uppercase().as_str() {
@@ -24,7 +26,7 @@ impl TypeResolver {
         }
     }
 
-    fn resolve_terminal(&mut self, node: &Arc<dyn IAstNode>) -> Option<EvalType> {
+    fn resolve_terminal(&mut self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let node = node.as_any().downcast_ref::<AstTerminal>()?; 
         //
         match node.get_identifier().to_uppercase().as_str() {
@@ -36,7 +38,7 @@ impl TypeResolver {
         }
     }
 
-    fn resolve_bin_op(&mut self, node: &Arc<dyn IAstNode>) -> Option<EvalType> {
+    fn resolve_bin_op(&mut self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let node = node.as_any().downcast_ref::<AstTypeBasic>()?; 
         //
         match node.get_identifier().to_uppercase().as_str() {
@@ -48,14 +50,14 @@ impl TypeResolver {
         }
     }
 
-    pub fn resolve_node_type(&mut self, node: &Arc<dyn IAstNode>) -> EvalType {
+    pub fn resolve_node_type(&mut self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> EvalType {
         let mut result = EvalType::Unknown;
         // case basic type node
-        result = self.resolve_type_basic(node).unwrap_or(result);
+        result = self.resolve_type_basic(node,sym_table).unwrap_or(result);
         // binary op
         result = match node.as_any().downcast_ref::<AstBinaryOp>(){
             Some(t) => {
-                let left_node_type = self.resolve_node_type(&t.left_node);
+                let left_node_type = self.resolve_node_type(&t.left_node,sym_table);
 
                 result
             },
@@ -64,10 +66,14 @@ impl TypeResolver {
         return result;
     }
 
-    pub fn resolve_annotated_node_type(&mut self, node: &Arc<Mutex<AnnotatedNode<dyn IAstNode>>>) -> EvalType {
+    pub fn resolve_annotated_node_type(
+        &mut self, 
+        node: &Arc<Mutex<AnnotatedNode<dyn IAstNode>>>,
+        sym_table: &Arc<Mutex<dyn ISymbolTable>>
+    ) -> EvalType {
         let mut result = EvalType::Unknown;
         let inner = &node.lock().unwrap().data;
-        result = self.resolve_node_type(&inner);
+        result = self.resolve_node_type(&inner,sym_table);
 
         return result
     }
