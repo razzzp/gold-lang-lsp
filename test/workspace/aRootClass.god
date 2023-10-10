@@ -12,6 +12,8 @@ RootVarRef2 : refto aLightObject
 
 
 proc RootProc(FirstParam: Int4)
+   var localVar : CString
    ;proc body
    WriteLn(FirstParam)
+   WriteLn(localVar)
 endProc

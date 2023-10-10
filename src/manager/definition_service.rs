@@ -17,11 +17,11 @@ pub struct DefinitionService{
     source_uri: Url
 }
 impl DefinitionService{
-    pub fn new(semantic_analysis_service: SemanticAnalysisService, source_uri: Url)->DefinitionService{
+    pub fn new(semantic_analysis_service: SemanticAnalysisService, source_uri: &Url)->DefinitionService{
         DefinitionService { 
             type_resolver: TypeResolver::new(semantic_analysis_service.clone()),
             semantic_analysis_service: semantic_analysis_service,
-            source_uri
+            source_uri: source_uri.clone()
         }
     }
 
@@ -56,7 +56,7 @@ impl DefinitionService{
     }
 
     fn handle_terminal(
-        &mut self, 
+        &self, 
         node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
         root_st: &Arc<Mutex<dyn ISymbolTable>>
     )-> Option<Result<Vec<lsp_types::LocationLink>, ProjectManagerError>>{
@@ -73,7 +73,7 @@ impl DefinitionService{
                 // enough to check symbol table in current doc
                 let st = TypeResolver::get_nearest_symbol_table(node, root_st);
                 let mut st_lock =st.lock().unwrap();
-                match st_lock.get_symbol_info(&term_node.get_identifier()){
+                match st_lock.get_symbol_info(&term_node.get_identifier().to_uppercase()){
                     Some(s) =>{
                         let mut result = Vec::new();
                         result.push(LocationLink{
@@ -91,7 +91,7 @@ impl DefinitionService{
     }
 
     fn handle_node(
-        &mut self, 
+        &self, 
         node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, 
         root_st: &Arc<Mutex<dyn ISymbolTable>>
     )-> Result<Vec<lsp_types::LocationLink>, ProjectManagerError>{
@@ -102,14 +102,41 @@ impl DefinitionService{
         return Err(ProjectManagerError::new("Failed to provide Go To Definition", lsp_server::ErrorCode::InternalError))
     }
 
-    pub fn get_definition(&mut self, uri: &lsp_types::Url, pos : Position)
+    pub fn get_definition(&self, pos : &Position)
     -> Result<Vec<lsp_types::LocationLink>, ProjectManagerError>
     {
-        let doc = self.semantic_analysis_service.analyze_uri(uri)?;
+        let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri)?;
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         let root_st = doc.lock().unwrap().symbol_table.as_ref().unwrap().clone();
         let enc_node =self.search_encasing_node(&ast, &pos);
 
         return self.handle_node(&enc_node, &root_st)
+    }
+}
+
+#[cfg(test)]
+mod test{
+    use crate::manager::test::{create_test_project_manager, create_test_type_resolver, create_uri_from_path, create_test_sem_service, create_test_def_service};
+
+
+    #[test]
+    fn test_resolve_local_variable(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = create_uri_from_path("./test/workspace/aRootClass.god");
+        let doc = proj_manager.analyze_doc(&test_input, None).unwrap();
+        let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
+        let proc_node = ast.read().unwrap().children.get(5).unwrap().clone();
+        let method_body = proc_node.read().unwrap().children.get(2).unwrap().clone();
+        let second_writeln = method_body.read().unwrap().children.get(3).unwrap().clone();
+        let local_var_ref = second_writeln.read().unwrap().children.get(1).unwrap().clone();
+        // pos input to test
+        let pos_input = local_var_ref.read().unwrap().data.get_pos();
+
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let mut result = def_service.get_definition(&pos_input).unwrap();
+        assert_eq!(result.len(), 1);
+        let loc = result.pop().unwrap();
+        assert_eq!(loc.target_uri, test_input);
     }
 }

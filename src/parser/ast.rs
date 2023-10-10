@@ -779,6 +779,9 @@ impl IAstNode for AstMethodBody {
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         return Some(self.statements.iter().map(|node| {node.as_ref()}).collect());
     }
+    fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
+        return Some(self.statements.iter().collect());
+    }
     fn get_identifier(&self) -> String {
         self.to_string_type_pos()
     }

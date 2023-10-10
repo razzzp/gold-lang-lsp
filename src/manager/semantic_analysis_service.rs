@@ -113,7 +113,8 @@ impl ISymbolTable for SymbolTable {
     fn insert_symbol_info(&mut self, id : String, symbol_info: SymbolInfo) -> &SymbolInfo {
         let idx = self.symbols_list.len();
         self.symbols_list.push(Arc::new(symbol_info));
-        self.hash_map.insert(id, idx);
+        // uppercase keys
+        self.hash_map.insert(id.to_uppercase(), idx);
         return self.symbols_list.get(idx).unwrap()
     }
 
@@ -261,6 +262,7 @@ impl<'a> AstAnnotator<'a>{
     Result<(Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, Arc<Mutex<SymbolTable>>), ProjectManagerError>{
         let annotated_tree = self.generate_annotated_tree(&root_node);
         self.walk_tree(&annotated_tree);
+        self.notify_end_method();
         let sym_table = self.root_symbol_table.take().unwrap();
         return Ok((annotated_tree, sym_table));
     }
@@ -305,6 +307,15 @@ impl<'a> AstAnnotator<'a>{
         self.symbol_table_stack.push(Arc::new(Mutex::new(new_sym_table)));
     }
 
+    fn notify_end_method(&mut self){
+        // sets last sym table for method
+        // set sym table to last method
+        if let Some(sym_table) = self.pop_last_scope(){
+            // should always be Some
+            self.cur_method_node.as_ref().unwrap().write().unwrap().symbol_table = Some(sym_table);
+        }
+    }
+
     fn pop_last_scope(&mut self) -> Option<Arc<Mutex<SymbolTable>>>{
         return self.symbol_table_stack.pop();
     }
@@ -346,7 +357,7 @@ impl<'a> AstAnnotator<'a>{
             Some(t) =>{
                 match t.get_identifier().to_uppercase().as_str() {
                     "INT1" | "INT2" | "INT4" | "INT8" => EvalType::Native(NativeType::Int),
-                    "NUMERIC" => EvalType::Native(NativeType::Numeric),
+                    "NUMERIC" => EvalType::Native(NativeType::Num),
                     "STRING" =>  EvalType::Native(NativeType::String),
                     "CSTRING" =>  EvalType::Native(NativeType::CString),
                     _=> EvalType::Unknown
@@ -416,7 +427,7 @@ impl<'a> AstAnnotator<'a>{
         let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Constant);
         sym_info.eval_type = match &node.value.token_type{
             TokenType::StringLiteral => Some(EvalType::Native(NativeType::String)),
-            TokenType::NumericLiteral => Some(EvalType::Native(NativeType::Numeric)),
+            TokenType::NumericLiteral => Some(EvalType::Native(NativeType::Num)),
             _=> Some(EvalType::Unknown)
         };
         sym_info.range = node.get_range();
@@ -447,10 +458,7 @@ impl<'a> AstAnnotator<'a>{
             _=> return
         };
         // set sym table to last method
-        if let Some(sym_table) = self.pop_last_scope(){
-            // should always be Some
-            self.cur_method_node.as_ref().unwrap().write().unwrap().symbol_table = Some(sym_table);
-        }
+        self.notify_end_method();
 
         self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
 
@@ -470,10 +478,7 @@ impl<'a> AstAnnotator<'a>{
             _=> return
         };
         // set sym table to last method
-        if let Some(sym_table) = self.pop_last_scope(){
-            // should always be Some
-            self.cur_method_node.as_ref().unwrap().write().unwrap().symbol_table = Some(sym_table);
-        }
+        self.notify_end_method();
 
         self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
 
@@ -532,7 +537,7 @@ impl<'a> AstAnnotator<'a>{
         };
         self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
 
-        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Field);
+        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Variable);
         match &node.type_node{
             Some(t) => {
                 sym_info.type_str = Some(t.get_identifier());
@@ -551,7 +556,7 @@ impl<'a> AstAnnotator<'a>{
         };
         self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
 
-        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Field);
+        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Variable);
         sym_info.type_str = Some(node.type_node.get_identifier());
         sym_info.eval_type = Some(self.get_eval_type(&node.type_node));
         sym_info.range = node.get_range();

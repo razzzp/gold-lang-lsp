@@ -101,7 +101,7 @@ impl Range{
         lsp_types::Range {start: self.start.as_lsp_type_pos(), end: self.end.as_lsp_type_pos()}
     }
     pub fn contains_pos(&self, pos: &Position)-> bool{
-        if *pos > self.start && *pos < self.end {return true} 
+        if *pos >= self.start && *pos <= self.end {return true} 
         return false
     }
 }
@@ -135,6 +135,11 @@ impl PartialOrd for Position{
             }
             ord => return ord,
         }
+    }
+}
+impl From<lsp_types::Position> for Position{
+    fn from(value: lsp_types::Position) -> Self {
+        return Position { line: value.line as usize, character: value.character as usize }
     }
 }
 

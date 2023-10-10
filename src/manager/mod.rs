@@ -1,12 +1,12 @@
 use std::{collections::{HashMap, HashSet}, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, error::Error, fmt::Display};
 
 use lsp_server::ErrorCode;
-use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url};
+use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor}, threadpool::ThreadPool, manager::semantic_analysis_service::ISymbolTableGenerator};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector, IDiagnosticCollector, Position}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor, AnalyzerDiagnostic}, threadpool::ThreadPool, manager::semantic_analysis_service::ISymbolTableGenerator};
 use data_structs::*;
 
-use self::{semantic_analysis_service::{ISymbolTable, SemanticAnalysisService, DocumentSymbolGenerator}, document_service::DocumentService};
+use self::{semantic_analysis_service::{ISymbolTable, SemanticAnalysisService, DocumentSymbolGenerator}, document_service::DocumentService,  definition_service::DefinitionService};
 
 pub mod data_structs;
 pub mod semantic_analysis_service;
@@ -58,6 +58,15 @@ impl ProjectManager{
         return self.doc_service.read().unwrap().get_uri_for_class(class_name);
     }
 
+    fn create_sem_service(&self) -> SemanticAnalysisService{
+        return SemanticAnalysisService::new(
+            self.doc_service.clone(),
+            self.logger.clone(),
+            Arc::new(Mutex::new(GenericDiagnosticCollector::new())),
+            None
+        );
+    }
+
     pub fn analyze_doc(&mut self, uri : &Url, already_seen_classes: Option<HashSet<String>>) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let mut semantic_analysis_service = SemanticAnalysisService::new(
             self.doc_service.clone(), 
@@ -86,6 +95,14 @@ impl ProjectManager{
         let sym_table = self.get_symbol_table_for_uri(uri, None)?;
         let sym_gen = DocumentSymbolGenerator {};
         return Ok(sym_gen.generate_symbols(sym_table))
+    }
+
+    pub fn generate_goto_definitions(&mut self, uri : &Url, pos: &Position) -> Result<Vec<LocationLink>, ProjectManagerError>{
+        let sem_service = self.create_sem_service();
+        let def_service = DefinitionService::new(sem_service, uri);
+        
+        let sym_gen = DocumentSymbolGenerator {};
+        return def_service.get_definition(&pos)
     }
 
     fn get_analyzer_diagnostics(&self, doc : Arc<Mutex<Document>>) -> Result<Arc<Vec<lsp_types::Diagnostic>>, ProjectManagerError>{
@@ -155,14 +172,14 @@ impl ProjectManager{
 
 
 #[cfg(test)]
-mod test{
-    use std::{fs::{File, self}, io::Read, path::{PathBuf, Path}, time, thread, rc::Rc, cell::RefCell, sync::{Mutex, Arc}, str::FromStr};
+pub mod test{
+    use std::{fs::{File, self}, io::Read, path::{PathBuf, Path}, time, thread, rc::Rc, cell::RefCell, sync::{Mutex, Arc, RwLock}, str::FromStr};
 
     use lsp_types::Url;
 
-    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILogger, ConsoleLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer}};
+    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILogger, ConsoleLogger, IDiagnosticCollector, GenericDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}};
 
-    use super::ProjectManager;
+    use super::{ProjectManager, document_service::DocumentService, type_resolver::TypeResolver, semantic_analysis_service::SemanticAnalysisService, definition_service::DefinitionService};
 
     fn parse_and_analyze(file_path: &str) -> (Arc<dyn IAstNode>, Vec<ParserDiagnostic>){
         let  mut f = File::open(file_path).expect("file not found");
@@ -186,19 +203,42 @@ mod test{
         return result;
     }
 
-    fn create_test_logger()-> Arc<Mutex<dyn ILogger>>{
+    pub fn create_test_logger()-> Arc<Mutex<dyn ILogger>>{
         Arc::new(Mutex::new(ConsoleLogger::new("[LSP Server]")))
     }
 
-    fn create_uri_from_path(path:&str)-> Url{
+    pub fn create_uri_from_path(path:&str)-> Url{
         let path = PathBuf::from_str(path).unwrap();
         let path = std::fs::canonicalize(path).unwrap();
         return Url::from_file_path(path).unwrap();
     }
 
-    fn create_test_project_manager(root: &str) -> ProjectManager{
+    pub fn create_test_project_manager(root: &str) -> ProjectManager{
         let uri = create_uri_from_path(root);
         return ProjectManager::new(Some(uri), create_test_logger()).unwrap()
+    }
+
+    pub fn create_test_diag_collector()->Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>{
+        return Arc::new(Mutex::new(GenericDiagnosticCollector::new()))
+    }
+
+    pub fn create_test_sem_service(doc_service: Arc<RwLock<DocumentService>>)-> SemanticAnalysisService{
+        return SemanticAnalysisService::new(
+            doc_service,
+            create_test_logger(),
+            create_test_diag_collector(),
+            None
+        )
+    }
+
+    pub fn create_test_type_resolver(doc_service: Arc<RwLock<DocumentService>>) -> TypeResolver{
+        let sem_analysis_service = create_test_sem_service(doc_service);
+        return TypeResolver::new(sem_analysis_service);
+    }
+
+    pub fn create_test_def_service(doc_service: Arc<RwLock<DocumentService>>, uri: &Url) -> DefinitionService{
+        let sem_analysis_service = create_test_sem_service(doc_service);
+        return DefinitionService::new(sem_analysis_service, &uri)
     }
 
     #[test]

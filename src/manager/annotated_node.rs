@@ -21,10 +21,13 @@ impl TypeInfo {
 #[derive(Debug, Clone, PartialEq)]
 pub enum NativeType{
     Int,
-    Numeric,
+    Num,
+    Decimal,
     String,
-    CString
-
+    CString,
+    Text,
+    Boolean,
+    Char
 }
 
 #[derive(Debug, Clone, PartialEq)]
