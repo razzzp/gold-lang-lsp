@@ -3,7 +3,7 @@ use lsp_types::{DocumentSymbol, SymbolKind, Url};
 
 use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses, AstParameterDeclaration, AstLocalVariableDeclaration}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector, GenericDiagnosticCollector}, lexer::tokens::TokenType, unwrap_or_return};
 use core::fmt::Debug;
-use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard, MutexGuard, LockResult}, ops::{DerefMut, Deref}, result, f32::consts::E};
+use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard, MutexGuard, LockResult}, ops::{DerefMut, Deref}, result, f32::consts::E, vec::IntoIter};
 use crate::utils::{OptionExt};
 use super::{ProjectManager, annotated_node::{AnnotatedNode, EvalType, TypeInfo, Location, NativeType, self}, data_structs::{Document, ProjectManagerError}, document_service::DocumentService, type_resolver::TypeResolver};
 
@@ -302,6 +302,13 @@ impl<'a> AstAnnotator<'a>{
     fn notify_new_scope(&mut self){
         let mut new_sym_table = SymbolTable::new();
         new_sym_table.set_parent_symbol_table(self.root_symbol_table.unwrap_ref().clone());
+        // append uses to new scope
+        new_sym_table.uses_entities.extend(
+            self.root_symbol_table.unwrap_ref().lock().unwrap()
+            .uses_entities
+            .iter()
+            .map(|s|{s.to_string()})
+        );
         self.symbol_table_stack.push(Arc::new(Mutex::new(new_sym_table)));
     }
 
