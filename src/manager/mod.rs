@@ -99,7 +99,7 @@ impl ProjectManager{
 
     pub fn generate_goto_definitions(&mut self, uri : &Url, pos: &Position) -> Result<Vec<LocationLink>, ProjectManagerError>{
         let sem_service = self.create_sem_service();
-        let def_service = DefinitionService::new(sem_service, uri);
+        let def_service = DefinitionService::new(self.doc_service.clone(), sem_service, uri);
         
         let sym_gen = DocumentSymbolGenerator {};
         return def_service.get_definition(&pos)
@@ -237,8 +237,8 @@ pub mod test{
     }
 
     pub fn create_test_def_service(doc_service: Arc<RwLock<DocumentService>>, uri: &Url) -> DefinitionService{
-        let sem_analysis_service = create_test_sem_service(doc_service);
-        return DefinitionService::new(sem_analysis_service, &uri)
+        let sem_analysis_service = create_test_sem_service(doc_service.clone());
+        return DefinitionService::new(doc_service,sem_analysis_service, &uri)
     }
 
     #[test]

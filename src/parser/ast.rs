@@ -623,8 +623,8 @@ impl IAstNode for AstFunction {
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.identifier.as_ast_node());
-        if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
         result.push(self.return_type.as_ref().as_ast_node());
+        if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
         if self.modifiers.is_some() {result.push(self.modifiers.as_ref().unwrap().as_ast_node());}
         if self.body.is_some() {result.push(self.body.as_ref().unwrap().as_ast_node());}
         return Some(result);
@@ -632,6 +632,7 @@ impl IAstNode for AstFunction {
     fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
         result.push(&self.identifier);
+        result.push(&self.return_type);
         result.extend(self.parameter_list.iter());
         result.extend(self.modifiers.iter());
         result.extend(self.body.iter());

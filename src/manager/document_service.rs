@@ -92,7 +92,7 @@ impl DocumentService {
                                 Some(p) => {
                                     match p.to_str(){
                                         Some(s) => {
-                                            class_uri_map.write().unwrap().insert(s.to_string(), uri.clone());
+                                            class_uri_map.write().unwrap().insert(s.to_string().to_uppercase(), uri.clone());
                                             // eprint!("found file {}; uri:{}",s.to_string(), uri.to_string());
                                         },
                                         _=> ()
@@ -109,7 +109,7 @@ impl DocumentService {
     }
 
     pub fn get_uri_for_class(& self, class_name: &String)-> Result<Url, ProjectManagerError>{
-        match self.class_uri_map.read().unwrap().get(class_name){
+        match self.class_uri_map.read().unwrap().get(&class_name.to_uppercase()){
             Some(uri) => Ok(uri.clone()),
             _=> Err(ProjectManagerError::new("no uri found for class", ErrorCode::InternalError))
         }
@@ -250,6 +250,7 @@ mod test{
     fn create_test_logger()-> Arc<Mutex<dyn ILogger>>{
         Arc::new(Mutex::new(ConsoleLogger::new("[LSP Server]")))
     }
+    
     #[test]
     fn test_gold_document_manager(){
         
@@ -271,7 +272,7 @@ mod test{
         let mut doc_manager = DocumentService::new(Some(uri), create_test_logger()).unwrap();
         doc_manager.index_files();
         
-        assert_eq!(doc_manager.uri_docinfo_map.read().unwrap().len(), 5);
+        assert_eq!(doc_manager.uri_docinfo_map.read().unwrap().len(), 6);
         // ensure not locked
         drop(doc_manager.uri_docinfo_map.try_write().unwrap());
         drop(doc_manager.class_uri_map.try_write().unwrap());

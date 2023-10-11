@@ -13,8 +13,11 @@ RootVarRef2 : refto aLightObject
 
 proc RootProc(FirstParam: Int4)
    var localVar : CString
-   var secondLocaVar : Cstring
+   var secondLocaVar : aSecondClass
+   ;
    ;proc body
    WriteLn(FirstParam)
    WriteLn(localVar)
+   ;
+   WriteLn(secondLocaVar.secondClassField1)
 endProc

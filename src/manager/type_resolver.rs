@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::parser::ast::{IAstNode, AstTypeBasic, AstBinaryOp, AstTerminal};
 
@@ -29,8 +29,20 @@ impl TypeResolver {
             id => {
                 let sym = self.semantic_analysis_service.search_sym_info(&id.to_string(),sym_table, true);
                 match sym{
-                    Some(s)=> return Some(s.eval_type.as_ref().unwrap_or(&EvalType::Unknown).clone()),
-                    _=> return Some(EvalType::Unknown)
+                    Some(s)=> {
+                        return Some(s.eval_type.as_ref().unwrap_or(&EvalType::Unknown).clone())
+                    },
+                    _=> {
+                        // if cannot find try searching
+                        if let Ok(_) = self.semantic_analysis_service
+                            .doc_service.read().unwrap()
+                            .get_uri_for_class(&id.to_string())
+                        {
+                            return Some(EvalType::Class(id.to_string()));
+                        } else {
+                            return Some(EvalType::Unknown)
+                        }
+                    }
                 }
             }
         }
@@ -42,7 +54,10 @@ impl TypeResolver {
         let id =  node.get_identifier().to_uppercase();
         let sym = self.semantic_analysis_service.search_sym_info(&id, sym_table, true);
         match sym{
-            Some(s)=> return Some(s.eval_type.as_ref().unwrap_or(&EvalType::Unknown).clone()),
+            Some(s)=> {
+                // println!("{:#?}", s);
+                return Some(s.eval_type.as_ref().unwrap_or(&EvalType::Unknown).clone())
+            },
             _=> return Some(EvalType::Unknown)
         }
     }
@@ -109,6 +124,18 @@ impl TypeResolver {
 
         return result
     }
+
+    pub fn resolve_annotated_node_lock_type(
+        &self, 
+        node_lock: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>,
+        root_sym_table: &Arc<Mutex<dyn ISymbolTable>>
+    ) -> EvalType {
+        let sym_table = TypeResolver::get_nearest_symbol_table(&node_lock, root_sym_table);
+        let result = self.resolve_node_type(&node_lock.data, &sym_table);
+
+        return result
+    }
+
 }
 
 #[cfg(test)]
@@ -131,7 +158,8 @@ mod test{
         // get node to test
         let proc_node = ast.read().unwrap().children.get(5).unwrap().clone();
         let method_body = proc_node.read().unwrap().children.get(2).unwrap().clone();
-        let second_writeln = method_body.read().unwrap().children.get(3).unwrap().clone();
+        let second_writeln = method_body.read().unwrap().children.get(5).unwrap().clone();
+        // println!("{:#?}",second_writeln);
         let local_var_ref = second_writeln.read().unwrap().children.get(1).unwrap().clone();
 
         let type_resolver = create_test_type_resolver(proj_manager.doc_service.clone());

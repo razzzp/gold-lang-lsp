@@ -1,11 +1,11 @@
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Url};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses, AstParameterDeclaration, AstLocalVariableDeclaration}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector, GenericDiagnosticCollector}, lexer::tokens::TokenType};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses, AstParameterDeclaration, AstLocalVariableDeclaration}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector, GenericDiagnosticCollector}, lexer::tokens::TokenType, unwrap_or_return};
 use core::fmt::Debug;
 use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard, MutexGuard, LockResult}, ops::{DerefMut, Deref}, result, f32::consts::E};
 use crate::utils::{OptionExt};
-use super::{ProjectManager, annotated_node::{AnnotatedNode, EvalType, TypeInfo, Location, NativeType, self}, data_structs::{Document, ProjectManagerError}, document_service::DocumentService};
+use super::{ProjectManager, annotated_node::{AnnotatedNode, EvalType, TypeInfo, Location, NativeType, self}, data_structs::{Document, ProjectManagerError}, document_service::DocumentService, type_resolver::TypeResolver};
 
 #[derive(Debug,Default)]
 pub enum SymbolType{
@@ -93,7 +93,7 @@ impl SymbolTable{
 }
 impl ISymbolTable for SymbolTable {
     fn get_symbol_info(&mut self, id: &String) -> Option<Arc<SymbolInfo>> {
-        let idx = match self.hash_map.get(id) {
+        let idx = match self.hash_map.get(&id.to_uppercase()) {
             Some(i) => i,
             _=> return None,
         };
@@ -153,7 +153,7 @@ impl ISymbolTable for SymbolTable {
 
 #[derive(Debug, Clone)]
 pub struct SemanticAnalysisService {
-    doc_service : Arc<RwLock<DocumentService>>,
+    pub doc_service : Arc<RwLock<DocumentService>>,
     logger: Arc<Mutex<dyn ILogger>>,
     diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
     already_seen_classes: HashSet<String>,
@@ -178,7 +178,7 @@ impl SemanticAnalysisService {
             return Err(ProjectManagerError::new(format!("{} already locked in request session",class).as_str(), ErrorCode::RequestFailed));
         }
         let uri = self.doc_service.read().unwrap().get_uri_for_class(class)?;
-        let doc: Arc<Mutex<Document>> = self.doc_service.write().unwrap().get_parsed_document(&uri, true)?;
+        let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri)?;
         let doc_lock = doc.lock().unwrap();
         match &doc_lock.symbol_table{
             Some(st) => return Ok(st.clone()),
@@ -209,10 +209,9 @@ impl SemanticAnalysisService {
     }
 
     pub fn search_sym_info(&self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<Arc<SymbolInfo>>{
-        let mut st_lock=sym_table.lock().unwrap();
-        let mut sym_info = st_lock.get_symbol_info(id);
+        let mut sym_info = sym_table.lock().unwrap().get_symbol_info(id);
         if search_uses && sym_info.is_none() {
-            for uses in st_lock.iter_uses(){
+            for uses in sym_table.lock().unwrap().iter_uses(){
                 let uses_sym_table = match self.get_symbol_table_for_class(uses){
                     Ok(r) => r,
                     _=> continue
@@ -289,16 +288,15 @@ impl<'a> AstAnnotator<'a>{
     }
 
     fn visit(&mut self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
-        let write_lock = node.write().unwrap();
-        self.handle_class(&write_lock);
-        self.handle_constant_decl(&write_lock);
-        self.handle_type_decl(&write_lock);
-        self.handle_proc_decl(&write_lock, node);
-        self.handle_func_decl(&write_lock, node);
-        self.handle_field_decl(&write_lock);
-        self.handle_uses(&write_lock);
-        self.handle_param_decl(&write_lock);
-        self.handle_var_decl(&write_lock);
+        self.handle_class(&node);
+        self.handle_constant_decl(&node);
+        self.handle_type_decl(&node);
+        self.handle_proc_decl(&node);
+        self.handle_func_decl(&node);
+        self.handle_field_decl(&node);
+        self.handle_uses(&node);
+        self.handle_param_decl(&node);
+        self.handle_var_decl(&node);
     }
 
     fn notify_new_scope(&mut self){
@@ -351,21 +349,10 @@ impl<'a> AstAnnotator<'a>{
         cur_st.lock().unwrap().insert_symbol_info(id, symbol);
     }
 
-    fn get_eval_type(&mut self, type_node : &Arc<dyn IAstNode>)-> EvalType{
-        let mut result = EvalType::Unknown;
-        result = match type_node.as_any().downcast_ref::<AstTypeBasic>(){
-            Some(t) =>{
-                match t.get_identifier().to_uppercase().as_str() {
-                    "INT1" | "INT2" | "INT4" | "INT8" => EvalType::Native(NativeType::Int),
-                    "NUMERIC" => EvalType::Native(NativeType::Num),
-                    "STRING" =>  EvalType::Native(NativeType::String),
-                    "CSTRING" =>  EvalType::Native(NativeType::CString),
-                    _=> EvalType::Unknown
-                }
-            }
-            _=> result,
-        };
-        return result;
+    fn get_eval_type(&mut self, node : &Arc<dyn IAstNode>)-> EvalType{
+        let type_resolver = TypeResolver::new(self.semantic_analysis_service.clone());
+        let st : Arc<Mutex<dyn ISymbolTable>> = self.get_cur_sym_table();
+        return type_resolver.resolve_node_type(node, &st);
     }
 
     // fn lock_and_cast<'b,T:IAstNode>(&self, node : Arc<RwLock<AnnotatedNode<dyn IAstNode>>>) -> 
@@ -378,11 +365,12 @@ impl<'a> AstAnnotator<'a>{
     //     return Some((w_lock, downcast))
     // }
 
-    fn handle_class(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
-        let ori_node = match node.data.as_any().downcast_ref::<AstClass>(){
-            Some(node) => node,
-            _=> return
-        };
+
+
+    fn handle_class(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        let node_lock = node.write().unwrap();
+        let ori_node = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstClass>());
+
         let class_name = ori_node.get_identifier();
         let mut sym_info = SymbolInfo::new(class_name.clone(), SymbolType::Class);
         sym_info.eval_type = Some(EvalType::Class(class_name.clone()));
@@ -417,108 +405,100 @@ impl<'a> AstAnnotator<'a>{
         self.insert_symbol_info(ori_node.get_identifier(), sym_info);
     }
 
-    fn handle_constant_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
-        let node = match node.data.as_any().downcast_ref::<AstConstantDeclaration>(){
-            Some(node) => node,
-            _=> return
-        };
-        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+    fn handle_constant_decl(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        let node_lock = node.write().unwrap();
+        let cst_decl = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstConstantDeclaration>());
+
+        self.check_identifier_already_defined(&cst_decl.get_identifier(), cst_decl.get_range());
         
-        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Constant);
-        sym_info.eval_type = match &node.value.token_type{
+        let mut sym_info = SymbolInfo::new(cst_decl.get_identifier(), SymbolType::Constant);
+        sym_info.eval_type = match &cst_decl.value.token_type{
             TokenType::StringLiteral => Some(EvalType::Native(NativeType::String)),
             TokenType::NumericLiteral => Some(EvalType::Native(NativeType::Num)),
             _=> Some(EvalType::Unknown)
         };
-        sym_info.range = node.get_range();
-        sym_info.selection_range = node.identifier.get_range();
-        self.insert_symbol_info(node.get_identifier(), sym_info);
+        sym_info.range = cst_decl.get_range();
+        sym_info.selection_range = cst_decl.identifier.get_range();
+        self.insert_symbol_info(cst_decl.get_identifier(), sym_info);
     }
 
-    fn handle_type_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
-        let node = match node.data.as_any().downcast_ref::<AstTypeDeclaration>(){
-            Some(node) => node,
-            _=> return
-        };
-        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+    fn handle_type_decl(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        let node_lock = node.write().unwrap();
+        let type_decl = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstTypeDeclaration>());
+
+        self.check_identifier_already_defined(&type_decl.get_identifier(), type_decl.get_range());
         
-        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Type);
-        sym_info.type_str = Some(node.type_node.get_identifier());
+        let mut sym_info = SymbolInfo::new(type_decl.get_identifier(), SymbolType::Type);
+        sym_info.type_str = Some(type_decl.type_node.get_identifier());
         // set eval type
-        sym_info.eval_type = Some(self.get_eval_type(&node.type_node));
-        sym_info.range = node.get_range();
-        sym_info.selection_range = node.identifier.get_range();
-        self.insert_symbol_info(node.get_identifier(), sym_info);
+        sym_info.eval_type = Some(self.get_eval_type(&type_decl.type_node));
+        sym_info.range = type_decl.get_range();
+        sym_info.selection_range = type_decl.identifier.get_range();
+        self.insert_symbol_info(type_decl.get_identifier(), sym_info);
 
     }
 
-    fn handle_proc_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>, arc_node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
-        let node = match node.data.as_any().downcast_ref::<AstProcedure>(){
-            Some(node) => node,
-            _=> return
-        };
+    fn handle_proc_decl(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        let node_lock = node.write().unwrap();
+        let proc_decl = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstProcedure>());
         // set sym table to last method
         self.notify_end_method();
 
-        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+        self.check_identifier_already_defined(&proc_decl.get_identifier(), proc_decl.get_range());
 
-        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Proc);
-        sym_info.range = node.get_range();
-        sym_info.selection_range = node.identifier.get_range();
-        self.insert_symbol_info(node.get_identifier(), sym_info);
+        let mut sym_info = SymbolInfo::new(proc_decl.get_identifier(), SymbolType::Proc);
+        sym_info.range = proc_decl.get_range();
+        sym_info.selection_range = proc_decl.identifier.get_range();
+        self.insert_symbol_info(proc_decl.get_identifier(), sym_info);
 
         //set cur method
-        self.cur_method_node = Some(arc_node.clone());
+        self.cur_method_node = Some(node.clone());
         self.notify_new_scope();
     }
 
-    fn handle_func_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>, arc_node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
-        let node = match node.data.as_any().downcast_ref::<AstFunction>(){
-            Some(node) => node,
-            _=> return
-        };
+    fn handle_func_decl(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        let node_lock = node.write().unwrap();
+        let func_decl = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstFunction>());
         // set sym table to last method
         self.notify_end_method();
 
-        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+        self.check_identifier_already_defined(&func_decl.get_identifier(), func_decl.get_range());
 
-        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Func);
-        sym_info.type_str = Some(node.return_type.get_identifier());
+        let mut sym_info = SymbolInfo::new(func_decl.get_identifier(), SymbolType::Func);
+        sym_info.type_str = Some(func_decl.return_type.get_identifier());
         // set eval type
-        sym_info.eval_type = Some(self.get_eval_type(&node.return_type));
-        sym_info.range = node.get_range();
-        sym_info.selection_range = node.identifier.get_range();
-        self.insert_symbol_info(node.get_identifier(), sym_info);
+        sym_info.eval_type = Some(self.get_eval_type(&func_decl.return_type));
+        sym_info.range = func_decl.get_range();
+        sym_info.selection_range = func_decl.identifier.get_range();
+        self.insert_symbol_info(func_decl.get_identifier(), sym_info);
 
         // start symbol table for method 
         self.notify_new_scope();
         //set cur method
-        self.cur_method_node = Some(arc_node.clone());
+        self.cur_method_node = Some(node.clone());
     }
 
     
 
-    fn handle_field_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
-        let node = match node.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
-            Some(node) => node,
-            _=> return
-        };
-        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+    fn handle_field_decl(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        let node_lock = node.write().unwrap();
+        let field_decl = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>());
 
-        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Field);
-        sym_info.type_str = Some(node.type_node.get_identifier());
-        sym_info.eval_type = Some(self.get_eval_type(&node.type_node));
-        sym_info.range = node.get_range();
-        sym_info.selection_range = node.identifier.get_range();
-        self.insert_symbol_info(node.get_identifier(), sym_info);
+        self.check_identifier_already_defined(&field_decl.get_identifier(), field_decl.get_range());
+
+        let mut sym_info = SymbolInfo::new(field_decl.get_identifier(), SymbolType::Field);
+        sym_info.type_str = Some(field_decl.type_node.get_identifier());
+        sym_info.eval_type = Some(self.get_eval_type(&field_decl.type_node));
+        sym_info.range = field_decl.get_range();
+        sym_info.selection_range = field_decl.identifier.get_range();
+        self.insert_symbol_info(field_decl.get_identifier(), sym_info);
     }
 
-    fn handle_uses(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
-        let node = match node.data.as_any().downcast_ref::<AstUses>(){
-            Some(node) => node,
-            _=> return
-        };
-        for uses in &node.list_of_uses{
+    fn handle_uses(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        let node_lock = node.write().unwrap();
+        let uses_node = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstUses>());
+
+        for uses in &uses_node.list_of_uses{
             self.get_cur_sym_table().lock().unwrap().add_uses_entity(&uses.get_value());
 
             // get st for uses, causes stack overflow :)
@@ -530,38 +510,37 @@ impl<'a> AstAnnotator<'a>{
         }
     }
 
-    fn handle_param_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
-        let node = match node.data.as_any().downcast_ref::<AstParameterDeclaration>(){
-            Some(node) => node,
-            _=> return
-        };
-        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
+    fn handle_param_decl(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        let node_lock = node.write().unwrap();
+        let param_decl = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstParameterDeclaration>());
 
-        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Variable);
-        match &node.type_node{
+        self.check_identifier_already_defined(&param_decl.get_identifier(), param_decl.get_range());
+
+        let mut sym_info = SymbolInfo::new(param_decl.get_identifier(), SymbolType::Variable);
+        match &param_decl.type_node{
             Some(t) => {
                 sym_info.type_str = Some(t.get_identifier());
                 sym_info.eval_type = Some(self.get_eval_type(&t));
             },
             _=> ()
         }
-        sym_info.range = node.get_range();
-        sym_info.selection_range = node.identifier.get_range();
-        self.insert_symbol_info(node.get_identifier(), sym_info);
+        sym_info.range = param_decl.get_range();
+        sym_info.selection_range = param_decl.identifier.get_range();
+        self.insert_symbol_info(param_decl.get_identifier(), sym_info);
     }
-    fn handle_var_decl(&mut self, node: &RwLockWriteGuard<'_, AnnotatedNode<dyn IAstNode>>){
-        let node = match node.data.as_any().downcast_ref::<AstLocalVariableDeclaration>(){
-            Some(node) => node,
-            _=> return
-        };
-        self.check_identifier_already_defined(&node.get_identifier(), node.get_range());
 
-        let mut sym_info = SymbolInfo::new(node.get_identifier(), SymbolType::Variable);
-        sym_info.type_str = Some(node.type_node.get_identifier());
-        sym_info.eval_type = Some(self.get_eval_type(&node.type_node));
-        sym_info.range = node.get_range();
-        sym_info.selection_range = node.identifier.get_range();
-        self.insert_symbol_info(node.get_identifier(), sym_info);
+    fn handle_var_decl(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        let node_lock = node.write().unwrap();
+        let var_decl = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstLocalVariableDeclaration>());
+
+        self.check_identifier_already_defined(&var_decl.get_identifier(), var_decl.get_range());
+
+        let mut sym_info = SymbolInfo::new(var_decl.get_identifier(), SymbolType::Variable);
+        sym_info.type_str = Some(var_decl.type_node.get_identifier());
+        sym_info.eval_type = Some(self.get_eval_type(&var_decl.type_node));
+        sym_info.range = var_decl.get_range();
+        sym_info.selection_range = var_decl.identifier.get_range();
+        self.insert_symbol_info(var_decl.get_identifier(), sym_info);
     }
 }
 

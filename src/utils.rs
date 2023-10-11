@@ -1,6 +1,15 @@
 use crate::{parser::ast::IAstNode, lexer::tokens::Token};
 use std::{fmt::Write, collections::LinkedList, ops::Deref};
 
+#[macro_export]
+macro_rules! unwrap_or_return {
+    ( $e:expr ) => {
+        match $e {
+            Some(x) => x,
+            _=> return,
+        }
+    }
+}
 
 pub trait ILogger :std::fmt::Debug{
     fn log(&mut self, msg: &str);
@@ -112,6 +121,9 @@ pub struct Position {
     pub character: usize
 }
 impl Position{
+    pub fn new(line : usize, character: usize) -> Position{
+        return Position { line, character}
+    }
     pub fn as_lsp_type_pos(&self) -> lsp_types::Position{
         lsp_types::Position { line: self.line as u32, character: self.character as u32 }
     }
