@@ -67,41 +67,31 @@ impl ProjectManager{
         );
     }
 
-    pub fn analyze_doc(&mut self, uri : &Url, already_seen_classes: Option<HashSet<String>>) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn analyze_doc(&mut self, uri : &Url, only_definitions:bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let mut semantic_analysis_service = SemanticAnalysisService::new(
             self.doc_service.clone(), 
             self.logger.clone(),
             Arc::new(Mutex::new(GenericDiagnosticCollector::new())),
-            already_seen_classes
+            None
         );
-        let doc = semantic_analysis_service.analyze_uri(uri)?;
+        let doc = semantic_analysis_service.analyze_uri(uri, only_definitions)?;
         return Ok(doc);
     }
 
-    pub fn get_symbol_table_for_class(&mut self, class: &String, already_seen_classes: Option<HashSet<String>>) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
-        let uri = self.get_uri_for_class(&class)?;
-        return self.get_symbol_table_for_uri(&uri, already_seen_classes);
-    }
-
-    pub fn get_symbol_table_for_uri(&mut self, uri : &Url, already_seen_classes: Option<HashSet<String>>) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
-        let doc = self.analyze_doc(uri, already_seen_classes)?;
-        let _ = match &doc.lock().unwrap().symbol_table{
-            Some(st) => return Ok(st.clone()),
+    pub fn generate_document_symbols(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
+        let doc = self.analyze_doc(uri, true)?;
+        let sym_table = match &doc.lock().unwrap().symbol_table{
+            Some(st) => st.clone(),
             _=> return Err(ProjectManagerError::new("Unable to generate symbol table", ErrorCode::InternalError))
         };
-    }
-
-    pub fn generate_document_symbols(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
-        let sym_table = self.get_symbol_table_for_uri(uri, None)?;
         let sym_gen = DocumentSymbolGenerator {};
         return Ok(sym_gen.generate_symbols(sym_table))
     }
 
     pub fn generate_goto_definitions(&mut self, uri : &Url, pos: &Position) -> Result<Vec<LocationLink>, ProjectManagerError>{
         let sem_service = self.create_sem_service();
-        let def_service = DefinitionService::new(self.doc_service.clone(), sem_service, uri);
+        let mut def_service = DefinitionService::new(self.doc_service.clone(), sem_service, uri);
         
-        let sym_gen = DocumentSymbolGenerator {};
         return def_service.get_definition(&pos)
     }
 
@@ -196,6 +186,10 @@ pub mod test{
         let ast = parse_gold(&lex_result.0);
         assert_eq!(ast.1.len(), 0);
         return (ast.0.1, ast.1);
+    }
+
+    pub fn create_test_doc_service(uri : Option<Url>) -> DocumentService{
+        return DocumentService::new(uri, create_test_logger()).unwrap();
     }
 
     fn create_test_ast_walker<T:IVisitor+?Sized>()-> AstWalker<T>{
@@ -392,19 +386,40 @@ pub mod test{
     }
 
     #[test]
-    fn test_get_symbol_table(){
-        let mut proj_manager= create_test_project_manager("./test/workspace");
-        proj_manager.index_files();
-        let result = proj_manager.get_symbol_table_for_class(&"aRootClass".to_string(), None).unwrap();
-        let result = result.lock().unwrap();
-        assert_eq!(result.iter_symbols().count(), 6);
-    }
-
-    #[test]
     fn test_get_document_symbols(){
         let mut proj_manager= create_test_project_manager("./test/workspace");
         let input = create_uri_from_path("./test/workspace/aRootClass.god");
         let result = proj_manager.generate_document_symbols(&input).unwrap();
         assert_eq!(result.len(), 1);
+    }
+
+    #[test]
+    fn test_generate_doc_sym_large(){
+        let path = PathBuf::from("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        let _ =  match fs::metadata(&path){
+            Ok(_) => (),
+            _=> return
+        };
+        let mut proj_manager= create_test_project_manager("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        proj_manager.index_files();
+        let input_uri = create_uri_from_path("C:\\Users\\muhampra\\dev\\ewam_src\\37.63.03\\OcsMobileCards\\USIM 20\\aOcsUsimV20ICCardImage.god");
+        // let _result = proj_manager.generate_document_diagnostic_report(&input_uri).unwrap();
+        let result = proj_manager.generate_document_symbols(&input_uri).unwrap();
+        assert_eq!(result.len(), 1);
+    }
+    
+    #[test]
+    fn test_generate_doc_sym_module(){
+        let path = PathBuf::from("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        let _ =  match fs::metadata(&path){
+            Ok(_) => (),
+            _=> return
+        };
+        let mut proj_manager= create_test_project_manager("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        proj_manager.index_files();
+        let input_uri = create_uri_from_path("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev\\src\\System\\SystemModules\\wGraph.god");
+        // let _result = proj_manager.generate_document_diagnostic_report(&input_uri).unwrap();
+        let result = proj_manager.generate_document_symbols(&input_uri).unwrap();
+        assert_eq!(result.len(), 219);
     }
 }

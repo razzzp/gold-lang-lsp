@@ -251,6 +251,10 @@ mod test{
         Arc::new(Mutex::new(ConsoleLogger::new("[LSP Server]")))
     }
     
+    pub fn create_test_doc_service(uri : Option<Url>) -> DocumentService{
+        return DocumentService::new(uri, create_test_logger()).unwrap();
+    }
+
     #[test]
     fn test_gold_document_manager(){
         

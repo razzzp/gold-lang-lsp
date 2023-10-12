@@ -14,7 +14,7 @@ impl TypeResolver {
         }
     }
 
-    fn resolve_type_basic(&self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
+    fn resolve_type_basic(&mut self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let node = node.as_any().downcast_ref::<AstTypeBasic>()?; 
         //
         match node.get_identifier().to_uppercase().as_str() {
@@ -27,7 +27,7 @@ impl TypeResolver {
             "BOOLEAN" => Some(EvalType::Native(NativeType::Boolean)),
             "CHAR" => Some(EvalType::Native(NativeType::Char)),
             id => {
-                let sym = self.semantic_analysis_service.search_sym_info(&id.to_string(),sym_table, true);
+                let sym = self.semantic_analysis_service.search_sym_info(&id.to_string(),sym_table, false);
                 match sym{
                     Some(s)=> {
                         return Some(s.eval_type.as_ref().unwrap_or(&EvalType::Unknown).clone())
@@ -40,7 +40,7 @@ impl TypeResolver {
                         {
                             return Some(EvalType::Class(id.to_string()));
                         } else {
-                            return Some(EvalType::Unknown)
+                            return Some(EvalType::Unresolved(node.get_identifier()))
                         }
                     }
                 }
@@ -48,11 +48,11 @@ impl TypeResolver {
         }
     }
 
-    fn resolve_terminal(&self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
+    fn resolve_terminal(&mut self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let node = node.as_any().downcast_ref::<AstTerminal>()?; 
         //
         let id =  node.get_identifier().to_uppercase();
-        let sym = self.semantic_analysis_service.search_sym_info(&id, sym_table, true);
+        let sym = self.semantic_analysis_service.search_sym_info(&id, sym_table, false);
         match sym{
             Some(s)=> {
                 // println!("{:#?}", s);
@@ -62,7 +62,7 @@ impl TypeResolver {
         }
     }
 
-    fn resolve_bin_op(&self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
+    fn resolve_bin_op(&mut self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let node = node.as_any().downcast_ref::<AstBinaryOp>()?; 
         //
         let left_node_type = self.resolve_node_type(&node.left_node, sym_table);
@@ -73,19 +73,22 @@ impl TypeResolver {
                 todo!()
             },
             EvalType::Class(id)=> {
-                let c_sym_table = match self.semantic_analysis_service.get_symbol_table_for_class(&id){
+                let c_sym_table = match self.semantic_analysis_service.get_symbol_table_for_class_def_only(&id){
                     Ok(s) => s,
                     _=> return None,
                 };
                 let right_node_sym_info=c_sym_table.lock().unwrap().get_symbol_info(&node.right_node.get_identifier())?;
                 return right_node_sym_info.eval_type.clone()
             }
+            _=>{
+                return Some(EvalType::Unknown)
+            }
         }
 
 
     }
 
-    pub fn resolve_node_type(&self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> EvalType {
+    pub fn resolve_node_type(&mut self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> EvalType {
         let mut result = EvalType::Unknown;
         // case basic type node
         result = self.resolve_type_basic(node,sym_table).unwrap_or(result);
@@ -114,7 +117,7 @@ impl TypeResolver {
     }
 
     pub fn resolve_annotated_node_type(
-        &self, 
+        &mut self, 
         node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>,
         root_sym_table: &Arc<Mutex<dyn ISymbolTable>>
     ) -> EvalType {
@@ -126,7 +129,7 @@ impl TypeResolver {
     }
 
     pub fn resolve_annotated_node_lock_type(
-        &self, 
+        &mut self, 
         node_lock: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>,
         root_sym_table: &Arc<Mutex<dyn ISymbolTable>>
     ) -> EvalType {
@@ -152,7 +155,7 @@ mod test{
         let mut proj_manager = create_test_project_manager("./test/workspace");
         proj_manager.index_files();
         let test_input = create_uri_from_path("./test/workspace/aRootClass.god");
-        let doc = proj_manager.analyze_doc(&test_input, None).unwrap();
+        let doc = proj_manager.analyze_doc(&test_input, false).unwrap();
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         
         // get node to test
@@ -162,7 +165,7 @@ mod test{
         // println!("{:#?}",second_writeln);
         let local_var_ref = second_writeln.read().unwrap().children.get(1).unwrap().clone();
 
-        let type_resolver = create_test_type_resolver(proj_manager.doc_service.clone());
+        let mut type_resolver = create_test_type_resolver(proj_manager.doc_service.clone());
         let sym_table = doc.lock().unwrap().symbol_table.as_ref().unwrap().clone();
         let eval_type = type_resolver.resolve_annotated_node_type(&local_var_ref, &sym_table);
         assert_eq!(eval_type, EvalType::Native(NativeType::CString));

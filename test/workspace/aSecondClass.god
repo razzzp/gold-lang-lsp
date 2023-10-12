@@ -1,4 +1,4 @@
 class aSecondClass(aRootClass)
 
 secondClassField1 : CString
-secondClassField2 : Int3
+secondClassField2 : Int4

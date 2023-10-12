@@ -79,7 +79,7 @@ impl DefinitionService{
     }
 
     fn handle_terminal(
-        &self, 
+        &mut self, 
         node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
         root_st: &Arc<Mutex<dyn ISymbolTable>>
     )-> Option<Result<Vec<lsp_types::LocationLink>, ProjectManagerError>>{
@@ -99,7 +99,7 @@ impl DefinitionService{
                     return Some(self.generate_loc_link(node, root_st))
                 } else {
                     // if right node, check left node type first
-                    let type_resolver = TypeResolver::new(self.semantic_analysis_service.clone());
+                    let mut type_resolver = TypeResolver::new(self.semantic_analysis_service.clone());
                     let left_node_type = type_resolver.resolve_annotated_node_lock_type(&parent_lock.children[0].read().unwrap(), root_st);
                     match left_node_type{
                         EvalType::Class(class_name)=>{
@@ -108,7 +108,7 @@ impl DefinitionService{
                                 Ok(u) => u,
                                 _=> return None,
                             };
-                            let class_sym_table = match self.semantic_analysis_service.get_symbol_table_for_class(&class_name){
+                            let class_sym_table = match self.semantic_analysis_service.get_symbol_table_for_class_def_only(&class_name){
                                 Ok(st) => st,
                                 _=> return None
                             };
@@ -139,7 +139,7 @@ impl DefinitionService{
     }
 
     fn handle_node(
-        &self, 
+        &mut self, 
         node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, 
         root_st: &Arc<Mutex<dyn ISymbolTable>>
     )-> Result<Vec<lsp_types::LocationLink>, ProjectManagerError>{
@@ -150,10 +150,10 @@ impl DefinitionService{
         return Ok(Vec::new());
     }
 
-    pub fn get_definition(&self, pos : &Position)
+    pub fn get_definition(&mut self, pos : &Position)
     -> Result<Vec<lsp_types::LocationLink>, ProjectManagerError>
     {
-        let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri)?;
+        let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri, false)?;
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         let root_st = doc.lock().unwrap().symbol_table.as_ref().unwrap().clone();
         let enc_node =self.search_encasing_node(&ast, &pos);
@@ -175,7 +175,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(19, 15);
 
-        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -190,7 +190,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(21, 15);
 
-        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -205,7 +205,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(21, 35);
 
-        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
