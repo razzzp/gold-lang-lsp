@@ -1186,10 +1186,10 @@ fn parse_method_body<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [
    let (next, statements) = parse_repeat_w_context(input, parse_statement_v2, context);
    
    let raw_pos = input.first().unwrap().get_raw_pos();
-   let start_pos = input.first().unwrap().get_pos();
-   let end_pos = input.last().unwrap().get_pos();
+   let start_range = input.first().unwrap().get_range();
+   let end_range = input.last().unwrap().get_range();
    // range is until the endProc
-   let range = Range{start: start_pos.clone(), end: end_pos};
+   let range = create_new_range(start_range, end_range);
    return Ok((
       next, 
       Some(AstMethodBody{

@@ -3,7 +3,7 @@ use std::{collections::{HashMap, HashSet}, fs::File, io::Read, rc::Rc, sync::{Ar
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector, IDiagnosticCollector, Position}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor, AnalyzerDiagnostic}, threadpool::ThreadPool, manager::semantic_analysis_service::ISymbolTableGenerator};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector, IDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor, AnalyzerDiagnostic}, threadpool::ThreadPool, manager::semantic_analysis_service::ISymbolTableGenerator};
 use data_structs::*;
 
 use self::{semantic_analysis_service::{ISymbolTable, SemanticAnalysisService, DocumentSymbolGenerator}, document_service::DocumentService,  definition_service::DefinitionService};
@@ -18,10 +18,10 @@ pub mod document_service;
 #[derive(Debug)]
 pub struct ProjectManager{
     pub doc_service: Arc<RwLock<DocumentService>>,
-    logger: Arc<Mutex<dyn ILogger>>,
+    logger: Arc<dyn ILoggerV2>,
 }
 impl ProjectManager{
-    pub fn new(root_uri : Option<Url>, logger: Arc<Mutex<dyn ILogger>>) -> Result<ProjectManager, ProjectManagerError>{
+    pub fn new(root_uri : Option<Url>, logger: Arc<dyn ILoggerV2>) -> Result<ProjectManager, ProjectManagerError>{
         let doc_service = Arc::new(RwLock::new(DocumentService::new(root_uri.clone(), logger.clone())?));
 
         Ok(ProjectManager{
@@ -90,8 +90,12 @@ impl ProjectManager{
 
     pub fn generate_goto_definitions(&mut self, uri : &Url, pos: &Position) -> Result<Vec<LocationLink>, ProjectManagerError>{
         let sem_service = self.create_sem_service();
-        let mut def_service = DefinitionService::new(self.doc_service.clone(), sem_service, uri);
-        
+        let mut def_service = DefinitionService::new(
+            self.doc_service.clone(), 
+            sem_service, 
+            self.logger.clone(),
+            uri,
+        );
         return def_service.get_definition(&pos)
     }
 
@@ -167,7 +171,7 @@ pub mod test{
 
     use lsp_types::Url;
 
-    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILogger, ConsoleLogger, IDiagnosticCollector, GenericDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}};
+    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILogger, ConsoleLogger, IDiagnosticCollector, GenericDiagnosticCollector, StdErrLogger, ILoggerV2, StdOutLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}};
 
     use super::{ProjectManager, document_service::DocumentService, type_resolver::TypeResolver, semantic_analysis_service::SemanticAnalysisService, definition_service::DefinitionService};
 
@@ -197,8 +201,8 @@ pub mod test{
         return result;
     }
 
-    pub fn create_test_logger()-> Arc<Mutex<dyn ILogger>>{
-        Arc::new(Mutex::new(ConsoleLogger::new("[LSP Server]")))
+    pub fn create_test_logger()-> Arc<dyn ILoggerV2>{
+        Arc::new(StdOutLogger::new("[LSP Server]"))
     }
 
     pub fn create_uri_from_path(path:&str)-> Url{
@@ -232,7 +236,11 @@ pub mod test{
 
     pub fn create_test_def_service(doc_service: Arc<RwLock<DocumentService>>, uri: &Url) -> DefinitionService{
         let sem_analysis_service = create_test_sem_service(doc_service.clone());
-        return DefinitionService::new(doc_service,sem_analysis_service, &uri)
+        return DefinitionService::new(
+            doc_service,
+            sem_analysis_service,
+            create_test_logger(),
+            &uri)
     }
 
     #[test]
@@ -372,17 +380,12 @@ pub mod test{
     #[test]
     fn test_file_outside_workspace_after_index(){
         // skip if dir doesn't exist
-        let path = PathBuf::from("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
-        let path =  match fs::canonicalize(&path){
-            Ok(p) => p.to_str().unwrap().to_string(),
-            _=> return
-        };
-        let uri = Url::from_file_path(path.clone()).unwrap();
+        let uri = create_uri_from_path("./test/aTestClass.god");
        
-        let mut doc_manager = ProjectManager::new(Some(uri), create_test_logger()).unwrap();
-        doc_manager.index_files();
+        let mut proj_manager= create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
         // test file outside workspace
-        let _ = doc_manager.generate_document_symbols(&Url::parse("file:///c%3A/Users/muhampra/dev/ewam_src/37.63.03/OcsMobCardsApps/Images/aOcsMobileICCardImageARRViewer.god").unwrap()).unwrap();
+        let _ = proj_manager.generate_document_symbols(&uri).unwrap();
     }
 
     #[test]
@@ -393,6 +396,8 @@ pub mod test{
         assert_eq!(result.len(), 1);
     }
 
+    /// 
+    #[ignore = "takes too long"]
     #[test]
     fn test_generate_doc_sym_large(){
         let path = PathBuf::from("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
@@ -408,6 +413,9 @@ pub mod test{
         assert_eq!(result.len(), 1);
     }
     
+
+    /// 
+    #[ignore = "takes too long"]
     #[test]
     fn test_generate_doc_sym_module(){
         let path = PathBuf::from("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");

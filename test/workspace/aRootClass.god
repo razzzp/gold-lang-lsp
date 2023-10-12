@@ -1,5 +1,7 @@
 class aRootClass 
 
+uses aSecondClass
+
 const cRootConstant = 'adasdsadas'
 
 type tRootRecordType: record
@@ -20,4 +22,18 @@ proc RootProc(FirstParam: Int4)
    WriteLn(localVar)
    ;
    WriteLn(secondLocaVar.secondClassField1)
+   WriteLn(self.RootVar1)
+endProc
+
+
+proc SecondRootProc(FirstParam: Int4)
+   var localVar : CString
+   var same_class : aRootClass
+   ;
+   ;proc body
+   WriteLn(FirstParam)
+   WriteLn(localVar)
+   ;
+   WriteLn(same_class.RootVarRef2)
+   WriteLn(self.RootVar1)
 endProc

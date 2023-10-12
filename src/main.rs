@@ -18,7 +18,7 @@ use lsp_types::{
 };
 
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError, ErrorCode, Notification,};
-use utils::ILogger;
+use utils::{ILogger, StdErrLogger, ILoggerV2};
 
 
 
@@ -74,11 +74,11 @@ fn main_loop(
     
     //TODO implem multithreading
     let mut threadpool = ThreadPool::new(5);
-    let mut logger = ConsoleLogger::new("[LSP Server]");
+    let mut logger : Arc<dyn ILoggerV2>= Arc::new(StdErrLogger::new("[Gold Lang Server]"));
     // TODO use same logger in server and project manager
     let mut doc_manager = match ProjectManager::new(
         params.root_uri,
-        Arc::new(Mutex::new(logger.clone()))
+        logger.clone()
     ){
         Ok(r) => r,
         Err(e) => {
@@ -94,10 +94,10 @@ fn main_loop(
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
-                logger.log(format!("got request; #{}; method:{}", req.id, req.method).as_str());
+                logger.log_info(format!("got request; #{}; method:{}", req.id, req.method).as_str());
                 let req = match cast_req::<DocumentSymbolRequest>(req) {
                     Ok((id, params)) => {
-                        match handle_document_symbol_request(&mut doc_manager, id.clone(), params, logger.as_logger_mut()){
+                        match handle_document_symbol_request(&mut doc_manager, id.clone(), params, &logger){
                             Ok(resp) => connection.sender.send(resp)?,
                             Err(e) => send_error(&connection, id, e.0, e.1)?
                         }
@@ -108,7 +108,7 @@ fn main_loop(
                 };
                 let req = match cast_req::<DocumentDiagnosticRequest>(req) {
                     Ok((id, params)) => {
-                        match handle_document_diagnostics_request(&mut doc_manager, id.clone(), params, logger.as_logger_mut()){
+                        match handle_document_diagnostics_request(&mut doc_manager, id.clone(), params, &logger){
                             Ok(resp) => connection.sender.send(resp)?,
                             Err(e) => send_error(&connection, id, e.0, e.1)?
                         }
@@ -120,7 +120,7 @@ fn main_loop(
 
                 let req = match cast_req::<GotoDefinition>(req) {
                     Ok((id, params)) => {
-                        match handle_goto_definition_request(&mut doc_manager, id.clone(), params, logger.as_logger_mut()){
+                        match handle_goto_definition_request(&mut doc_manager, id.clone(), params, &logger){
                             Ok(resp) => connection.sender.send(resp)?,
                             Err(e) => send_error(&connection, id, e.0, e.1)?
                         }
@@ -136,16 +136,16 @@ fn main_loop(
                 eprintln!("got response: #{}",resp.id);
             }
             Message::Notification(not) => {
-                logger.log(format!("got notification; method:{}", not.method).as_str());
+                logger.log_info(format!("got notification; method:{}", not.method).as_str());
                 let not = match cast_not::<DidChangeTextDocument>(not) {
                     Ok(params) => {
-                        match handle_did_change_notification(&mut doc_manager, params, logger.as_logger_mut()){
+                        match handle_did_change_notification(&mut doc_manager, params, &logger){
                             Ok(msgs) => {
                                 for msg in msgs {
                                     connection.sender.send(msg)?;
                                 }
                             },
-                            Err(e) => logger.log(format!("error: code({}) {}", e.0, e.1).as_str())
+                            Err(e) => logger.log_error(format!("error: code({}) {}", e.0, e.1).as_str())
                         }
                         continue;
                     }
@@ -154,13 +154,13 @@ fn main_loop(
                 };
                 match cast_not::<DidSaveTextDocument>(not) {
                     Ok(params) => {
-                        match handle_did_save_notification(&mut doc_manager, params, logger.as_logger_mut()){
+                        match handle_did_save_notification(&mut doc_manager, params, &logger){
                             Ok(msgs) => {
                                 for msg in msgs {
                                     connection.sender.send(msg)?;
                                 }
                             },
-                            Err(e) => logger.log(format!("error: code({}) {}", e.0, e.1).as_str())
+                            Err(e) => logger.log_error(format!("error: code({}) {}", e.0, e.1).as_str())
                         }
                         continue;
                     }
@@ -177,11 +177,11 @@ fn handle_document_symbol_request(
     proj_manager: &mut ProjectManager, 
     id: RequestId, 
     params: DocumentSymbolParams,
-    logger: &mut dyn ILogger,
+    logger: &Arc<dyn ILoggerV2>,
 )
     -> Result<Message, (i32, String)>
 {
-    logger.log(format!("handling Document Symbol request #{id}").as_str());
+    logger.log_info(format!("handling Document Symbol request #{id}").as_str());
     let symbols = match proj_manager.generate_document_symbols(&params.text_document.uri){
         Ok(syms) => syms,
         Err(e) => return Err((e.error_code as i32, e.msg))
@@ -196,11 +196,11 @@ fn handle_document_diagnostics_request(
     proj_manager: &mut ProjectManager, 
     id: RequestId, 
     params: DocumentDiagnosticParams,
-    logger: &mut dyn ILogger,
+    logger: &Arc<dyn ILoggerV2>,
 )
     -> Result<Message, (i32, String)>
 {
-    logger.log(format!("handling Document Diagnostics request #{id}").as_str());
+    logger.log_info(format!("handling Document Diagnostics request #{id}").as_str());
     let diag_report = match proj_manager.generate_document_diagnostic_report(&params.text_document.uri){
         Ok(diag_report) => diag_report,
         Err(e) => return Err((e.error_code as i32, e.msg))
@@ -215,11 +215,11 @@ fn handle_goto_definition_request(
     proj_manager: &mut ProjectManager, 
     id: RequestId, 
     params: GotoDefinitionParams,
-    logger: &mut dyn ILogger,
+    logger: &Arc<dyn ILoggerV2>,
 )
     -> Result<Message, (i32, String)>
 {
-    logger.log(format!("handling Document Diagnostics request #{id}").as_str());
+    logger.log_info(format!("handling Document Diagnostics request #{id}").as_str());
     let loc_links = match proj_manager.generate_goto_definitions(
         &params.text_document_position_params.text_document.uri, 
         &params.text_document_position_params.position.into()){
@@ -235,10 +235,11 @@ fn handle_goto_definition_request(
 fn handle_did_change_notification(
     proj_manager: &mut ProjectManager, 
     params: DidChangeTextDocumentParams,
-    logger: &mut dyn ILogger,)
+    logger: &Arc<dyn ILoggerV2>,
+)
     -> Result<Vec<Message>, (i32, String)>
 {
-    logger.log(format!("handling Did Change notification").as_str());
+    logger.log_info(format!("handling Did Change notification").as_str());
     // get full file content
     let full_file_content = match params.content_changes.last(){
         Some(text_doc_change_event) => {
@@ -278,11 +279,11 @@ fn handle_did_change_notification(
 fn handle_did_save_notification(
     proj_manager: &mut ProjectManager, 
     params: DidSaveTextDocumentParams,
-    logger: &mut dyn ILogger,
+    logger: &Arc<dyn ILoggerV2>,
 )
     -> Result<Vec<Message>, (i32, String)>
 {
-    logger.log(format!("handling Did Save notification").as_str());
+    logger.log_info(format!("handling Did Save notification").as_str());
     // get full file content
     let _ = match proj_manager.notify_document_saved(&params.text_document.uri){
         Ok(d) => d,

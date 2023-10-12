@@ -3,7 +3,7 @@ use std::{sync::{Arc, RwLock, Mutex}, collections::HashMap, io::Read, fs::File};
 use lsp_server::ErrorCode;
 use lsp_types::Url;
 
-use crate::{utils::ILogger, lexer::GoldLexer, parser::{ParserDiagnostic, parse_gold}};
+use crate::{utils::{ILogger, ILoggerV2}, lexer::GoldLexer, parser::{ParserDiagnostic, parse_gold}};
 
 use super::data_structs::{DocumentInfo, ProjectManagerError, Document};
 
@@ -14,12 +14,12 @@ pub struct DocumentService {
     uri_docinfo_map: Arc<RwLock<HashMap<String, Arc<RwLock<DocumentInfo>>>>>,
     class_uri_map: Arc<RwLock<HashMap<String, Url>>>,
     root_path: Option<String>,
-    logger: Arc<Mutex<dyn ILogger>>,
+    logger: Arc<dyn ILoggerV2>,
 }
 impl DocumentService {
     pub fn new(
         root_uri : Option<Url>, 
-        logger: Arc<Mutex<dyn ILogger>>
+        logger: Arc<dyn ILoggerV2>
     ) -> Result<DocumentService, ProjectManagerError>{
         let mut root_path : Option<String> = None;
 
@@ -238,22 +238,15 @@ impl DocumentService {
     }
 }
 
+#[cfg(test)]
 mod test{
     use std::{sync::{Mutex, Arc}, path::PathBuf, fs};
 
     use lsp_types::Url;
 
-    use crate::utils::{ILogger, ConsoleLogger};
+    use crate::{utils::{ILogger, ConsoleLogger, ILoggerV2, StdErrLogger}, manager::test::create_test_logger};
 
     use super::DocumentService;
-
-    fn create_test_logger()-> Arc<Mutex<dyn ILogger>>{
-        Arc::new(Mutex::new(ConsoleLogger::new("[LSP Server]")))
-    }
-    
-    pub fn create_test_doc_service(uri : Option<Url>) -> DocumentService{
-        return DocumentService::new(uri, create_test_logger()).unwrap();
-    }
 
     #[test]
     fn test_gold_document_manager(){

@@ -1,5 +1,5 @@
 use crate::{parser::ast::IAstNode, lexer::tokens::Token};
-use std::{fmt::Write, collections::LinkedList, ops::Deref};
+use std::{collections::LinkedList, ops::Deref, sync::Arc, fmt::Write};
 
 #[macro_export]
 macro_rules! unwrap_or_return {
@@ -14,6 +14,66 @@ macro_rules! unwrap_or_return {
 pub trait ILogger :std::fmt::Debug{
     fn log(&mut self, msg: &str);
     fn as_logger_mut(&mut self)->&mut dyn ILogger;
+}
+
+pub trait ILoggerV2 : std::fmt::Debug{
+    fn log_error(&self, msg: &str);
+    fn log_warning(&self, msg: &str);
+    fn log_info(&self, msg: &str);
+}
+
+#[derive(Debug)]
+pub struct StdErrLogger{
+    prefix: String,
+    stream: Arc<std::io::Stderr>
+}
+impl StdErrLogger{
+    pub fn new(prefix: &str)-> StdErrLogger{
+        return StdErrLogger{
+            prefix :prefix.to_string(),
+            stream: Arc::new(std::io::stderr())
+        }
+    }
+}
+impl ILoggerV2 for StdErrLogger{
+    fn log_error(&self, msg: &str) {
+        let _ =std::io::Write::write_fmt(&mut self.stream.lock(), format_args!("{}[Error]{}\n",self.prefix,msg));
+    }
+
+    fn log_warning(&self, msg: &str) {
+        let _ =std::io::Write::write_fmt(&mut self.stream.lock(), format_args!("{}[Warning]{}\n",self.prefix,msg));
+    }
+
+    fn log_info(&self, msg: &str) {
+        let _ =std::io::Write::write_fmt(&mut self.stream.lock(), format_args!("{}[Info]{}\n",self.prefix,msg));
+    }
+}
+
+#[derive(Debug)]
+pub struct StdOutLogger{
+    prefix: String,
+    stream: Arc<std::io::Stdout>
+}
+impl StdOutLogger{
+    pub fn new(prefix: &str)-> StdOutLogger{
+        return StdOutLogger{
+            prefix :prefix.to_string(),
+            stream: Arc::new(std::io::stdout())
+        }
+    }
+}
+impl ILoggerV2 for StdOutLogger{
+    fn log_error(&self, msg: &str) {
+        let _ =std::io::Write::write_fmt(&mut self.stream.lock(), format_args!("{}[Error]{}\n",self.prefix,msg));
+    }
+
+    fn log_warning(&self, msg: &str) {
+        let _ =std::io::Write::write_fmt(&mut self.stream.lock(), format_args!("{}[Warning]{}\n",self.prefix,msg));
+    }
+
+    fn log_info(&self, msg: &str) {
+        let _ =std::io::Write::write_fmt(&mut self.stream.lock(), format_args!("{}[Info]{}\n",self.prefix,msg));
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -228,9 +288,10 @@ pub fn ast_to_string_brief_recursive(ast_node: &dyn IAstNode) -> String{
 
 fn _write_ast_brief(result: &mut String, ast_node: &dyn IAstNode, indent_level: usize){
     for _ in 0..indent_level{
+        result.push(' ');
         write!(result, "  ").unwrap();
     }
-    writeln!(result, "[{}:{}]", ast_node.get_type(), ast_node.get_identifier()).unwrap();
+    result.push_str(format!("[{}:{}]", ast_node.get_type(), ast_node.get_identifier()).as_str());
     let children = ast_node.get_children_ref();
     match children {
         Some(children) =>{
