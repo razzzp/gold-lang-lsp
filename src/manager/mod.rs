@@ -1,4 +1,4 @@
-use std::{collections::{HashMap, HashSet}, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, error::Error, fmt::Display};
+use std::{collections::{HashMap, HashSet}, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, error::Error, fmt::Display, str::FromStr};
 
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink};
@@ -33,6 +33,28 @@ impl ProjectManager{
     }
 
     pub fn index_files(&mut self){
+        return self.doc_service.write().unwrap().index_files();
+    }
+
+    pub fn analyze_files(&mut self, thread_pool : &ThreadPool){
+        let partitions = self.doc_service.read().unwrap().partition_files(1000);
+        for partition in partitions.into_iter(){
+            let mut sem_service = self.create_sem_service();
+            thread_pool.execute(move ||{
+                for uri_string in partition{
+                    let uri = match Url::from_str(&uri_string.as_str()){
+                        Ok(uri) => uri,
+                        _=> continue
+                    };
+
+                    // ignore result any errors should be logged inside
+                    let _ = sem_service.analyze_uri(&uri, true);
+                }
+            });
+        }
+    }
+
+    pub fn generate_definitions(&mut self){
         return self.doc_service.write().unwrap().index_files();
     }
 
@@ -167,13 +189,15 @@ impl ProjectManager{
 }
 
 
+
 #[cfg(test)]
+/// tests at this module level are more towards integration testing
 pub mod test{
     use std::{fs::{File, self}, io::Read, path::{PathBuf, Path}, time, thread, rc::Rc, cell::RefCell, sync::{Mutex, Arc, RwLock}, str::FromStr};
 
     use lsp_types::Url;
 
-    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILogger, ConsoleLogger, IDiagnosticCollector, GenericDiagnosticCollector, StdErrLogger, ILoggerV2, StdOutLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}};
+    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILogger, ConsoleLogger, IDiagnosticCollector, GenericDiagnosticCollector, StdErrLogger, ILoggerV2, StdOutLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, threadpool::ThreadPool};
 
     use super::{ProjectManager, document_service::DocumentService, type_resolver::TypeResolver, semantic_analysis_service::SemanticAnalysisService, definition_service::DefinitionService};
 
@@ -377,6 +401,34 @@ pub mod test{
         doc_manager.index_files();
         // try request
         let _ = doc_manager.generate_document_symbols(&file_uri).unwrap();
+    }
+
+    #[test]
+    fn test_index_file_large(){
+        let path = PathBuf::from("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        let _ =  match fs::metadata(&path){
+            Ok(_) => (),
+            _=> return
+        };
+        let mut proj_manager= create_test_project_manager("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        proj_manager.index_files();
+        assert!(proj_manager.doc_service.read().unwrap().count_files() > 54000);
+    }
+
+    #[ignore="long running time"]
+    #[test]
+    fn test_analyze_files_large(){
+        let path = PathBuf::from("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        let _ =  match fs::metadata(&path){
+            Ok(_) => (),
+            _=> return
+        };
+        let threadpool = ThreadPool::new(5);
+        let mut proj_manager= create_test_project_manager("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        proj_manager.index_files();
+        proj_manager.analyze_files(&threadpool);
+        drop(threadpool);
+        assert!(proj_manager.doc_service.read().unwrap().count_files() > 54000);
     }
 
     #[test]

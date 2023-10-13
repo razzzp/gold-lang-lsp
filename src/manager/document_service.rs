@@ -2,6 +2,7 @@ use std::{sync::{Arc, RwLock, Mutex}, collections::HashMap, io::Read, fs::File};
 
 use lsp_server::ErrorCode;
 use lsp_types::Url;
+use regex::RegexSetBuilder;
 
 use crate::{utils::{ILogger, ILoggerV2}, lexer::GoldLexer, parser::{ParserDiagnostic, parse_gold}};
 
@@ -235,6 +236,25 @@ impl DocumentService {
             parser_diagnostics,
         );
         return Ok(new_doc)
+    }
+
+    pub fn count_files(&self) -> usize{
+        return self.uri_docinfo_map.read().unwrap().len();
+    }
+
+    pub fn partition_files(&self, partition_size: usize)->Vec<Vec<String>> {
+        if partition_size == 0 {panic!("partition size cannot be 0")}
+
+        let mut result = Vec::new();
+        let mut cur_partition =  Vec::new();
+        for uri in self.uri_docinfo_map.read().unwrap().keys(){
+            if cur_partition.len() >= partition_size{
+                result.push(cur_partition);
+                cur_partition = Vec::new();
+            }
+            cur_partition.push(uri.clone())
+        }
+        return result;
     }
 }
 

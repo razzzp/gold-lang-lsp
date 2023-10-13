@@ -458,8 +458,7 @@ fn parse_separated_values<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &
         start = set_items.first().unwrap().get_range();
         end = set_items.last().unwrap().get_range();
     } else {
-        start = Default::default();
-        end = Default::default();
+        return Err(ParseError { input: next, msg: "Empty list".to_string() });
     }
     return Ok((next, Arc::new(AstSetLiteral{
         raw_pos: set_items.first().unwrap().get_raw_pos(),

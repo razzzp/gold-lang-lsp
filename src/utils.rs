@@ -16,7 +16,7 @@ pub trait ILogger :std::fmt::Debug{
     fn as_logger_mut(&mut self)->&mut dyn ILogger;
 }
 
-pub trait ILoggerV2 : std::fmt::Debug{
+pub trait ILoggerV2 : std::fmt::Debug + Send + Sync{
     fn log_error(&self, msg: &str);
     fn log_warning(&self, msg: &str);
     fn log_info(&self, msg: &str);
@@ -95,7 +95,7 @@ impl ILogger for ConsoleLogger{
     }
 }
 
-pub trait IDiagnosticCollector<T : std::fmt::Debug> : std::fmt::Debug{
+pub trait IDiagnosticCollector<T : std::fmt::Debug+ Send> : std::fmt::Debug + Send{
     fn add_diagnostic(&mut self, diagnostic: T);
     fn take_diagnostics(self) -> Vec<T>;  
 }
@@ -109,7 +109,7 @@ impl<T : std::fmt::Debug> GenericDiagnosticCollector<T>{
         return GenericDiagnosticCollector { diagnostics:Vec::new() }
     }
 }
-impl<T : std::fmt::Debug> IDiagnosticCollector<T> for GenericDiagnosticCollector<T>{
+impl<T : std::fmt::Debug + Send> IDiagnosticCollector<T> for GenericDiagnosticCollector<T>{
     fn add_diagnostic(&mut self, diagnostic: T) {
         self.diagnostics.push(diagnostic)
     }
