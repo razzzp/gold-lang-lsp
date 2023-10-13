@@ -6,7 +6,8 @@ use nom::error;
 
 use crate::parser::{ast::IAstNode, ParserDiagnostic};
 
-use super::{semantic_analysis_service::ISymbolTable, annotated_node::AnnotatedNode};
+use super::annotated_node::AnnotatedNode;
+use crate::manager::symbol_table::ISymbolTable;
 
 #[derive(Debug)]
 pub struct Document{

@@ -3,10 +3,11 @@ use std::{collections::{HashMap, HashSet}, fs::File, io::Read, rc::Rc, sync::{Ar
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector, IDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor, AnalyzerDiagnostic}, threadpool::ThreadPool, manager::semantic_analysis_service::ISymbolTableGenerator};
+use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector, IDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor, AnalyzerDiagnostic}, threadpool::ThreadPool};
 use data_structs::*;
 
-use self::{semantic_analysis_service::{ISymbolTable, SemanticAnalysisService, DocumentSymbolGenerator}, document_service::DocumentService,  definition_service::DefinitionService};
+use self::{semantic_analysis_service::{SemanticAnalysisService, DocumentSymbolGenerator}, document_service::DocumentService,  definition_service::DefinitionService};
+
 
 pub mod data_structs;
 pub mod semantic_analysis_service;
@@ -14,6 +15,7 @@ pub mod annotated_node;
 pub mod definition_service;
 pub mod type_resolver;
 pub mod document_service;
+pub mod symbol_table;
 
 #[derive(Debug)]
 pub struct ProjectManager{

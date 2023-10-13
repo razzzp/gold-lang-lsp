@@ -2,7 +2,9 @@ use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::parser::ast::{IAstNode, AstTypeBasic, AstBinaryOp, AstTerminal};
 
-use super::{annotated_node::{EvalType, NativeType, AnnotatedNode}, ProjectManager, semantic_analysis_service::{ISymbolTable, SemanticAnalysisService, SymbolInfo}};
+use super::{annotated_node::{EvalType, NativeType, AnnotatedNode}, ProjectManager, semantic_analysis_service::SemanticAnalysisService};
+use crate::manager::symbol_table::{ISymbolTable,SymbolInfo};
+
 
 pub struct TypeResolver {
     semantic_analysis_service: SemanticAnalysisService,
