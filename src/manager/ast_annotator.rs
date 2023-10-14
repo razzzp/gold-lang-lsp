@@ -16,30 +16,32 @@ use super::{
 
 
 
-pub struct AstAnnotator<'a> {
+pub struct AstAnnotator{
     root_symbol_table : Option<Arc<Mutex<SymbolTable>>>,
     // need to wrap in arc, to provide consistent api with root sym table
     symbol_table_stack: Vec<Arc<Mutex<SymbolTable>>>,
 
     logger: Arc<dyn ILoggerV2>,
     diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
-    semantic_analysis_service: &'a mut SemanticAnalysisService,
+    semantic_analysis_service: SemanticAnalysisService,
     cur_method_node : Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>,
-    only_definitions: bool
+    only_definitions: bool,
+    type_resolver: TypeResolver,
 }
-impl<'a> AstAnnotator<'a>{
+impl AstAnnotator{
     pub fn new (
-        semantic_analysis_service: &'a mut SemanticAnalysisService,
+        semantic_analysis_service: SemanticAnalysisService,
         diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
         logger: Arc<dyn ILoggerV2>,
         // to prevent large branching when only definition is needed
-        only_definitions: bool
-    )->AstAnnotator<'a>{
+        only_definitions: bool,
+    )->AstAnnotator{
         return AstAnnotator{
             root_symbol_table: Some(Arc::new(Mutex::new(SymbolTable::new()))),
             symbol_table_stack: Vec::new(),
             logger: logger,
             diag_collector,
+            type_resolver : TypeResolver::new(semantic_analysis_service.clone()),
             semantic_analysis_service,
             cur_method_node:None,
             only_definitions,
@@ -73,12 +75,24 @@ impl<'a> AstAnnotator<'a>{
     fn walk_tree(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
         self.visit(node);
         for child in &node.read().unwrap().children {
-            if self.only_definitions{
-                self.visit(child)
-            }else{
-                self.walk_tree(child)
+            // first level are definitions, so visit first
+            // preorder
+            self.visit(child);
+            if !self.only_definitions {
+                // everything under, travel postorder,
+                // process children first
+                for inner_child in &child.read().unwrap().children{
+                    self.walk_tree_postorder(inner_child)
+                }
             }
         }
+    }
+
+    fn walk_tree_postorder(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        for child in &node.read().unwrap().children {
+                self.walk_tree_postorder(child)
+        }
+        self.visit(node);
     }
 
     fn visit(&mut self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
@@ -91,6 +105,8 @@ impl<'a> AstAnnotator<'a>{
         self.handle_uses(&node);
         self.handle_param_decl(&node);
         self.handle_var_decl(&node);
+        self.handle_terminal_node(&node);
+        self.handle_bin_op_node(&node);
     }
 
     fn notify_new_scope(&mut self){
@@ -152,21 +168,9 @@ impl<'a> AstAnnotator<'a>{
     }
 
     fn get_eval_type(&mut self, node : &Arc<dyn IAstNode>)-> EvalType{
-        let mut type_resolver = TypeResolver::new(self.semantic_analysis_service.clone());
         let st : Arc<Mutex<dyn ISymbolTable>> = self.get_cur_sym_table();
-        return type_resolver.resolve_node_type(node, &st);
+        return self.type_resolver.resolve_node_type(node, &st);
     }
-
-    // fn lock_and_cast<'b,T:IAstNode>(&self, node : Arc<RwLock<AnnotatedNode<dyn IAstNode>>>) -> 
-    // Option<(RwLockWriteGuard<'b, AnnotatedNode<dyn IAstNode>>, &'b T)>{
-    //     let w_lock = node.write().unwrap();
-    //     let downcast = match w_lock.data.as_any().downcast_ref::<T>(){
-    //         Some(d) => d,
-    //         _=> return None
-    //     };
-    //     return Some((w_lock, downcast))
-    // }
-
 
 
     fn handle_class(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
@@ -195,6 +199,7 @@ impl<'a> AstAnnotator<'a>{
                 },
                 Err(e)=> {
                     // parent class not found/cannot be parsed
+                    // or class already visited in current session
                     self.diag_collector.lock().unwrap().add_diagnostic(
                         AnalyzerDiagnostic::new(format!("Parent class not defined; {}", e).as_str(), parent_class.get_range())
                     );
@@ -206,7 +211,7 @@ impl<'a> AstAnnotator<'a>{
         self.insert_symbol_info(ori_node.get_identifier(), sym_info.clone());
         // add self to sym table
         let mut self_sym = sym_info;
-        self_sym.id = "Self".to_string();
+        self_sym.id = "self".to_string();
         self.insert_symbol_info("self".to_string(), self_sym);
     }
 
@@ -346,5 +351,141 @@ impl<'a> AstAnnotator<'a>{
         sym_info.range = var_decl.get_range();
         sym_info.selection_range = var_decl.identifier.get_range();
         self.insert_symbol_info(var_decl.get_identifier(), sym_info);
+    }
+
+
+    fn check_parent_dot_ops(&self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>)
+    ->Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
+    {
+        let parent_node = node.read().unwrap().parent.as_ref()?.upgrade()?;
+        let lock = parent_node.read().unwrap();
+        if let Some(bin_op) = lock.data.as_any().downcast_ref::<AstBinaryOp>(){
+            if bin_op.op_token.token_type == TokenType::Dot{
+                return Some(parent_node.clone());
+            } else {return  None;}
+        } else {
+            return None;
+        }
+    }
+
+    fn resolve_termninal_node(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>) -> EvalType{
+        if let Some(dot_op_parent) = self.check_parent_dot_ops(&node){
+            let parent_lock = dot_op_parent.read().unwrap();
+            // should be safe to unwrap
+            let bin_op_node = parent_lock.data.as_any().downcast_ref::<AstBinaryOp>().unwrap(); 
+            let left_node = &bin_op_node.left_node;
+            if Arc::ptr_eq(left_node, &node.read().unwrap().data){
+                // if left node, just resolve normally
+                let inner = &node.read().unwrap().data.clone();
+                return self.get_eval_type(&inner);
+            } else {
+                // if right node, check left node type first
+                let left_node_type =match &parent_lock.children[0].read().unwrap().eval_type{
+                    Some(t) => t.clone(),
+                    _=> return EvalType::default()
+                };
+                match left_node_type{
+                    EvalType::Class(class_name)=>{
+                        // search right node in class
+                        // if class is self don't call sem service, because it will fail
+                        let class_sym_table = if class_name == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class.unwrap_clone_or_empty_string() {
+                            self.get_cur_sym_table()
+                        } else {
+                            match self.semantic_analysis_service.get_symbol_table_class_def_only(&class_name){
+                                Ok(st) => st,
+                                _=> return EvalType::default()
+                            }
+                        };
+                        let (_class, sym_info) = match self.type_resolver.search_sym_info_w_class(&bin_op_node.right_node.get_identifier(), &class_sym_table, false){
+                            Some(r) => r,
+                            _=> return EvalType::default()
+                        };
+                        return sym_info.eval_type.clone().unwrap_or_default();
+                    },
+                    _=> return EvalType::default(),
+                }
+            }
+        } else {
+            let inner = &node.read().unwrap().data.clone();
+            return self.get_eval_type(&inner);
+        }
+    }
+
+    fn handle_terminal_node(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        if !self.can_cast::<AstTerminal>(node) {return}
+        
+        let eval_type = self.resolve_termninal_node(node);
+        node.write().unwrap().eval_type = Some(eval_type);
+    }
+
+    fn resolve_bin_op_node(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>)-> EvalType{
+        // should be safe to unwarp
+        let node_lock = node.read().unwrap();
+        let bin_op = node_lock.data.as_any().downcast_ref::<AstBinaryOp>().unwrap();
+        match &bin_op.op_token.token_type {
+            TokenType::Dot => {
+                // take child types should be resolved,
+                // resulting will be same as right node
+                // println!("{:#?}",node_lock.children[1].read().unwrap().eval_type.clone().unwrap_or_default());
+                return node_lock.children[1].read().unwrap().eval_type.clone().unwrap_or_default();
+            },
+            _=> return EvalType::Unknown
+        };
+
+    }
+
+    fn handle_bin_op_node(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        if !self.can_cast::<AstBinaryOp>(node) {return}
+        
+        let eval_type = self.resolve_bin_op_node(node);
+        node.write().unwrap().eval_type = Some(eval_type);
+    }
+
+    fn can_cast<T: 'static>(&self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>) -> bool{
+        let node_lock = node.read().unwrap();
+        match node_lock.data.as_any().downcast_ref::<T>(){
+            Some(_) => return true,
+            _=> return false
+        }
+    }
+}
+
+#[cfg(test)]
+mod test{
+    use std::sync::{Mutex, Arc};
+
+    use crate::{manager::{test::{create_test_project_manager, create_uri_from_path, create_test_def_service, create_test_sem_service}, utils::search_encasing_node, annotated_node::EvalType}, utils::Position};
+
+    #[test]
+    fn test_bin_op(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = 
+"
+class aObject
+var1 : aObject
+proc Test
+    var obj : aObject
+    ;
+    obj.var1.var1
+endproc
+        ".to_string();
+        let doc = proj_manager.doc_service.read().unwrap().parse_content(&test_input).unwrap();
+        let doc = Arc::new(Mutex::new(doc));
+        let mut sem_service = create_test_sem_service(proj_manager.doc_service.clone());
+        let doc = sem_service.analyze(doc, false).unwrap();
+        let root =doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
+        // check obj
+        let node = search_encasing_node(&root, &Position::new(6, 5));
+        // println!("{:#?}", node.read().unwrap().as_annotated_node());
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+        // check first right
+        let node = search_encasing_node(&root, &Position::new(6, 8));
+        // println!("{:#?}", node.read().unwrap().as_annotated_node());
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+        // check second right
+        let node = search_encasing_node(&root, &Position::new(6, 13));
+        // println!("{:#?}", node.read().unwrap().as_annotated_node());
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
     }
 }

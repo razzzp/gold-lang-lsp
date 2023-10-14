@@ -7,7 +7,7 @@ use lsp_types::{LocationLink, Url};
 
 use crate::{parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstTypeBasic, AstClass}, utils::{Position, IRange, ILoggerV2}, lexer::tokens::TokenType, manager::type_resolver};
 
-use super::{ProjectManager, data_structs::{ProjectManagerError, Document}, annotated_node::{AnnotatedNode, EvalType}, semantic_analysis_service::SemanticAnalysisService, type_resolver::TypeResolver, document_service::DocumentService};
+use super::{ProjectManager, data_structs::{ProjectManagerError, Document}, annotated_node::{AnnotatedNode, EvalType}, semantic_analysis_service::SemanticAnalysisService, type_resolver::TypeResolver, document_service::DocumentService, utils::search_encasing_node};
 use crate::manager::symbol_table::ISymbolTable;
 
 
@@ -27,41 +27,25 @@ impl DefinitionService{
     )->DefinitionService{
         return DefinitionService { 
             doc_service,
-            type_resolver: TypeResolver::new(semantic_analysis_service.clone()),
+            // type_resovler should have its own session
+            type_resolver: TypeResolver::new(semantic_analysis_service.clone_clear_session()),
             semantic_analysis_service: semantic_analysis_service,
             logger,
             source_uri: source_uri.clone(),
         }
     }
 
-    fn search_encasing_node(&self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, pos : &Position)
-    -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>
+    fn check_parent_dot_ops(&self, node : &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>)
+    ->Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
     {
-        let r_node = node.read().unwrap();
-        for child in &r_node.children{
-            // self.logger.log_info(format!("[Req Definition] Cur Node {}",child.read().unwrap().data.to_string_type_pos()).as_str());
-            if child.read().unwrap().data.get_range().contains_pos(pos){
-                return self.search_encasing_node(child, pos)
-            }
-        }
-        return node.clone()
-    }
-
-    fn is_bin_op_dot_ops(&self, node : &Option<Weak<RwLock<AnnotatedNode<dyn IAstNode>>>>)->bool{
-        if node.is_none(){
-            return false;
-        }
-        let node = match node.as_ref().unwrap().upgrade(){
-            Some(n) => n,
-            _=> return false
-        };
-        let node = node.read().unwrap();
-        if let Some(bin_op) = node.data.as_any().downcast_ref::<AstBinaryOp>(){
+        let parent_node = node.parent.as_ref()?.upgrade()?;
+        let lock = parent_node.read().unwrap();
+        if let Some(bin_op) = lock.data.as_any().downcast_ref::<AstBinaryOp>(){
             if bin_op.op_token.token_type == TokenType::Dot{
-                return true
-            } else {return  false;}
+                return Some(parent_node.clone());
+            } else {return  None;}
         } else {
-            return false;
+            return None;
         }
     }
 
@@ -89,64 +73,62 @@ impl DefinitionService{
         node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
         st: &Arc<Mutex<dyn ISymbolTable>>
     )-> Option<Result<Vec<lsp_types::LocationLink>, ProjectManagerError>>{
-        if let Some(term_node) = node.data.as_any().downcast_ref::<AstTerminal>(){
-            // if part of dot ops, may need to check another class
-            if self.is_bin_op_dot_ops(&node.parent){
-                let bin_op_parent = match node.parent.as_ref().unwrap().upgrade(){
-                    Some(p) => p,
-                    None=> return Some(Err(ProjectManagerError::new("Failed to upgrade wek ref", ErrorCode::InternalError)))
-                };
-                let parent_lock = bin_op_parent.read().unwrap();
-                // should be safe to unwrap
-                let bin_op_node = parent_lock.data.as_any().downcast_ref::<AstBinaryOp>().unwrap(); 
-                let left_node = &bin_op_node.left_node;
-                if Arc::ptr_eq(left_node, &node.data){
-                    // if left node, just search sym table
-                    return Some(self.generate_loc_link(node, st))
-                } else {
-                    // if right node, check left node type first
-                    let mut type_resolver = TypeResolver::new(self.semantic_analysis_service.clone());
-                    let left_node_type = type_resolver.resolve_annotated_node_lock_type(&parent_lock.children[0].read().unwrap());
-                    match left_node_type{
-                        EvalType::Class(class_name)=>{
-                            // search right node in class
-                            let uri = match self.doc_service.read().unwrap().get_uri_for_class(&class_name){
-                                Ok(u) => u,
-                                _=> return None,
-                            };
-                            // if class is self don't call sem service, because it will fail
-                            let class_sym_table = if uri == self.source_uri{
-                                st.clone()
-                            } else {
-                                match self.semantic_analysis_service.get_symbol_table_class_def_only(&class_name){
-                                    Ok(st) => st,
-                                    _=> return None
-                                }
-                            };
-                         
-                            let (class, sym_info) = self.type_resolver.search_sym_info_w_class(&bin_op_node.right_node.get_identifier(), &class_sym_table, false)?;
-                            let target_uri = match self.doc_service.read().unwrap().get_uri_for_class(&class){
-                                Ok(u) => u,
-                                _=> return None,
-                            };
-                            let mut result = Vec::new();
-                            result.push(LocationLink{
-                                origin_selection_range: Some(node.data.get_range().as_lsp_type_range()),
-                                target_uri,
-                                target_selection_range: sym_info.selection_range.as_lsp_type_range(),
-                                target_range: sym_info.range.as_lsp_type_range()
-                            });
-                            return Some(Ok(result));
-                           
-                        },
-                        _=> return None,
-                    }
-                }
-            } else {
-                // enough to check symbol table in current doc
+        let _ = match node.data.as_any().downcast_ref::<AstTerminal>(){
+            Some(n) => n,
+            _=> return None
+        };
+        // if part of dot ops, may need to check another class
+        if let Some(bin_op_parent) = self.check_parent_dot_ops(node){
+
+            let parent_lock = bin_op_parent.read().unwrap();
+            // should be safe to unwrap
+            let bin_op_node = parent_lock.data.as_any().downcast_ref::<AstBinaryOp>().unwrap(); 
+            let left_node = &bin_op_node.left_node;
+            if Arc::ptr_eq(left_node, &node.data){
+                // if left node, just search sym table
                 return Some(self.generate_loc_link(node, st))
+            } else {
+                // if right node, check left node type first
+                let left_node_type = parent_lock.children[0].read().unwrap().eval_type.clone().unwrap_or_default();
+                match left_node_type{
+                    EvalType::Class(class_name)=>{
+                        // search right node in class
+                        let uri = match self.doc_service.read().unwrap().get_uri_for_class(&class_name){
+                            Ok(u) => u,
+                            _=> return None,
+                        };
+                        // if class is self don't call sem service, because it will fail
+                        let class_sym_table = if uri == self.source_uri{
+                            st.clone()
+                        } else {
+                            match self.semantic_analysis_service.get_symbol_table_class_def_only(&class_name){
+                                Ok(st) => st,
+                                _=> return None
+                            }
+                        };
+                        
+                        let (class, sym_info) = self.type_resolver.search_sym_info_w_class(&bin_op_node.right_node.get_identifier(), &class_sym_table, false)?;
+                        let target_uri = match self.doc_service.read().unwrap().get_uri_for_class(&class){
+                            Ok(u) => u,
+                            _=> return None,
+                        };
+                        let mut result = Vec::new();
+                        result.push(LocationLink{
+                            origin_selection_range: Some(node.data.get_range().as_lsp_type_range()),
+                            target_uri,
+                            target_selection_range: sym_info.selection_range.as_lsp_type_range(),
+                            target_range: sym_info.range.as_lsp_type_range()
+                        });
+                        return Some(Ok(result));
+                        
+                    },
+                    _=> return None,
+                }
             }
-        } else {return None}
+        } else {
+            // enough to check symbol table in current doc
+            return Some(self.generate_loc_link(node, st))
+        }
     }
 
     fn handle_type_basic(
@@ -240,9 +222,8 @@ impl DefinitionService{
     {
         let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri, false)?;
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
-        let root_st = doc.lock().unwrap().get_symbol_table();
         
-        let enc_node =self.search_encasing_node(&ast, &pos);
+        let enc_node = search_encasing_node(&ast, &pos);
         self.logger.log_info(format!("[Req Definition] Node: {}", enc_node.read().unwrap().data.get_identifier()).as_str());
         let st = match TypeResolver::get_nearest_symbol_table(&enc_node.read().unwrap()){
             Some(st) => st,
@@ -295,6 +276,22 @@ mod test{
         let test_input = create_uri_from_path("./test/workspace/aRootClass.god");
         // pos input to test, local var
         let pos_input = Position::new(23, 35);
+
+        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let mut result = def_service.get_definition(&pos_input).unwrap();
+        assert_eq!(result.len(), 1);
+        let loc = result.pop().unwrap();
+        let target_uri = create_uri_from_path("./test/workspace/aSecondClass.god");
+        assert_eq!(loc.target_uri, target_uri);
+    }
+
+    #[test]
+    fn test_resolve_right_bin_twice(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = create_uri_from_path("./test/workspace/aRootClass.god");
+        // pos input to test, local var
+        let pos_input = Position::new(36, 40);
 
         let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();

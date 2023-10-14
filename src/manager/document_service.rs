@@ -221,7 +221,7 @@ impl DocumentService {
         return self.parse_content(&contents_as_string)
     }
 
-    fn parse_content(&self, full_file_content: &String) -> Result<Document, ProjectManagerError> {
+    pub fn parse_content(&self, full_file_content: &String) -> Result<Document, ProjectManagerError> {
         // lexing
         let mut lexer = GoldLexer::new();
         let (tokens, lexer_errors) = lexer.lex(&full_file_content);

@@ -49,9 +49,13 @@ impl SemanticAnalysisService {
 
     /// if no error occurs, annotated tree & symbol table is guranteed to be Some
     pub fn analyze_uri(&mut self, uri : &Url, only_definitions: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+        
+        // TODO !!! commenting this can cause stack overflow, but
+        //  using will cause certain dependency cases to fail
         self.check_already_seen(uri)?;
+
         self.logger.log_info(format!("[Req Analyze Uri:{}]{}", if !only_definitions {"Full"}else{"Light"},uri).as_str());
-        eprintln!();
+
         let doc: Arc<Mutex<Document>> = self.doc_service.write().unwrap().get_parsed_document(uri, true)?;
         // is exist and only defs needed return existing,
         //  otherwise regenerate
@@ -62,7 +66,7 @@ impl SemanticAnalysisService {
         return self.analyze(doc, only_definitions);
     }
     
-    fn analyze(&mut self, doc: Arc<Mutex<Document>>, only_definitions: bool) -> 
+    pub fn analyze(&mut self, doc: Arc<Mutex<Document>>, only_definitions: bool) -> 
     Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let root_node = doc.lock().unwrap().get_ast().clone();
         // let mut semantic_analysis_service = SemanticAnalysisService::new(
@@ -72,7 +76,7 @@ impl SemanticAnalysisService {
         //     Some(self.already_seen_classes.clone())
         // );
         let mut annotator = AstAnnotator::new(
-            self, 
+            self.clone(), 
             self.diag_collector.clone(), 
             self.logger.clone(),
             only_definitions
@@ -80,6 +84,16 @@ impl SemanticAnalysisService {
         let annotated_tree = annotator.analyze(&root_node)?;
         doc.lock().unwrap().annotated_ast = Some(annotated_tree.clone());
         return Ok(doc);
+    }
+
+    pub fn clear_session(&mut self){
+        self.already_seen_uri = Arc::new(Mutex::new(HashSet::new()));
+    }
+
+    pub fn clone_clear_session(&self) -> SemanticAnalysisService{
+        let mut result = self.clone();
+        result.clear_session();
+        return result;
     }
 }
 

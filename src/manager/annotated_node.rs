@@ -1,3 +1,4 @@
+
 use std::sync::{Arc, RwLock, Weak, Mutex};
 
 use crate::parser::ast::IAstNode;
@@ -40,14 +41,15 @@ impl Location{
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum EvalType{
+    #[default]
+    Unknown,
     Native(NativeType),
     Defined(TypeInfo),
     Class(String),
     // contains id of unresolved type
     Unresolved(String),
-    Unknown
 }
 
 #[derive(Debug)]
@@ -68,5 +70,8 @@ impl<T: IAstNode+ ?Sized> AnnotatedNode<T>{
             eval_type: None,
             children: Vec::new()
             }
+    }
+    pub fn as_annotated_node(&self)->&AnnotatedNode<T>{
+        self
     }
 }

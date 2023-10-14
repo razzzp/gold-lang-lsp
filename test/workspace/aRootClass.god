@@ -10,7 +10,7 @@ type tRootRecordType: record
 endrecord
 
 RootVar1 : CString
-RootVarRef2 : refto aLightObject
+RootVarRef2 : refto aRootClass
 
 
 proc RootProc(FirstParam: Int4)
@@ -34,6 +34,6 @@ proc SecondRootProc(FirstParam: Int4)
    WriteLn(FirstParam)
    WriteLn(localVar)
    ;
-   WriteLn(same_class.RootVarRef2)
+   WriteLn(same_class.RootVarRef2.RootVarRef2)
    WriteLn(self.RootVar1)
 endProc

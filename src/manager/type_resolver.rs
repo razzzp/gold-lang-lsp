@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::parser::ast::{IAstNode, AstTypeBasic, AstBinaryOp, AstTerminal};
+use crate::{parser::ast::{IAstNode, AstTypeBasic, AstBinaryOp, AstTerminal, AstTypeReference}, lexer::tokens::TokenType};
 
 use super::{annotated_node::{EvalType, NativeType, AnnotatedNode}, ProjectManager, semantic_analysis_service::SemanticAnalysisService};
 use crate::manager::symbol_table::{ISymbolTable,SymbolInfo};
@@ -34,6 +34,7 @@ impl TypeResolver {
         return sym_info;
     }
 
+    /// also returns the class the symbol is in
     pub fn search_sym_info_w_class(&mut self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<(String,Arc<SymbolInfo>)>{
         // already searches parent
         let mut sym_info = sym_table.lock().unwrap().search_symbol_info(id);
@@ -87,6 +88,37 @@ impl TypeResolver {
         }
     }
 
+    fn resolve_type_refto(&mut self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
+        let node = node.as_any().downcast_ref::<AstTypeReference>()?; 
+        //
+        if node.ref_type.token_type == TokenType::RefTo{
+            let id = node.ref_type.get_value();
+            // just a class
+            if let Ok(_) = self.semantic_analysis_service
+                        .doc_service.read().unwrap()
+                        .get_uri_for_class(&id.to_string())
+            {
+                return Some(EvalType::Class(id.to_string()));
+            }
+            // if not class, search types in parents and uses
+            let sym = self.search_sym_info(&id.to_string(),sym_table, true);
+            match sym{
+                Some(s)=> {
+                    return Some(s.eval_type.as_ref().unwrap_or(&EvalType::Unknown).clone())
+                },
+                _=> {
+                    // unknown
+                    return Some(EvalType::Unresolved(node.get_identifier()))
+                }
+            } 
+        } else if node.ref_type.token_type == TokenType::ListOf{
+            return Some(EvalType::Class("aListOfInstances".to_string()));
+        } else {
+            return Some(EvalType::Unknown);
+        }
+        
+    }
+
     fn resolve_terminal(&mut self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let node = node.as_any().downcast_ref::<AstTerminal>()?; 
         //
@@ -131,6 +163,7 @@ impl TypeResolver {
         let mut result = EvalType::Unknown;
         // case basic type node
         result = self.resolve_type_basic(node,sym_table).unwrap_or(result);
+        result = self.resolve_type_refto(node, sym_table).unwrap_or(result);
         // terminal node
         result = self.resolve_terminal(node, sym_table).unwrap_or(result);
         // binary op

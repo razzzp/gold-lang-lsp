@@ -18,6 +18,7 @@ pub mod document_service;
 pub mod symbol_table;
 pub mod ast_annotator;
 pub mod doc_symbol_generator;
+pub mod utils;
 
 #[derive(Debug)]
 pub struct ProjectManager{
