@@ -138,30 +138,33 @@ impl TypeResolver {
         return result;
     }
 
-    pub fn get_nearest_symbol_table(node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
-    root_st: &Arc<Mutex<dyn ISymbolTable>>) -> Arc<Mutex<dyn ISymbolTable>>{
+    pub fn get_nearest_symbol_table(node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>) 
+    -> Option<Arc<Mutex<dyn ISymbolTable>>>
+    {
         if let Some(sym_table) = node.symbol_table.as_ref(){
-            return sym_table.clone();
+            return Some(sym_table.clone());
         }
         let mut cur_node = node.parent.clone();
         while let Some(cur) = &cur_node{
             if let Some(cur) = cur.upgrade(){
                 if let Some(st) = &cur.read().unwrap().symbol_table{
-                    return st.clone()
+                    return Some(st.clone())
                 }
                 cur_node = cur.read().unwrap().parent.clone();
             } else {break}
         }
-        return root_st.clone()
+        return None
     }
 
     pub fn resolve_annotated_node_type(
         &mut self, 
         node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>,
-        root_sym_table: &Arc<Mutex<dyn ISymbolTable>>
     ) -> EvalType {
         let node_lock = &node.read().unwrap();
-        let sym_table = TypeResolver::get_nearest_symbol_table(&node_lock, root_sym_table);
+        let sym_table = match TypeResolver::get_nearest_symbol_table(&node_lock){
+            Some(st) => st,
+            _=> return EvalType::Unknown
+        };
         let result = self.resolve_node_type(&node_lock.data, &sym_table);
 
         return result
@@ -169,10 +172,12 @@ impl TypeResolver {
 
     pub fn resolve_annotated_node_lock_type(
         &mut self, 
-        node_lock: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>,
-        root_sym_table: &Arc<Mutex<dyn ISymbolTable>>
+        node_lock: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>
     ) -> EvalType {
-        let sym_table = TypeResolver::get_nearest_symbol_table(&node_lock, root_sym_table);
+        let sym_table = match TypeResolver::get_nearest_symbol_table(&node_lock){
+            Some(st) => st,
+            _=> return EvalType::Unknown
+        };
         let result = self.resolve_node_type(&node_lock.data, &sym_table);
 
         return result
@@ -207,8 +212,7 @@ mod test{
         let local_var_ref = second_writeln.read().unwrap().children.get(1).unwrap().clone();
 
         let mut type_resolver = create_test_type_resolver(proj_manager.doc_service.clone());
-        let sym_table = doc.lock().unwrap().symbol_table.as_ref().unwrap().clone();
-        let eval_type = type_resolver.resolve_annotated_node_type(&local_var_ref, &sym_table);
+        let eval_type = type_resolver.resolve_annotated_node_type(&local_var_ref);
         assert_eq!(eval_type, EvalType::Native(NativeType::CString));
     }
 }

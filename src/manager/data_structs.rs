@@ -14,7 +14,6 @@ pub struct Document{
     pub ast: Arc<dyn IAstNode>,
     pub parser_diagnostics: Vec<ParserDiagnostic>,
     pub analyzer_diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>,
-    pub symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>,
     pub annotated_ast: Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
 }
 impl Document{
@@ -23,7 +22,6 @@ impl Document{
             ast,
             parser_diagnostics,
             analyzer_diagnostics:None,
-            symbol_table: None,
             annotated_ast: None
         };
     }
@@ -31,13 +29,15 @@ impl Document{
         &self.ast
     }
     pub fn get_symbol_table(&self)-> Option<Arc<Mutex<dyn ISymbolTable>>>{
-        match &self.symbol_table {
-            Some(sym_tbl) => return Some(sym_tbl.clone()),
-            _=> None
-        }
+        return self.annotated_ast.as_ref()?.read().unwrap().symbol_table.clone();
     }
     pub fn set_symbol_table(&mut self, symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>){
-        self.symbol_table = symbol_table;
+        match &self.annotated_ast{
+            Some(ast) => {
+                ast.write().unwrap().symbol_table = symbol_table;
+            },
+            _=> (),
+        }
     }
 
     pub fn get_analyzer_diagnostics(&self)-> Option<Arc<Vec<lsp_types::Diagnostic>>>{

@@ -106,7 +106,7 @@ impl DefinitionService{
                 } else {
                     // if right node, check left node type first
                     let mut type_resolver = TypeResolver::new(self.semantic_analysis_service.clone());
-                    let left_node_type = type_resolver.resolve_annotated_node_lock_type(&parent_lock.children[0].read().unwrap(), st);
+                    let left_node_type = type_resolver.resolve_annotated_node_lock_type(&parent_lock.children[0].read().unwrap());
                     match left_node_type{
                         EvalType::Class(class_name)=>{
                             // search right node in class
@@ -240,11 +240,14 @@ impl DefinitionService{
     {
         let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri, false)?;
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
-        let root_st = doc.lock().unwrap().symbol_table.as_ref().unwrap().clone();
+        let root_st = doc.lock().unwrap().get_symbol_table();
         
         let enc_node =self.search_encasing_node(&ast, &pos);
         self.logger.log_info(format!("[Req Definition] Node: {}", enc_node.read().unwrap().data.get_identifier()).as_str());
-        let st = TypeResolver::get_nearest_symbol_table(&enc_node.read().unwrap(), &root_st);
+        let st = match TypeResolver::get_nearest_symbol_table(&enc_node.read().unwrap()){
+            Some(st) => st,
+            _=> return Err(ProjectManagerError::new("Cannot find symbol table", ErrorCode::InternalError))
+        };
 
         return self.handle_node(&enc_node, &st, pos)
     }

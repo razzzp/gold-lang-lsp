@@ -104,7 +104,7 @@ impl ProjectManager{
 
     pub fn generate_document_symbols(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
         let doc = self.analyze_doc(uri, true)?;
-        let sym_table = match &doc.lock().unwrap().symbol_table{
+        let sym_table = match doc.lock().unwrap().get_symbol_table(){
             Some(st) => st.clone(),
             _=> return Err(ProjectManagerError::new("Unable to generate symbol table", ErrorCode::InternalError))
         };

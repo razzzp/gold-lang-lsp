@@ -41,7 +41,7 @@ impl SemanticAnalysisService {
         let uri = self.doc_service.read().unwrap().get_uri_for_class(class)?;
         let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri, true)?;
         let doc_lock = doc.lock().unwrap();
-        match &doc_lock.symbol_table{
+        match doc_lock.get_symbol_table(){
             Some(st) => return Ok(st.clone()),
             _=> return Err(ProjectManagerError::new(format!("Unable to get Symbol table for {}",class).as_str(), ErrorCode::InternalError))
         }
@@ -77,8 +77,7 @@ impl SemanticAnalysisService {
             self.logger.clone(),
             only_definitions
         );
-        let (annotated_tree, sym_table) = annotator.analyze(&root_node)?;
-        doc.lock().unwrap().symbol_table = Some(sym_table.clone());
+        let annotated_tree = annotator.analyze(&root_node)?;
         doc.lock().unwrap().annotated_ast = Some(annotated_tree.clone());
         return Ok(doc);
     }
@@ -116,12 +115,13 @@ impl<'a> AstAnnotator<'a>{
     }
 
     fn analyze(&mut self, root_node: &Arc<dyn IAstNode>) -> 
-    Result<(Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, Arc<Mutex<SymbolTable>>), ProjectManagerError>{
+    Result<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, ProjectManagerError>{
         let annotated_tree = self.generate_annotated_tree(&root_node);
         self.walk_tree(&annotated_tree);
         self.notify_end_method();
-        let sym_table = self.root_symbol_table.take().unwrap();
-        return Ok((annotated_tree, sym_table));
+        //add sym table to root of tree
+        annotated_tree.write().unwrap().symbol_table = Some(self.root_symbol_table.take().unwrap());
+        return Ok(annotated_tree);
     }
 
     fn generate_annotated_tree<'b>(&self, root_node: &Arc<dyn IAstNode>) -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>{
