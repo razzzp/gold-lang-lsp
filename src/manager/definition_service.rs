@@ -297,7 +297,7 @@ mod test{
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
-        let target_uri = create_uri_from_path("./test/workspace/aSecondClass.god");
+        let target_uri = create_uri_from_path("./test/workspace/aRootClass.god");
         assert_eq!(loc.target_uri, target_uri);
     }
 

@@ -9,7 +9,7 @@ use super::{
     symbol_table::*, 
     semantic_analysis_service::SemanticAnalysisService, 
     annotated_node::*, 
-    data_structs::ProjectManagerError, 
+    data_structs::{ProjectManagerError, Document}, 
     type_resolver::TypeResolver
 };
 
@@ -48,16 +48,26 @@ impl AstAnnotator{
         }      
     }
 
-    pub fn analyze(&mut self, root_node: &Arc<dyn IAstNode>) -> 
-    Result<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, ProjectManagerError>{
+
+    pub fn annotate_doc(&mut self, doc: Arc<Mutex<Document>>) -> 
+    Result<Arc<Mutex<Document>>, ProjectManagerError>{
+        let root_node = doc.lock().unwrap().get_ast().clone();
         let annotated_tree = self.generate_annotated_tree(&root_node);
+
+        // assign root st to root node
+        annotated_tree.write().unwrap().symbol_table = Some(self.root_symbol_table.unwrap_ref().clone());
+        // assign to doc, so that in the case of circular
+        // dependency, analyzing the same doc again won't regenerate and cause
+        // infinite loop
+        doc.lock().unwrap().annotated_ast = Some(annotated_tree.clone());
+
+        // walk tree and analyze
         self.walk_tree(&annotated_tree);
         self.notify_end_method();
-        //add sym table to root of tree
-        annotated_tree.write().unwrap().symbol_table = Some(self.root_symbol_table.take().unwrap());
-        return Ok(annotated_tree);
+        
+        return Ok(doc);
     }
-
+    
     fn generate_annotated_tree<'b>(&self, root_node: &Arc<dyn IAstNode>) -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>{
         let new_annotated_node = Arc::new(RwLock::new(AnnotatedNode::new(root_node, None)));
         let children = match root_node.get_children_arc(){
@@ -75,12 +85,11 @@ impl AstAnnotator{
     fn walk_tree(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
         self.visit(node);
         for child in &node.read().unwrap().children {
-            // first level are definitions, so visit first
-            // preorder
+            // first level are definitions, so visit first (preorder)
             self.visit(child);
             if !self.only_definitions {
-                // everything under, travel postorder,
-                // process children first
+                // everything under, travel postorder
+                // (process children first)
                 for inner_child in &child.read().unwrap().children{
                     self.walk_tree_postorder(inner_child)
                 }
@@ -485,6 +494,39 @@ endproc
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
         // check second right
         let node = search_encasing_node(&root, &Position::new(6, 13));
+        // println!("{:#?}", node.read().unwrap().as_annotated_node());
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+    }
+
+    #[test]
+    fn test_bin_op_refto(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = 
+"
+class aObject
+var1 : refto aObject
+proc Test
+    var obj : aObject
+    ;
+    writeln(obj.var1.var1)
+endproc
+        ".to_string();
+        let doc = proj_manager.doc_service.read().unwrap().parse_content(&test_input).unwrap();
+        let doc = Arc::new(Mutex::new(doc));
+        let mut sem_service = create_test_sem_service(proj_manager.doc_service.clone());
+        let doc = sem_service.analyze(doc, false).unwrap();
+        let root =doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
+        // check obj
+        let node = search_encasing_node(&root, &Position::new(6, 15));
+        // println!("{:#?}", node.read().unwrap().as_annotated_node());
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+        // check first right
+        let node = search_encasing_node(&root, &Position::new(6, 19));
+        // println!("{:#?}", node.read().unwrap().as_annotated_node());
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+        // check second right
+        let node = search_encasing_node(&root, &Position::new(6, 25));
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
     }

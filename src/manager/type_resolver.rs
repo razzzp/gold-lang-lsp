@@ -20,7 +20,12 @@ impl TypeResolver {
         // already searches parent
         let mut sym_info = sym_table.lock().unwrap().get_symbol_info(id);
         if search_uses && sym_info.is_none() {
-            for uses in sym_table.lock().unwrap().iter_uses(){
+            // need to copy uses to local, otherwise symtable will
+            // be lock, and since calls here are recursive it may cause deadlock
+            // if there are circular depencies
+            let uses_list = sym_table.lock().unwrap().get_list_of_uses();
+
+            for uses in uses_list.iter(){
                 let uses_sym_table = match self.semantic_analysis_service.get_symbol_table_class_def_only(uses){
                     Ok(r) => r,
                     _=> continue
@@ -37,20 +42,25 @@ impl TypeResolver {
     /// also returns the class the symbol is in
     pub fn search_sym_info_w_class(&mut self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<(String,Arc<SymbolInfo>)>{
         // already searches parent
-        let mut sym_info = sym_table.lock().unwrap().search_symbol_info(id);
-        if search_uses && sym_info.is_none() {
-            for uses in sym_table.lock().unwrap().iter_uses(){
+        let mut result = sym_table.lock().unwrap().search_symbol_info(id);
+        if search_uses && result.is_none() {
+            // need to copy uses to local, otherwise symtable will
+            // be lock, and since calls here are recursive it may cause deadlock
+            // if there are circular depencies
+            let uses_list = sym_table.lock().unwrap().get_list_of_uses();
+
+            for uses in uses_list.iter(){
                 let uses_sym_table = match self.semantic_analysis_service.get_symbol_table_class_def_only(uses){
                     Ok(r) => r,
                     _=> continue
                 };
-                sym_info=uses_sym_table.lock().unwrap().search_symbol_info(id);
-                if sym_info.is_some(){
+                result=uses_sym_table.lock().unwrap().search_symbol_info(id);
+                if result.is_some(){
                     break;
                 }
             }
         }
-        return sym_info;
+        return result;
     }
 
     fn resolve_type_basic(&mut self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
@@ -92,14 +102,17 @@ impl TypeResolver {
         let node = node.as_any().downcast_ref::<AstTypeReference>()?; 
         //
         if node.ref_type.token_type == TokenType::RefTo{
-            let id = node.ref_type.get_value();
+            let id = node.ident_token.get_value();
             // just a class
             if let Ok(_) = self.semantic_analysis_service
                         .doc_service.read().unwrap()
                         .get_uri_for_class(&id.to_string())
             {
                 return Some(EvalType::Class(id.to_string()));
-            }
+            } //else {return Some(EvalType::Unknown)}
+            
+            // below shouldn't be necessary unless we want to check type
+            //  needs to be objec TODO
             // if not class, search types in parents and uses
             let sym = self.search_sym_info(&id.to_string(),sym_table, true);
             match sym{

@@ -52,7 +52,8 @@ impl SemanticAnalysisService {
         
         // TODO !!! commenting this can cause stack overflow, but
         //  using will cause certain dependency cases to fail
-        self.check_already_seen(uri)?;
+        //  **should be solved by setting result to doc, before processing
+        // self.check_already_seen(uri)?;
 
         self.logger.log_info(format!("[Req Analyze Uri:{}]{}", if !only_definitions {"Full"}else{"Light"},uri).as_str());
 
@@ -68,7 +69,7 @@ impl SemanticAnalysisService {
     
     pub fn analyze(&mut self, doc: Arc<Mutex<Document>>, only_definitions: bool) -> 
     Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        let root_node = doc.lock().unwrap().get_ast().clone();
+        
         // let mut semantic_analysis_service = SemanticAnalysisService::new(
         //     self.doc_service.clone(), 
         //     self.logger.clone(),
@@ -81,9 +82,9 @@ impl SemanticAnalysisService {
             self.logger.clone(),
             only_definitions
         );
-        let annotated_tree = annotator.analyze(&root_node)?;
-        doc.lock().unwrap().annotated_ast = Some(annotated_tree.clone());
-        return Ok(doc);
+        let annotated_doc = annotator.annotate_doc(doc)?;
+
+        return Ok(annotated_doc);
     }
 
     pub fn clear_session(&mut self){

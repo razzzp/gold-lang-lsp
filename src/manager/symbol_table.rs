@@ -61,7 +61,7 @@ pub trait ISymbolTable: Debug + Send {
     fn identifier_exists(&mut self, id: &String) -> bool;
     fn as_isymbol_table_mut(&mut self) -> &mut dyn ISymbolTable;
     fn add_uses_entity(&mut self, entity_name: &String);
-    fn iter_uses<'a>(&'a mut self) -> Vec<&'a String>;
+    fn get_list_of_uses(&self) -> Vec<String>;
     // for debug only
     fn print_all_symbols(&self);
     fn get_class(&self) -> Option<String>;
@@ -138,8 +138,8 @@ impl ISymbolTable for SymbolTable {
         return result;
     }
 
-    fn iter_uses<'a>(&'a mut self) -> Vec<&'a String> {
-        self.uses_entities.iter().collect()
+    fn get_list_of_uses(&self) -> Vec<String> {
+        self.uses_entities.iter().map(|s| s.clone()).collect()
     }
 
     fn insert_symbol_info(&mut self, id: String, symbol_info: SymbolInfo) -> &SymbolInfo {
