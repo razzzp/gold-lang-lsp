@@ -6,7 +6,7 @@ use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagn
 use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector, IDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor, AnalyzerDiagnostic}, threadpool::ThreadPool};
 use data_structs::*;
 
-use self::{semantic_analysis_service::{SemanticAnalysisService}, document_service::DocumentService,  definition_service::DefinitionService};
+use self::{semantic_analysis_service::{SemanticAnalysisService}, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst};
 use crate::manager::doc_symbol_generator::DocumentSymbolGenerator;
 
 pub mod data_structs;
@@ -106,7 +106,14 @@ impl ProjectManager{
     }
 
     pub fn generate_document_symbols(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
-        let doc = self.analyze_doc(uri, true)?;
+        // use lighter sym generator if doc not analyzed yet
+        let doc = self.doc_service.write().unwrap().get_parsed_document(uri, true)?;
+        if doc.lock().unwrap().annotated_ast.is_none(){
+            let sym_gen = DocumentSymbolGeneratorFromAst::new();
+            let ast = doc.lock().unwrap().ast.clone();
+            return Ok(sym_gen.generate_symbols(ast.as_ast_node()))
+        }
+        // otherwise use symbol table to generate
         let sym_table = match doc.lock().unwrap().get_symbol_table(){
             Some(st) => st.clone(),
             _=> return Err(ProjectManagerError::new("Unable to generate symbol table", ErrorCode::InternalError))

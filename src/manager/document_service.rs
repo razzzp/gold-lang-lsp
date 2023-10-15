@@ -289,7 +289,7 @@ mod test{
         let mut doc_manager = DocumentService::new(Some(uri), create_test_logger()).unwrap();
         doc_manager.index_files();
         
-        assert_eq!(doc_manager.uri_docinfo_map.read().unwrap().len(), 6);
+        assert_eq!(doc_manager.uri_docinfo_map.read().unwrap().len(), 7);
         // ensure not locked
         drop(doc_manager.uri_docinfo_map.try_write().unwrap());
         drop(doc_manager.class_uri_map.try_write().unwrap());

@@ -2,7 +2,7 @@ use std::{sync::{Arc, Mutex}, ops::Deref};
 
 use lsp_types::{DocumentSymbol, SymbolKind};
 
-use crate::utils::OptionString;
+use crate::{utils::{OptionString, IRange}, parser::ast::{IAstNode, AstConstantDeclaration, AstTypeDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstFunction, AstClass}};
 
 use super::symbol_table::{ISymbolTable, SymbolType, SymbolInfo};
 
@@ -137,6 +137,164 @@ impl DocumentSymbolGenerator{
                     break;
                 }
                 _ => continue
+            }
+        }
+        return result;
+    }
+}
+
+
+pub struct DocumentSymbolGeneratorFromAst{
+
+}
+impl DocumentSymbolGeneratorFromAst{
+    pub fn new() -> DocumentSymbolGeneratorFromAst{
+        return DocumentSymbolGeneratorFromAst {  }
+    }
+
+    pub fn generate_symbols(&self, ast: &dyn IAstNode)-> Vec<DocumentSymbol> {
+        let mut result = Vec::<DocumentSymbol>::new();
+        let mut class_symbol = self.find_and_generate_class_symbol(ast);
+        for node in ast.get_children_ref().unwrap_or_default().iter() {
+            let symbol = self.generate_symbol_for_node(node.as_ast_node());
+            if symbol.is_some(){
+                match &mut class_symbol {
+                    Some(class_sym) => class_sym.children.as_mut().unwrap().push(symbol.unwrap()),
+                    None => result.push(symbol.unwrap())
+                };
+            }
+        }
+        if class_symbol.is_some(){result.push(class_symbol.unwrap())}
+        return result;
+    }
+
+    fn generate_symbol_for_node(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
+        let mut result : Option<DocumentSymbol>= None;
+        match self.generate_constant_symbol(ast_node) {
+            Some(s) => {result = Some(s);},
+            None => ()
+        };
+        match self.generate_type_declaration_symbol(ast_node) {
+            Some(s) => {result = Some(s);},
+            None => ()
+        };
+        match self.generate_global_var_decl_symbol(ast_node) {
+            Some(s) => {result = Some(s);},
+            None => ()
+        };
+        match self.generate_proc_symbol(ast_node) {
+            Some(s) => {result = Some(s);},
+            None => ()
+        };
+        match self.generate_func_symbol(ast_node) {
+            Some(s) => {result = Some(s);},
+            None => ()
+        };
+        return result;
+    }
+
+    fn generate_constant_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
+        match ast_node.as_any().downcast_ref::<AstConstantDeclaration>(){
+            Some(n) => Some(DocumentSymbol { 
+                    name: n.identifier.value.as_ref().unwrap().to_string(), 
+                    detail: Some(n.value.value.as_ref().unwrap().to_string()), 
+                    kind: SymbolKind::CONSTANT, 
+                    range: n.get_range().as_lsp_type_range(), 
+                    selection_range: n.identifier.get_range().as_lsp_type_range(), 
+                    tags: None,
+                    deprecated: None,
+                    children: None
+            }),
+            None => None
+        }
+    }
+
+    fn generate_type_declaration_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
+        match ast_node.as_any().downcast_ref::<AstTypeDeclaration>(){
+            Some(n) => Some(DocumentSymbol { 
+                    name: n.identifier.value.as_ref().unwrap().to_string(), 
+                    detail: None, 
+                    kind: SymbolKind::PROPERTY, 
+                    range: n.get_range().as_lsp_type_range(), 
+                    selection_range: n.identifier.get_range().as_lsp_type_range(), 
+                    tags: None,
+                    deprecated: None,
+                    children: None
+            }),
+            None => None
+        }
+    }
+
+    fn generate_global_var_decl_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
+        match ast_node.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
+            Some(n) => Some(DocumentSymbol { 
+                    name: n.identifier.value.as_ref().unwrap().to_string(), 
+                    detail: Some(n.type_node.get_identifier()), 
+                    kind: SymbolKind::FIELD, 
+                    range: n.get_range().as_lsp_type_range(), 
+                    selection_range: n.identifier.get_range().as_lsp_type_range(), 
+                    tags: None,
+                    deprecated: None,
+                    children: None
+            }),
+            None => None
+        }
+    }
+
+    fn generate_proc_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
+        match ast_node.as_any().downcast_ref::<AstProcedure>(){
+            Some(n) => Some(DocumentSymbol { 
+                    name: n.identifier.get_identifier(), 
+                    detail: None, 
+                    kind: SymbolKind::METHOD, 
+                    range: n.get_range().as_lsp_type_range(), 
+                    selection_range: n.identifier.get_range().as_lsp_type_range(), 
+                    tags: None,
+                    deprecated: None,
+                    children: None
+            }),
+            None => None
+        }
+    }
+
+    fn generate_func_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
+        match ast_node.as_any().downcast_ref::<AstFunction>(){
+            Some(n) => Some(DocumentSymbol { 
+                    name: n.identifier.get_identifier(), 
+                    detail: Some(n.return_type.get_identifier()), 
+                    kind: SymbolKind::FUNCTION, 
+                    range: n.get_range().as_lsp_type_range(), 
+                    selection_range: n.identifier.get_range().as_lsp_type_range(), 
+                    tags: None,
+                    deprecated: None,
+                    children: None
+            }),
+            None => None
+        }
+    }
+
+    fn find_and_generate_class_symbol(&self, ast: &dyn IAstNode) -> Option<DocumentSymbol>{
+        let mut result: Option<DocumentSymbol> = None;
+        for ast_node in ast.get_children_ref().unwrap_or_default().iter() {
+            match ast_node.as_any().downcast_ref::<AstClass>(){
+                Some(n) => {
+                    let parent_class_name = match &n.parent_class{
+                        Some(t) => Some(t.get_value()),
+                        _=>None
+                    };
+                    result = Some(DocumentSymbol { 
+                        name: n.identifier.get_value(), 
+                        detail: parent_class_name, 
+                        kind: SymbolKind::CLASS, 
+                        range: n.get_range().as_lsp_type_range(), 
+                        selection_range: n.get_range().as_lsp_type_range(), 
+                        tags: None,
+                        deprecated: None,
+                        children: Some(Vec::new())
+                    });
+                    break;
+                }
+                None => continue
             }
         }
         return result;
