@@ -1,6 +1,8 @@
 
 use std::{thread, sync::{mpsc, Arc, Mutex}};
 
+use crate::utils::ILoggerV2;
+
 
 type Job = Box<dyn FnOnce() + Send + 'static>;
 enum Message {
@@ -11,11 +13,12 @@ enum Message {
 pub struct ThreadPool {
     workers: Vec<Worker>,
     sender: mpsc::Sender<Message>,
+    logger: Arc<dyn ILoggerV2>
 }
 
 impl ThreadPool {
     // --snip--
-    pub fn new(size: usize) -> ThreadPool {
+    pub fn new(size: usize, logger: Arc<dyn ILoggerV2>) -> ThreadPool {
         assert!(size > 0);
 
         let (sender, receiver) = mpsc::channel::<Message>();
@@ -25,9 +28,9 @@ impl ThreadPool {
         let mut workers = Vec::with_capacity(size);
 
         for id in 0..size {
-            workers.push(Worker::new(id, Arc::clone(&receiver)));
+            workers.push(Worker::new(id, Arc::clone(&receiver), logger.clone()));
         }
-        ThreadPool { workers, sender }
+        ThreadPool { workers, sender, logger }
     }
 
     pub fn execute<F>(&self, f: F)
@@ -51,7 +54,7 @@ impl Drop for ThreadPool{
         }
 
         for worker in &mut self.workers {
-            eprintln!("Shutting down worker {}", worker.id);
+            self.logger.log_info(format!("Shutting down worker {}", worker.id).as_str());
             if let Some(thread) = worker.thread.take() {
                 thread.join().unwrap();
             }
@@ -67,12 +70,13 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
+    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>, logger: Arc<dyn ILoggerV2>) -> Worker {
         let thread = thread::spawn(move || loop {
             let msg = receiver.lock().unwrap().recv().unwrap();
+
             match msg{
                 Message::NewJob(job) => {
-                    println!("Worker {id} got a job; executing.");
+                    logger.log_info(format!("Worker {id} got a job; executing.").as_str());
 
                     job();
                 },

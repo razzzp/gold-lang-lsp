@@ -20,7 +20,7 @@ pub mod ast_annotator;
 pub mod doc_symbol_generator;
 pub mod utils;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProjectManager{
     pub doc_service: Arc<RwLock<DocumentService>>,
     logger: Arc<dyn ILoggerV2>,
@@ -433,8 +433,9 @@ pub mod test{
             Ok(_) => (),
             _=> return
         };
-        let threadpool = ThreadPool::new(5);
+        
         let mut proj_manager= create_test_project_manager("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        let threadpool = ThreadPool::new(5,proj_manager.logger.clone());
         proj_manager.index_files();
         proj_manager.analyze_files(&threadpool);
         drop(threadpool);

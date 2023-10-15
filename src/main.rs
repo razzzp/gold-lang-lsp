@@ -10,6 +10,7 @@ use crate::utils::ConsoleLogger;
 
 use std::error::Error;
 
+use crossbeam_channel::Sender;
 use lsp_types::notification::{DidChangeTextDocument, DidSaveTextDocument};
 use lsp_types::{OneOf, DocumentSymbolResponse, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse};
 use lsp_types::request::{DocumentSymbolRequest, DocumentDiagnosticRequest, GotoDefinition};
@@ -71,12 +72,12 @@ fn main_loop(
     params: serde_json::Value,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let params: InitializeParams = serde_json::from_value(params).unwrap();
-    
+
     //TODO implem multithreading
-    let mut threadpool = ThreadPool::new(5);
     let mut logger : Arc<dyn ILoggerV2>= Arc::new(StdErrLogger::new("[Gold Lang Server]"));
+    let mut threadpool = ThreadPool::new(5, logger.clone());
     // TODO use same logger in server and project manager
-    let mut doc_manager = match ProjectManager::new(
+    let mut proj_manager = match ProjectManager::new(
         params.root_uri,
         logger.clone()
     ){
@@ -85,7 +86,7 @@ fn main_loop(
             return Err(Box::new(e));
         }
     };
-    doc_manager.index_files();
+    proj_manager.index_files();
 
     for msg in &connection.receiver {
         // eprintln!("got msg: {msg:?}");
@@ -97,9 +98,9 @@ fn main_loop(
                 logger.log_info(format!("got request; #{}; method:{}", req.id, req.method).as_str());
                 let req = match cast_req::<DocumentSymbolRequest>(req) {
                     Ok((id, params)) => {
-                        match handle_document_symbol_request(&mut doc_manager, id.clone(), params, &logger){
+                        match handle_document_symbol_request(&mut proj_manager, id.clone(), params, &logger){
                             Ok(resp) => connection.sender.send(resp)?,
-                            Err(e) => send_error(&connection, id, e.0, e.1)?
+                            Err(e) => send_error(&connection.sender, id, e.0, e.1)?
                         }
                         continue;
                     }
@@ -108,9 +109,9 @@ fn main_loop(
                 };
                 let req = match cast_req::<DocumentDiagnosticRequest>(req) {
                     Ok((id, params)) => {
-                        match handle_document_diagnostics_request(&mut doc_manager, id.clone(), params, &logger){
+                        match handle_document_diagnostics_request(&mut proj_manager, id.clone(), params, &logger){
                             Ok(resp) => connection.sender.send(resp)?,
-                            Err(e) => send_error(&connection, id, e.0, e.1)?
+                            Err(e) => send_error(&connection.sender, id, e.0, e.1)?
                         }
                         continue;
                     }
@@ -120,10 +121,16 @@ fn main_loop(
 
                 let req = match cast_req::<GotoDefinition>(req) {
                     Ok((id, params)) => {
-                        match handle_goto_definition_request(&mut doc_manager, id.clone(), params, &logger){
-                            Ok(resp) => connection.sender.send(resp)?,
-                            Err(e) => send_error(&connection, id, e.0, e.1)?
-                        }
+                        // heavy call to analyze doc, move to separate thread
+                        let sender = connection.sender.clone();
+                        let mut proj_manager = proj_manager.clone();
+                        let logger = logger.clone();
+                        threadpool.execute(move ||{
+                            match handle_goto_definition_request(&mut proj_manager, id.clone(), params, &logger){
+                                Ok(resp) => {let _ = sender.send(resp);},
+                                Err(e) => {let _  = send_error(&sender, id, e.0, e.1);}
+                            };
+                        });
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
@@ -139,7 +146,7 @@ fn main_loop(
                 logger.log_info(format!("got notification; method:{}", not.method).as_str());
                 let not = match cast_not::<DidChangeTextDocument>(not) {
                     Ok(params) => {
-                        match handle_did_change_notification(&mut doc_manager, params, &logger){
+                        match handle_did_change_notification(&mut proj_manager, params, &logger){
                             Ok(msgs) => {
                                 for msg in msgs {
                                     connection.sender.send(msg)?;
@@ -154,7 +161,7 @@ fn main_loop(
                 };
                 match cast_not::<DidSaveTextDocument>(not) {
                     Ok(params) => {
-                        match handle_did_save_notification(&mut doc_manager, params, &logger){
+                        match handle_did_save_notification(&mut proj_manager, params, &logger){
                             Ok(msgs) => {
                                 for msg in msgs {
                                     connection.sender.send(msg)?;
@@ -326,7 +333,7 @@ where
     not.extract(R::METHOD)
 }
 
-fn send_error(connection: &Connection, id: RequestId, code: i32, message: String)
+fn send_error(sender: &Sender<Message>, id: RequestId, code: i32, message: String)
 -> Result<(), Box<dyn Error + Sync + Send>> {
     let error = Some(ResponseError {
         code,
@@ -334,7 +341,7 @@ fn send_error(connection: &Connection, id: RequestId, code: i32, message: String
         data: None
     });
     let resp = Response { id, result: None, error: error };
-    Ok(connection.sender.send(Message::Response(resp))?)
+    Ok(sender.send(Message::Response(resp))?)
 }
 
 
