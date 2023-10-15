@@ -40,8 +40,8 @@ impl SemanticAnalysisService {
     pub fn get_symbol_table_class_def_only(&mut self, class: &String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         let uri = self.doc_service.read().unwrap().get_uri_for_class(class)?;
         let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri, true)?;
-        let doc_lock = doc.lock().unwrap();
-        match doc_lock.get_symbol_table(){
+        let st_option = doc.lock().unwrap().get_symbol_table().clone();
+        match st_option{
             Some(st) => return Ok(st.clone()),
             _=> return Err(ProjectManagerError::new(format!("Unable to get Symbol table for {}",class).as_str(), ErrorCode::InternalError))
         }
@@ -60,8 +60,16 @@ impl SemanticAnalysisService {
         let doc: Arc<Mutex<Document>> = self.doc_service.write().unwrap().get_parsed_document(uri, true)?;
         // is exist and only defs needed return existing,
         //  otherwise regenerate
-        if doc.lock().unwrap().annotated_ast.is_some() && only_definitions{
-            return Ok(doc);
+        if doc.lock().unwrap().annotated_ast.is_some(){
+            if only_definitions{
+                // some means at least definitions defined
+                return Ok(doc);
+            } else {
+                // else have to check if full annotation
+                if doc.lock().unwrap().only_definitions == only_definitions{
+                    return Ok(doc);
+                }
+            }
         }
         self.logger.log_info(format!("[Analyzing Uri]{}", uri).as_str());
         return self.analyze(doc, only_definitions);

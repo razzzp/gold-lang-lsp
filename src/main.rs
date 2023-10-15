@@ -11,8 +11,8 @@ use crate::utils::ConsoleLogger;
 use std::error::Error;
 
 use crossbeam_channel::Sender;
-use lsp_types::notification::{DidChangeTextDocument, DidSaveTextDocument};
-use lsp_types::{OneOf, DocumentSymbolResponse, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse};
+use lsp_types::notification::{DidChangeTextDocument, DidSaveTextDocument, DidOpenTextDocument};
+use lsp_types::{OneOf, DocumentSymbolResponse, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams};
 use lsp_types::request::{DocumentSymbolRequest, DocumentDiagnosticRequest, GotoDefinition};
 use lsp_types::{
     InitializeParams, ServerCapabilities,
@@ -146,7 +146,7 @@ fn main_loop(
                 logger.log_info(format!("got notification; method:{}", not.method).as_str());
                 let not = match cast_not::<DidChangeTextDocument>(not) {
                     Ok(params) => {
-                        match handle_did_change_notification(&mut proj_manager, params, &logger){
+                        match handle_did_change_notification(&mut proj_manager, params, &logger, &threadpool){
                             Ok(msgs) => {
                                 for msg in msgs {
                                     connection.sender.send(msg)?;
@@ -159,9 +159,24 @@ fn main_loop(
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
                     Err(ExtractError::MethodMismatch(req)) => req,
                 };
-                match cast_not::<DidSaveTextDocument>(not) {
+                let not = match cast_not::<DidSaveTextDocument>(not) {
                     Ok(params) => {
                         match handle_did_save_notification(&mut proj_manager, params, &logger){
+                            Ok(msgs) => {
+                                for msg in msgs {
+                                    connection.sender.send(msg)?;
+                                }
+                            },
+                            Err(e) => logger.log_error(format!("error: code({}) {}", e.0, e.1).as_str())
+                        }
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+                match cast_not::<DidOpenTextDocument>(not) {
+                    Ok(params) => {
+                        match handle_did_open_notification(&mut proj_manager, params, &logger, &threadpool){
                             Ok(msgs) => {
                                 for msg in msgs {
                                     connection.sender.send(msg)?;
@@ -243,6 +258,7 @@ fn handle_did_change_notification(
     proj_manager: &mut ProjectManager, 
     params: DidChangeTextDocumentParams,
     logger: &Arc<dyn ILoggerV2>,
+    threadpool: &ThreadPool
 )
     -> Result<Vec<Message>, (i32, String)>
 {
@@ -257,7 +273,7 @@ fn handle_did_change_notification(
         },
         None=> return Err((ErrorCode::InvalidParams as i32, "Incremental did change event not supported".to_string()))
     };
-    let _ = match proj_manager.notify_document_changed(&params.text_document.uri, full_file_content){
+    let _ = match proj_manager.notify_document_changed(&params.text_document.uri, full_file_content, threadpool){
         Ok(d) => d,
         Err(e) =>{
             return Err((e.error_code as i32, e.msg));
@@ -314,6 +330,30 @@ fn handle_did_save_notification(
     };
     let mut result = Vec::<Message>::new();
     result.push(Message::Notification(publish_diag));
+    return Ok(result)
+}
+
+fn handle_did_open_notification(
+    proj_manager: &mut ProjectManager, 
+    params: DidOpenTextDocumentParams,
+    logger: &Arc<dyn ILoggerV2>,
+    threadpool: &ThreadPool
+)
+    -> Result<Vec<Message>, (i32, String)>
+{
+    logger.log_info(format!("handling Did Save notification").as_str());
+    // get full file content
+    let result= Vec::new();
+    if params.text_document.language_id.as_str() != "gold"{
+        return Ok(result)
+    }
+    let _ = match proj_manager.notify_document_opened(&params.text_document.uri, threadpool){
+        Ok(d) => d,
+        Err(e) =>{
+            return Err((e.error_code as i32, e.msg));
+        }
+    };
+    
     return Ok(result)
 }
 

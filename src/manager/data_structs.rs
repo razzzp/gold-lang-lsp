@@ -14,7 +14,8 @@ pub struct Document{
     pub ast: Arc<dyn IAstNode>,
     pub parser_diagnostics: Vec<ParserDiagnostic>,
     pub analyzer_diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>,
-    pub annotated_ast: Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
+    pub annotated_ast: Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>,
+    pub only_definitions : bool
 }
 impl Document{
     pub fn new(ast: Arc<dyn IAstNode>, parser_diagnostics: Vec<ParserDiagnostic>) -> Document {
@@ -22,7 +23,8 @@ impl Document{
             ast,
             parser_diagnostics,
             analyzer_diagnostics:None,
-            annotated_ast: None
+            annotated_ast: None,
+            only_definitions: false
         };
     }
     pub fn get_ast<'a>(&'a self) -> &'a Arc<dyn IAstNode>{

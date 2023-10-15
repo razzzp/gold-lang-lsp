@@ -77,8 +77,30 @@ impl ProjectManager{
         return self.doc_service.write().unwrap().notify_document_saved(uri);
     }
 
-    pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        return self.doc_service.write().unwrap().notify_document_changed(uri, full_file_content);
+    pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String, threadpool: &ThreadPool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+        let doc_info = self.doc_service.write().unwrap().get_document_info(uri)?;
+        // discard old doc, and analyze new content
+        doc_info.write().unwrap().set_opened_document(None);
+        let new_doc = self.doc_service.write().unwrap().parse_content(full_file_content)?;
+        let new_doc = Arc::new(Mutex::new(new_doc));
+        doc_info.write().unwrap().set_opened_document(Some(new_doc.clone()));
+        let mut sem_service = self.create_sem_service();
+        let new_doc_2 = new_doc.clone();
+        threadpool.execute(move ||{
+            let _ = sem_service.analyze(new_doc, false);
+        });
+        return Ok(new_doc_2);
+    }
+
+    pub fn notify_document_opened(&mut self, uri: &Url, threadpool: &ThreadPool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+        let doc = self.doc_service.write().unwrap().get_parsed_document(uri, true)?;
+        // discard old doc, and analyze new content
+        let doc_2 = doc.clone();
+        let mut sem_service = self.create_sem_service();
+        threadpool.execute(move ||{
+            let _ = sem_service.analyze(doc, false);
+        });
+        return Ok(doc_2);
     }
 
     pub fn get_uri_for_class(& self, class_name: &String)-> Result<Url, ProjectManagerError>{
@@ -95,12 +117,7 @@ impl ProjectManager{
     }
 
     pub fn analyze_doc(&mut self, uri : &Url, only_definitions:bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        let mut semantic_analysis_service = SemanticAnalysisService::new(
-            self.doc_service.clone(), 
-            self.logger.clone(),
-            Arc::new(Mutex::new(GenericDiagnosticCollector::new())),
-            None
-        );
+        let mut semantic_analysis_service = self.create_sem_service();
         let doc = semantic_analysis_service.analyze_uri(uri, only_definitions)?;
         return Ok(doc);
     }
@@ -118,6 +135,15 @@ impl ProjectManager{
             Some(st) => st.clone(),
             _=> return Err(ProjectManagerError::new("Unable to generate symbol table", ErrorCode::InternalError))
         };
+        if sym_table.try_lock().is_err() || sym_table.lock().unwrap().iter_symbols().count() == 0{
+            // TODO improve
+            // st locked by analysis so fallback to ast
+            let sym_gen = DocumentSymbolGeneratorFromAst::new();
+            let ast = doc.lock().unwrap().ast.clone();
+            return Ok(sym_gen.generate_symbols(ast.as_ast_node()))
+        }
+
+        // can generate using st
         let sym_gen = DocumentSymbolGenerator {};
         return Ok(sym_gen.generate_symbols(sym_table))
     }
@@ -480,7 +506,7 @@ pub mod test{
     
 
     /// 
-    #[ignore = "takes too long"]
+    #[ignore = "long runing time"]
     #[test]
     fn test_generate_doc_sym_module(){
         let path = PathBuf::from("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
@@ -494,5 +520,21 @@ pub mod test{
         // let _result = proj_manager.generate_document_diagnostic_report(&input_uri).unwrap();
         let result = proj_manager.generate_document_symbols(&input_uri).unwrap();
         assert_eq!(result.len(), 219);
+    }
+
+    #[ignore = "long running time"]
+    #[test]
+    fn test_analyze_doc_large(){
+        let path = PathBuf::from("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        let _ =  match fs::metadata(&path){
+            Ok(_) => (),
+            _=> return
+        };
+        let mut proj_manager= create_test_project_manager("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        proj_manager.index_files();
+        let input_uri = proj_manager.get_uri_for_class(&"aOcsUSIMV20ICCardImage".to_string()).unwrap();
+        // let _result = proj_manager.generate_document_diagnostic_report(&input_uri).unwrap();
+        let result = proj_manager.analyze_doc(&input_uri, false).unwrap();
+        assert!(result.lock().unwrap().annotated_ast.is_some());
     }
 }

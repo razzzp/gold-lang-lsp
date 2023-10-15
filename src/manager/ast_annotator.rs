@@ -60,7 +60,7 @@ impl AstAnnotator{
         // dependency, analyzing the same doc again won't regenerate and cause
         // infinite loop
         doc.lock().unwrap().annotated_ast = Some(annotated_tree.clone());
-
+        doc.lock().unwrap().only_definitions = self.only_definitions;
         // walk tree and analyze
         self.walk_tree(&annotated_tree);
         self.notify_end_method();
