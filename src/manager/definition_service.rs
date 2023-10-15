@@ -5,7 +5,7 @@ use std::{sync::{Arc, RwLock, Mutex, RwLockWriteGuard, RwLockReadGuard, Weak}, a
 use lsp_server::ErrorCode;
 use lsp_types::{LocationLink, Url};
 
-use crate::{parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstTypeBasic, AstClass}, utils::{Position, IRange, ILoggerV2}, lexer::tokens::TokenType, manager::type_resolver};
+use crate::{parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstTypeBasic, AstClass, AstTypeReference}, utils::{Position, IRange, ILoggerV2}, lexer::tokens::TokenType, manager::type_resolver};
 
 use super::{ProjectManager, data_structs::{ProjectManagerError, Document}, annotated_node::{AnnotatedNode, EvalType}, semantic_analysis_service::SemanticAnalysisService, type_resolver::TypeResolver, document_service::DocumentService, utils::search_encasing_node};
 use crate::manager::symbol_table::ISymbolTable;
@@ -157,6 +157,32 @@ impl DefinitionService{
         } else {return None}
     }
 
+    fn handle_type_reference(
+        &mut self, 
+        node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
+        st: &Arc<Mutex<dyn ISymbolTable>>
+    )-> Option<Result<Vec<lsp_types::LocationLink>, ProjectManagerError>>{
+        let type_node = match node.data.as_any().downcast_ref::<AstTypeReference>(){
+            Some(n) => n,
+            _=> return None,
+        };
+
+        if let Some((class,sym)) = self.type_resolver.search_sym_info_w_class(&type_node.get_identifier(), st, true){
+            let uri = match self.doc_service.read().unwrap().get_uri_for_class(&class){
+                Ok(u) => u,
+                _=> return None
+            };
+            let mut result = Vec::new();
+            result.push(LocationLink{
+                origin_selection_range: Some(type_node.ident_token.get_range().as_lsp_type_range()),
+                target_range: sym.range.as_lsp_type_range(),
+                target_selection_range: sym.selection_range.as_lsp_type_range(),
+                target_uri: uri
+            });
+            return  Some(Ok(result));
+        } else {return None}
+    }
+
     fn handle_class(
         &mut self, 
         node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
@@ -169,6 +195,7 @@ impl DefinitionService{
         };
         let id;
         let origin_range;
+        // just provide goto def for the parent class
         match class_node.parent_class.as_ref() {
             Some(t) =>{
                 if t.get_range().contains_pos(pos){
@@ -206,6 +233,9 @@ impl DefinitionService{
     )-> Result<Vec<lsp_types::LocationLink>, ProjectManagerError>{
         let r_node = node.read().unwrap();
         if let Some(r)= self.handle_type_basic(&r_node, st){
+            return  r;
+        }
+        if let Some(r)= self.handle_type_reference(&r_node, st){
             return  r;
         }
         if let Some(r)= self.handle_terminal(&r_node, st){
@@ -358,6 +388,22 @@ mod test{
         let test_input = create_uri_from_path("./test/workspace/aSecondClass.god");
         // pos input to test, local var
         let pos_input = Position::new(7, 13);
+
+        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let mut result = def_service.get_definition(&pos_input).unwrap();
+        assert_eq!(result.len(), 1);
+        let loc = result.pop().unwrap();
+        let target_uri = create_uri_from_path("./test/workspace/aRootClass.god");
+        assert_eq!(loc.target_uri, target_uri);
+    }
+
+    #[test]
+    fn test_field_refto(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = create_uri_from_path("./test/workspace/aRootClass.god");
+        // pos input to test, local var
+        let pos_input = Position::new(12, 25);
 
         let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();

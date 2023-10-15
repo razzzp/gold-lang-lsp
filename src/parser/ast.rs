@@ -365,7 +365,6 @@ impl IAstNode for AstTypeEnum {
 #[derive(Debug)]
 pub struct AstTypeReference {
     pub raw_pos: usize,
-    pub pos: Position,
     pub range: Range,
     pub ref_type: Token,
     pub options: Vec<Token>,
@@ -374,28 +373,9 @@ pub struct AstTypeReference {
 }
 implem_irange!(AstTypeReference);
 impl IAstNode for AstTypeReference {
-    fn get_type(&self) -> &'static str {
-        return "Type Reference"
-    }
-
-    fn get_raw_pos(&self) -> usize {
-        self.raw_pos
-    }
-
-    fn get_pos(&self) -> Position {
-        self.pos.clone()
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_ast_node(&self) -> &dyn IAstNode{
-        self
-    }
+    implem_iastnode_common!(AstTypeReference,"type_ref");
     fn get_identifier(&self) -> String {
-        self.ref_type.get_value()
-    }
-    fn to_string_type(&self) -> String {
-        "type_ref".to_string()
+        return self.ident_token.get_value();
     }
 }
 
@@ -586,17 +566,18 @@ impl IAstNode for AstProcedure {
     implem_iastnode_common!(AstProcedure, "proc_decl");
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
-        result.push(self.identifier.as_ast_node());
+        // result.push(self.identifier.as_ast_node());
         if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
-        if self.modifiers.is_some() {result.push(self.modifiers.as_ref().unwrap().as_ast_node());}
+        // if self.modifiers.is_some() {result.push(self.modifiers.as_ref().unwrap().as_ast_node());}
         if self.body.is_some() {result.push(self.body.as_ref().unwrap().as_ast_node());}
         return Some(result);
     }
     fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
-        result.push(&self.identifier);
+        // not necessary, id usually handled when method node visited
+        // result.push(&self.identifier);
         result.extend(self.parameter_list.iter());
-        result.extend(self.modifiers.iter());
+        // result.extend(self.modifiers.iter());
         result.extend(self.body.iter());
         return Some(result);
     }
@@ -622,19 +603,20 @@ impl IAstNode for AstFunction {
     implem_iastnode_common!(AstFunction, "func_decl");
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
-        result.push(self.identifier.as_ast_node());
+        // result.push(self.identifier.as_ast_node());
         result.push(self.return_type.as_ref().as_ast_node());
         if self.parameter_list.is_some() {result.push(self.parameter_list.as_ref().unwrap().as_ast_node());}
-        if self.modifiers.is_some() {result.push(self.modifiers.as_ref().unwrap().as_ast_node());}
+        // if self.modifiers.is_some() {result.push(self.modifiers.as_ref().unwrap().as_ast_node());}
         if self.body.is_some() {result.push(self.body.as_ref().unwrap().as_ast_node());}
         return Some(result);
     }
     fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
-        result.push(&self.identifier);
+        // not necessary, id usually handled when method node visited
+        // result.push(&self.identifier);
         result.push(&self.return_type);
         result.extend(self.parameter_list.iter());
-        result.extend(self.modifiers.iter());
+        // result.extend(self.modifiers.iter());
         result.extend(self.body.iter());
         return Some(result);
     }
@@ -957,13 +939,13 @@ impl IAstNode for AstMethodCall {
     implem_iastnode_common!(AstMethodCall, "method_call");
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
-        result.push(self.identifier.as_ast_node());
+        // result.push(self.identifier.as_ast_node());
         self.parameter_list.iter().for_each(|node| {result.push(node.as_ast_node())});
         return Some(result);
     }
     fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
-        result.push(&self.identifier);
+        // result.push(&self.identifier);
         result.extend(self.parameter_list.iter());
         return Some(result);
     }

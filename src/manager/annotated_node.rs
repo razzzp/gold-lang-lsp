@@ -48,6 +48,7 @@ pub enum EvalType{
     Native(NativeType),
     Defined(TypeInfo),
     Class(String),
+    Proc,
     // contains id of unresolved type
     Unresolved(String),
 }

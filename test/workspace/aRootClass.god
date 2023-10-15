@@ -36,4 +36,9 @@ proc SecondRootProc(FirstParam: Int4)
    ;
    WriteLn(same_class.RootVarRef2.RootVarRef2)
    WriteLn(self.RootVar1)
+   WriteLn(cRootConstant)
+endProc
+
+proc ThirdProc
+   var type_var: tRootRecordType
 endProc

@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::{parser::ast::{IAstNode, AstTypeBasic, AstBinaryOp, AstTerminal, AstTypeReference}, lexer::tokens::TokenType};
+use crate::{parser::ast::{IAstNode, AstTypeBasic, AstBinaryOp, AstTerminal, AstTypeReference, AstMethodCall}, lexer::tokens::TokenType};
 
 use super::{annotated_node::{EvalType, NativeType, AnnotatedNode}, ProjectManager, semantic_analysis_service::SemanticAnalysisService};
 use crate::manager::symbol_table::{ISymbolTable,SymbolInfo};
@@ -102,7 +102,7 @@ impl TypeResolver {
         let node = node.as_any().downcast_ref::<AstTypeReference>()?; 
         //
         if node.ref_type.token_type == TokenType::RefTo{
-            let id = node.ident_token.get_value();
+            let id = node.get_identifier();
             // just a class
             if let Ok(_) = self.semantic_analysis_service
                         .doc_service.read().unwrap()
@@ -110,7 +110,7 @@ impl TypeResolver {
             {
                 return Some(EvalType::Class(id.to_string()));
             } //else {return Some(EvalType::Unknown)}
-            
+
             // below shouldn't be necessary unless we want to check type
             //  needs to be objec TODO
             // if not class, search types in parents and uses
@@ -168,8 +168,25 @@ impl TypeResolver {
                 return Some(EvalType::Unknown)
             }
         }
+    }
 
-
+    fn resolve_method_call(&mut self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
+        let method_node = node.as_any().downcast_ref::<AstMethodCall>()?; 
+        //
+        let method_id = method_node.get_identifier().to_uppercase();
+        match method_id.as_str(){
+            // TODO handle all intrinsic methods
+            "WRITELN" => return Some(EvalType::Proc),
+            "WRITE" => return Some(EvalType::Proc),
+            "CONCAT" => return Some(EvalType::Native(NativeType::CString)),
+            _=>{
+                let (_, return_type_sym_info) = match self.search_sym_info_w_class(&method_id, &sym_table, false){
+                    Some(r)  => r,
+                    _=> return Some(EvalType::Unknown)
+                };
+                return return_type_sym_info.eval_type.clone()
+            }
+        }
     }
 
     pub fn resolve_node_type(&mut self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> EvalType {
@@ -181,6 +198,7 @@ impl TypeResolver {
         result = self.resolve_terminal(node, sym_table).unwrap_or(result);
         // binary op
         result = self.resolve_bin_op(node, sym_table).unwrap_or(result);
+        result = self.resolve_method_call(node, sym_table).unwrap_or(result);
         return result;
     }
 

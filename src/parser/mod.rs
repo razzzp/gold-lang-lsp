@@ -510,7 +510,6 @@ fn parse_type_reference<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'
 
    return Ok((next, Arc::new(AstTypeReference{
       raw_pos: ref_token.raw_pos,
-      pos: ref_token.get_pos(),
       ref_type: ref_token.clone(),
       range: create_new_range(ref_token.get_range(), end_range),
       options: option_tokens,

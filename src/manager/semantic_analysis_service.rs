@@ -115,6 +115,6 @@ mod test{
 
         let result = sem_service.get_symbol_table_class_def_only(&"aRootClass".to_string()).unwrap();
         let result = result.lock().unwrap();
-        assert_eq!(result.iter_symbols().count(), 8);
+        assert_eq!(result.iter_symbols().count(), 9);
     }
 }

@@ -1392,7 +1392,7 @@ mod test{
             (TokenType::OBracket, Some("(".to_string())),
             (TokenType::Identifier, Some("Param1".to_string())),
             (TokenType::Comma, Some(",".to_string())),
-            (TokenType::Identifier, Some("Param1".to_string())),
+            (TokenType::Identifier, Some("Param2".to_string())),
             (TokenType::CBracket, Some(")".to_string())),
             (TokenType::Dot, Some(".".to_string())),
             (TokenType::Identifier, Some("Method2".to_string())),
@@ -1409,14 +1409,17 @@ mod test{
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
-        assert_eq!(dfs.len(), 12);
+        assert_eq!(dfs.len(), 10);
         dfs.iter().for_each(|n| {println!("{}",ast_to_string_brief(n.as_ast_node()))});
         // 
         assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(6).unwrap().get_value());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(4).unwrap().get_value());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(6).unwrap().get_value());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(dfs.get(5).unwrap().get_identifier(), input.get(11).unwrap().get_value());
+        assert_eq!(dfs.get(6).unwrap().get_identifier(), input.get(13).unwrap().get_value());
+        assert_eq!(dfs.get(7).unwrap().get_identifier(), input.get(12).unwrap().get_value());
+        assert_eq!(dfs.get(8).unwrap().get_identifier(), input.get(9).unwrap().get_value());
     }
 
     #[test]

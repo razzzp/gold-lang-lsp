@@ -116,6 +116,7 @@ impl AstAnnotator{
         self.handle_var_decl(&node);
         self.handle_terminal_node(&node);
         self.handle_bin_op_node(&node);
+        self.handle_method_call(&node);
     }
 
     fn notify_new_scope(&mut self){
@@ -267,6 +268,7 @@ impl AstAnnotator{
 
         let mut sym_info = SymbolInfo::new(proc_decl.get_identifier(), SymbolType::Proc);
         sym_info.range = proc_decl.get_range();
+        sym_info.eval_type = Some(EvalType::Proc);
         sym_info.selection_range = proc_decl.identifier.get_range();
         self.insert_symbol_info(proc_decl.get_identifier(), sym_info);
 
@@ -433,7 +435,7 @@ impl AstAnnotator{
         let bin_op = node_lock.data.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         match &bin_op.op_token.token_type {
             TokenType::Dot => {
-                // take child types should be resolved,
+                // child types should already be resolved,
                 // resulting will be same as right node
                 // println!("{:#?}",node_lock.children[1].read().unwrap().eval_type.clone().unwrap_or_default());
                 return node_lock.children[1].read().unwrap().eval_type.clone().unwrap_or_default();
@@ -450,6 +452,59 @@ impl AstAnnotator{
         node.write().unwrap().eval_type = Some(eval_type);
     }
 
+    fn resolve_method_call(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>)-> EvalType{
+        // TODO can probably refactor with terminal node resolution
+        let node_lock = node.read().unwrap();
+        let _method_node = node_lock.data.as_any().downcast_ref::<AstMethodCall>().unwrap();
+
+        if let Some(dot_op_parent) = self.check_parent_dot_ops(node){
+            let parent_lock = dot_op_parent.read().unwrap();
+            // should be safe to unwrap
+            let bin_op_node = parent_lock.data.as_any().downcast_ref::<AstBinaryOp>().unwrap(); 
+            let left_node = &bin_op_node.left_node;
+            if Arc::ptr_eq(left_node, &node_lock.data){
+                // if left node, just resolve normally
+                return self.get_eval_type(&node_lock.data);
+            } else {
+                // if right node, check left node type first
+                let left_node_type =match &parent_lock.children[0].read().unwrap().eval_type{
+                    Some(t) => t.clone(),
+                    _=> return EvalType::default()
+                };
+                match left_node_type{
+                    EvalType::Class(class_name)=>{
+                        // search right node in class
+                        // if class is self don't call sem service, because it will fail
+                        let class_sym_table = if class_name == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class.unwrap_clone_or_empty_string() {
+                            self.get_cur_sym_table()
+                        } else {
+                            match self.semantic_analysis_service.get_symbol_table_class_def_only(&class_name){
+                                Ok(st) => st,
+                                _=> return EvalType::default()
+                            }
+                        };
+                        let (_class, sym_info) = match self.type_resolver.search_sym_info_w_class(&bin_op_node.right_node.get_identifier(), &class_sym_table, false){
+                            Some(r) => r,
+                            _=> return EvalType::default()
+                        };
+                        return sym_info.eval_type.clone().unwrap_or_default();
+                    },
+                    _=> return EvalType::default(),
+                }
+            }
+        } else {
+            // just search using cur sym table
+            return self.get_eval_type(&node_lock.data);
+        }
+    }
+
+    fn handle_method_call(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        if !self.can_cast::<AstMethodCall>(node) {return}
+        
+        let eval_type = self.resolve_method_call(node);
+        node.write().unwrap().eval_type = Some(eval_type);
+    }
+
     fn can_cast<T: 'static>(&self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>) -> bool{
         let node_lock = node.read().unwrap();
         match node_lock.data.as_any().downcast_ref::<T>(){
@@ -463,7 +518,7 @@ impl AstAnnotator{
 mod test{
     use std::sync::{Mutex, Arc};
 
-    use crate::{manager::{test::{create_test_project_manager, create_uri_from_path, create_test_def_service, create_test_sem_service}, utils::search_encasing_node, annotated_node::EvalType}, utils::Position};
+    use crate::{manager::{test::{create_test_project_manager, create_uri_from_path, create_test_def_service, create_test_sem_service}, utils::search_encasing_node, annotated_node::{EvalType, NativeType}}, utils::Position};
 
     #[test]
     fn test_bin_op(){
@@ -529,5 +584,56 @@ endproc
         let node = search_encasing_node(&root, &Position::new(6, 25));
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+    }
+
+
+    #[test]
+    fn test_method_call(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = 
+"
+class aObject
+var1 : CString
+
+proc ObjectProc(input: Int4)
+endProc
+
+func ObjectFunc(input: Int4) return aObject
+endfunc
+
+proc Test
+    var obj : aObject
+    ;
+    writeln(obj)
+    self.ObjectProc(10)
+    self.ObjectFunc(10)
+    self.ObjectFunc(10).var1
+endproc
+        ".to_string();
+        let doc = proj_manager.doc_service.read().unwrap().parse_content(&test_input).unwrap();
+        let doc = Arc::new(Mutex::new(doc));
+        let mut sem_service = create_test_sem_service(proj_manager.doc_service.clone());
+        let doc = sem_service.analyze(doc, false).unwrap();
+        let root =doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
+        // native proc
+        let node = search_encasing_node(&root, &Position::new(13, 9));
+        // println!("{:#?}", node.read().unwrap().as_annotated_node());
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Proc);
+
+        // class proc
+        let node = search_encasing_node(&root, &Position::new(14, 15));
+        // println!("{:#?}", node.read().unwrap().as_annotated_node());
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Proc);
+        
+        // class func
+        let node = search_encasing_node(&root, &Position::new(15, 15));
+        // println!("{:#?}", node.read().unwrap().as_annotated_node());
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+        
+        // class func deref
+        let node = search_encasing_node(&root, &Position::new(16, 28));
+        // println!("{:#?}", node.read().unwrap().as_annotated_node());
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Native(NativeType::CString));
     }
 }
