@@ -210,7 +210,7 @@ pub fn take_until(
             count += 1;
             if token_types
                 .iter()
-                .any(|token_type| next_token.token_type == token_type.clone())
+                .any(|token_type| &next_token.token_type == token_type)
             {
                 end_method_token = Some(next_token.clone());
                 break;
@@ -464,7 +464,7 @@ pub fn parse_repeat<'a>(
             }
         };
     }
-    // end token not found
+
     return (next, result, errors);
 }
 

@@ -547,15 +547,26 @@ pub mod test{
             _=> return
         };
         let file_content = std::fs::read_to_string(path).unwrap();
-        let doc_service= create_test_doc_service(None);
         
+        let num_iter = 1_000;
         let now = std::time::Instant::now();
-        let num_iter = 50_000;
         for _i in 0..num_iter{
-            let mut doc = doc_service.parse_content(&file_content).unwrap();
-            doc.only_definitions = true
+
+            // lexing
+            let mut lexer = GoldLexer::new();
+            let (tokens, lexer_errors) = lexer.lex(&file_content);
         }
         let elapse = now.elapsed();
-        print!("Ran {num_iter} in {:.2?}", elapse);
+        println!("Lex Ran {num_iter} iterations in {:.2?}", elapse);
+
+        let mut lexer = GoldLexer::new();
+        let (tokens, lexer_errors) = lexer.lex(&file_content);
+        let now = std::time::Instant::now();
+        for _i in 0..num_iter{
+            // parse
+            let (ast_nodes, parser_diagnostics) = parse_gold(&tokens);
+        }
+        let elapse = now.elapsed();
+        println!("Parser Ran {num_iter} iterations in {:.2?}", elapse);
     }
 }
