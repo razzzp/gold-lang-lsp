@@ -537,4 +537,25 @@ pub mod test{
         let result = proj_manager.analyze_doc(&input_uri, false).unwrap();
         assert!(result.lock().unwrap().annotated_ast.is_some());
     }
+
+    #[ignore = "for benchmarking"]
+    #[test]
+    fn test_parsed_50_000(){
+        let path = PathBuf::from("./test/aNormalSizedClass.god");
+        let _ =  match fs::metadata(&path){
+            Ok(_) => (),
+            _=> return
+        };
+        let file_content = std::fs::read_to_string(path).unwrap();
+        let doc_service= create_test_doc_service(None);
+        
+        let now = std::time::Instant::now();
+        let num_iter = 50_000;
+        for _i in 0..num_iter{
+            let mut doc = doc_service.parse_content(&file_content).unwrap();
+            doc.only_definitions = true
+        }
+        let elapse = now.elapsed();
+        print!("Ran {num_iter} in {:.2?}", elapse);
+    }
 }
