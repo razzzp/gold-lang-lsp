@@ -215,7 +215,7 @@ pub fn parse_primary<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
         parse_dot_ops,
         parse_literals,
         parse_cast,
-        parse_oql_expr
+        
     ];
     let (next, node) = alt_parse_w_context(&parsers)(input,context)?;
     return Ok((next, node));
@@ -300,12 +300,13 @@ fn parse_logical_or<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
     return parse_binary_ops_w_context(input, &op_parser, &parse_logical_and, context);
 }
 
-pub fn parse_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Arc<dyn IAstNode>), ParseError<'a>> {
+pub fn parse_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) 
+-> Result<(&'a [Token],  Arc<dyn IAstNode>), ParseError<'a>> 
+{
     let parser = [
         parse_logical_or,
     ];
-    let result= alt_parse_w_context(&parser)(input, context)?;
-    return Ok(result);
+    return alt_parse_w_context(&parser)(input, context);
 }
 
 
@@ -586,7 +587,10 @@ fn parse_foreach_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[
     let (next, foreach_token) = exp_token(TokenType::ForEach)(input)?;
     // curVar in List
     let in_op_parser = exp_token(TokenType::In);
-    let (next, in_expr_node) = parse_binary_ops_w_context(next, &in_op_parser, &parse_expr, context)?;
+    // this some weird syntax
+    let parsers: [for<'b> fn(&'a[Token], &'b mut C) -> Result<(&'a[Token], Arc<dyn IAstNode>), ParseError<'a>>;2]  = [parse_expr, parse_oql_expr];
+    let right_hand_parser = alt_parse_w_context(&parsers);
+    let (next, in_expr_node) = parse_binary_ops_w_context(next, &in_op_parser, &right_hand_parser, context)?;
     // downto
     let (next, downto_token) = opt_parse(exp_token(TokenType::DownTo))(next)?;
     // using someVar
@@ -832,6 +836,7 @@ pub fn parse_statement_v2<'a, C: IParserContext<ParserDiagnostic>+'a>(input: &'a
         parse_type_declaration,
         parse_local_var_decl,
         parse_control_statements,
+        parse_oql_expr,
         parse_assignment,
         parse_expr,
     ].as_ref())(input, context) {

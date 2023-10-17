@@ -6,7 +6,9 @@ use super::{IParserContext, ParserDiagnostic, ast::{IAstNode, AstTerminal, AstOQ
 
 
 
-pub fn parse_oql_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
+pub fn parse_oql_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) 
+-> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>
+{
     return alt_parse_w_context([
         parse_oql_select,
         parse_oql_fetch
