@@ -1203,7 +1203,9 @@ fn parse_method_body<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [
 
 #[cfg(test)]
 mod test {
-   use crate::{lexer::tokens::{Token, TokenType}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant, AstModule, AstTypeSized, AstParameterDeclarationList, AstMethodModifiers}, IParserContext, parse_module}, utils::ast_to_string_brief_recursive};
+   use std::path::PathBuf;
+
+use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant, AstModule, AstTypeSized, AstParameterDeclarationList, AstMethodModifiers}, IParserContext, parse_module, parse_gold}, utils::ast_to_string_brief_recursive};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
    use super::{parse_class, parse_type, ParserContext};
 
@@ -1232,6 +1234,29 @@ mod test {
       assert_eq!(node.get_raw_pos(), input.first().unwrap().raw_pos);
       assert_eq!(node.get_pos(), input.first().unwrap().get_pos());
       assert_eq!(node.get_range(), create_new_range_from_irange(input.first().unwrap(), input.last().unwrap()));
+   }
+
+   #[ignore = "for benchmarking"]
+   #[test]
+   fn test_parse_1_000(){
+      let path = PathBuf::from("./test/aNormalSizedClass.god");
+      let _ =  match std::fs::metadata(&path){
+         Ok(_) => (),
+         _=> return
+      };
+      let file_content = std::fs::read_to_string(path).unwrap();
+      
+      let num_iter = 1_000;
+
+      let mut lexer = GoldLexer::new();
+      let (tokens, _lexer_errors) = lexer.lex(&file_content);
+      let now = std::time::Instant::now();
+      for _i in 0..num_iter{
+         // parse
+         let (_ast_nodes, _parser_diagnostics) = parse_gold(&tokens);
+      }
+      let elapse = now.elapsed();
+      println!("Parser Ran {num_iter} iterations in {:.2?}", elapse);
    }
 
    #[test]

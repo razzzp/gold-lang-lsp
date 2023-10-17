@@ -537,36 +537,4 @@ pub mod test{
         let result = proj_manager.analyze_doc(&input_uri, false).unwrap();
         assert!(result.lock().unwrap().annotated_ast.is_some());
     }
-
-    #[ignore = "for benchmarking"]
-    #[test]
-    fn test_parsed_50_000(){
-        let path = PathBuf::from("./test/aNormalSizedClass.god");
-        let _ =  match fs::metadata(&path){
-            Ok(_) => (),
-            _=> return
-        };
-        let file_content = std::fs::read_to_string(path).unwrap();
-        
-        let num_iter = 1_000;
-        let now = std::time::Instant::now();
-        for _i in 0..num_iter{
-
-            // lexing
-            let mut lexer = GoldLexer::new();
-            let (tokens, lexer_errors) = lexer.lex(&file_content);
-        }
-        let elapse = now.elapsed();
-        println!("Lex Ran {num_iter} iterations in {:.2?}", elapse);
-
-        let mut lexer = GoldLexer::new();
-        let (tokens, lexer_errors) = lexer.lex(&file_content);
-        let now = std::time::Instant::now();
-        for _i in 0..num_iter{
-            // parse
-            let (ast_nodes, parser_diagnostics) = parse_gold(&tokens);
-        }
-        let elapse = now.elapsed();
-        println!("Parser Ran {num_iter} iterations in {:.2?}", elapse);
-    }
 }

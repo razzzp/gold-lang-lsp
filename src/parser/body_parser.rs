@@ -831,8 +831,8 @@ pub fn parse_statement_v2<'a, C: IParserContext<ParserDiagnostic>+'a>(input: &'a
         parse_constant_declaration,
         parse_type_declaration,
         parse_local_var_decl,
-        parse_assignment,
         parse_control_statements,
+        parse_assignment,
         parse_expr,
     ].as_ref())(input, context) {
         Ok(r) => return Ok(r),
