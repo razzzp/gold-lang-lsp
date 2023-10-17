@@ -588,7 +588,7 @@ fn parse_foreach_block<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[
     // curVar in List
     let in_op_parser = exp_token(TokenType::In);
     // this some weird syntax
-    let parsers: [for<'b> fn(&'a[Token], &'b mut C) -> Result<(&'a[Token], Arc<dyn IAstNode>), ParseError<'a>>;2]  = [parse_expr, parse_oql_expr];
+    let parsers: [for<'b> fn(&'a[Token], &'b mut C) -> Result<(&'a[Token], Arc<dyn IAstNode>), ParseError<'a>>;2]  = [parse_oql_expr, parse_expr];
     let right_hand_parser = alt_parse_w_context(&parsers);
     let (next, in_expr_node) = parse_binary_ops_w_context(next, &in_op_parser, &right_hand_parser, context)?;
     // downto
