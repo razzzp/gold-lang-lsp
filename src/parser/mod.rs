@@ -84,6 +84,8 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Arc<dyn IAstNode>)
       parse_type_declaration,
       parse_constant_declaration,
       parse_global_variable_declaration,
+      // annotations other than for type&field decl will be ignored
+      parse_annotations
    ];
    let block_parsers = [
       parse_procedure_declaration,
