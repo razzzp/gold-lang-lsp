@@ -143,8 +143,20 @@ impl TypeResolver {
                 // println!("{:#?}", s);
                 return Some(s.eval_type.as_ref().unwrap_or(&EvalType::Unknown).clone())
             },
-            _=> return Some(EvalType::Unknown)
+            _=> ()
         }
+        // see if class or module
+        match self.semantic_analysis_service.get_symbol_table_class_def_only(&id){
+            Ok(st) => {
+                match st.lock().unwrap().get_symbol_info(&id){
+                    Some(s) => return Some(s.eval_type.clone().unwrap_or_default()),
+                    _=> ()
+                }
+            }
+            _=> ()
+        }
+
+        return Some(EvalType::Unknown)
     }
 
     fn resolve_bin_op(&mut self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
