@@ -442,7 +442,7 @@ impl GoldLexer{
 
 #[cfg(test)]
 mod test {
-    use std::{iter::{Enumerate, Peekable}, str::Chars, fs::File, io::Read};
+    use std::{iter::{Enumerate, Peekable}, str::Chars, fs::File, io::Read, path::PathBuf};
 
     use crate::lexer::{TokenType, GoldLexer};
     use crate::utils::Position;
@@ -594,6 +594,30 @@ mod test {
         assert_eq!(token[3].get_pos(), Position {line:1,character:1});
         assert_eq!(token[3].value.as_ref().unwrap().as_str(), "77.1234134141412424");
     }
+
+
+    #[ignore = "for benchmarking"]
+    #[test]
+    fn test_lex_1_000(){
+        let path = PathBuf::from("./test/aNormalSizedClass.god");
+        let _ =  match std::fs::metadata(&path){
+            Ok(_) => (),
+            _=> return
+        };
+        let file_content = std::fs::read_to_string(path).unwrap();
+        
+        let num_iter = 1_000;
+        let now = std::time::Instant::now();
+        for _i in 0..num_iter{
+
+            // lexing
+            let mut lexer = GoldLexer::new();
+            let (_tokens, _lexer_errors) = lexer.lex(&file_content);
+        }
+        let elapse = now.elapsed();
+        println!("Lex Ran {num_iter} iterations in {:.2?}", elapse);
+    }
+    
 }
 
 

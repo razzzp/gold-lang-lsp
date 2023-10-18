@@ -13,3 +13,6 @@ nom = "7"
 regex = "1"
 serde = "1.0.174"
 serde_json = "1.0.103"
+
+[profile.release]
+debug = true
