@@ -199,13 +199,13 @@ impl IAstNode for AstClass {
 pub struct AstModule {
     pub raw_pos: usize,
     pub range: Range,
-    pub name: String,
+    pub id: Token,
 }
 implem_irange!(AstModule);
 impl IAstNode for AstModule {
     implem_iastnode_common!(AstModule, "module");
     fn get_identifier(&self) -> String {
-        self.name.clone()
+        self.id.get_value()
     }
 }
 

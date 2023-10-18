@@ -136,6 +136,7 @@ impl TypeResolver {
         let node = node.as_any().downcast_ref::<AstTerminal>()?; 
         //
         let id =  node.get_identifier().to_uppercase();
+        // TODO need to be able to resolve modules too
         let sym = self.search_sym_info(&id, sym_table, false);
         match sym{
             Some(s)=> {

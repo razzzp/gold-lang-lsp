@@ -117,13 +117,14 @@ impl AstAnnotator{
         self.handle_terminal_node(&node);
         self.handle_bin_op_node(&node);
         self.handle_method_call(&node);
+        self.handle_module(&node);
     }
 
     fn notify_new_scope(&mut self){
         let mut new_sym_table = SymbolTable::new();
         new_sym_table.set_parent_symbol_table(self.root_symbol_table.unwrap_ref().clone());
         // append uses to new scope
-        new_sym_table.for_class = self.root_symbol_table.unwrap_ref().lock().unwrap().for_class.clone();
+        new_sym_table.for_class_or_module = self.root_symbol_table.unwrap_ref().lock().unwrap().for_class_or_module.clone();
         new_sym_table.uses_entities.extend(
             self.root_symbol_table.unwrap_ref().lock().unwrap()
             .uses_entities
@@ -188,7 +189,7 @@ impl AstAnnotator{
         let ori_node = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstClass>());
 
         let class_name = ori_node.get_identifier();
-        self.root_symbol_table.unwrap_ref().lock().unwrap().for_class = Some(class_name.clone());
+        self.root_symbol_table.unwrap_ref().lock().unwrap().for_class_or_module = Some(class_name.clone());
         let mut sym_info = SymbolInfo::new(class_name.clone(), SymbolType::Class);
         sym_info.eval_type = Some(EvalType::Class(class_name.clone()));
 
@@ -223,6 +224,21 @@ impl AstAnnotator{
         let mut self_sym = sym_info;
         self_sym.id = "self".to_string();
         self.insert_symbol_info("self".to_string(), self_sym);
+    }
+
+
+    fn handle_module(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
+        let node_lock = node.write().unwrap();
+        let ori_node = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstModule>());
+
+        let module_name = ori_node.get_identifier();
+        self.root_symbol_table.unwrap_ref().lock().unwrap().for_class_or_module = Some(module_name.clone());
+        let mut sym_info = SymbolInfo::new(module_name.clone(), SymbolType::Module);
+        sym_info.eval_type = Some(EvalType::Module(module_name.clone()));
+
+        sym_info.range = ori_node.get_range();
+        sym_info.selection_range = ori_node.id.get_range();
+        self.insert_symbol_info(ori_node.get_identifier(), sym_info);
     }
 
     fn handle_constant_decl(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
@@ -379,6 +395,24 @@ impl AstAnnotator{
         }
     }
 
+    fn eval_right_hand_of_entity(&mut self, left_entity_name : &String, right_id: &String) -> EvalType{
+        // search right node in class
+        // if class is self don't call sem service, because it will fail
+        let class_sym_table = if left_entity_name.clone() == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class_or_module.unwrap_clone_or_empty_string() {
+            self.get_cur_sym_table()
+        } else {
+            match self.semantic_analysis_service.get_symbol_table_class_def_only(&left_entity_name){
+                Ok(st) => st,
+                _=> return EvalType::default()
+            }
+        };
+        let (_class, sym_info) = match self.type_resolver.search_sym_info_w_class(right_id, &class_sym_table, false){
+            Some(r) => r,
+            _=> return EvalType::default()
+        };
+        return sym_info.eval_type.clone().unwrap_or_default();
+    }
+
     fn resolve_termninal_node(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>) -> EvalType{
         if let Some(dot_op_parent) = self.check_parent_dot_ops(&node){
             let parent_lock = dot_op_parent.read().unwrap();
@@ -399,19 +433,12 @@ impl AstAnnotator{
                     EvalType::Class(class_name)=>{
                         // search right node in class
                         // if class is self don't call sem service, because it will fail
-                        let class_sym_table = if class_name == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class.unwrap_clone_or_empty_string() {
-                            self.get_cur_sym_table()
-                        } else {
-                            match self.semantic_analysis_service.get_symbol_table_class_def_only(&class_name){
-                                Ok(st) => st,
-                                _=> return EvalType::default()
-                            }
-                        };
-                        let (_class, sym_info) = match self.type_resolver.search_sym_info_w_class(&bin_op_node.right_node.get_identifier(), &class_sym_table, false){
-                            Some(r) => r,
-                            _=> return EvalType::default()
-                        };
-                        return sym_info.eval_type.clone().unwrap_or_default();
+                        return self.eval_right_hand_of_entity(&class_name, &bin_op_node.right_node.get_identifier());
+                    },
+                    EvalType::Module(module_name)=>{
+                        // search right node in class
+                        // if class is self don't call sem service, because it will fail
+                        return self.eval_right_hand_of_entity(&module_name, &bin_op_node.right_node.get_identifier());
                     },
                     _=> return EvalType::default(),
                 }
@@ -475,7 +502,7 @@ impl AstAnnotator{
                     EvalType::Class(class_name)=>{
                         // search right node in class
                         // if class is self don't call sem service, because it will fail
-                        let class_sym_table = if class_name == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class.unwrap_clone_or_empty_string() {
+                        let class_sym_table = if class_name == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class_or_module.unwrap_clone_or_empty_string() {
                             self.get_cur_sym_table()
                         } else {
                             match self.semantic_analysis_service.get_symbol_table_class_def_only(&class_name){

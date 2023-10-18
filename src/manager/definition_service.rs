@@ -130,6 +130,32 @@ impl DefinitionService{
 
     }
 
+    fn generate_right_hand_of_entity(
+        &mut self,
+        node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
+        entity: &String,
+        st: &Arc<Mutex<dyn ISymbolTable>>,
+        pos: &Position,
+    ) -> Option<Result<Vec<lsp_types::LocationLink>, ProjectManagerError>>
+    {
+        // search right node in class
+        let uri = match self.doc_service.read().unwrap().get_uri_for_class(&entity){
+            Ok(u) => u,
+            _=> return None,
+        };
+        // if class is self don't call sem service, because it will fail
+        let class_sym_table = if uri == self.source_uri{
+            st.clone()
+        } else {
+            match self.semantic_analysis_service.get_symbol_table_class_def_only(&entity){
+                Ok(st) => st,
+                _=> return None
+            }
+        };
+        // don't search uses because the member should be in the st itself
+        return Some(self.generate_loc_link(node, &class_sym_table, pos, false))
+    }
+
     fn handle_generic(
         &mut self, 
         node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
@@ -152,22 +178,11 @@ impl DefinitionService{
                 match left_node_type{
                     EvalType::Class(class_name)=>{
                         // search right node in class
-                        let uri = match self.doc_service.read().unwrap().get_uri_for_class(&class_name){
-                            Ok(u) => u,
-                            _=> return None,
-                        };
-                        // if class is self don't call sem service, because it will fail
-                        let class_sym_table = if uri == self.source_uri{
-                            st.clone()
-                        } else {
-                            match self.semantic_analysis_service.get_symbol_table_class_def_only(&class_name){
-                                Ok(st) => st,
-                                _=> return None
-                            }
-                        };
-                        // don't search uses because the member should be in the st itself
-                        return Some(self.generate_loc_link(node, &class_sym_table, pos, false))
-                        
+                        return self.generate_right_hand_of_entity(node, &class_name, st, pos);
+                    },
+                    EvalType::Module(module_name)=>{
+                        // search right node in class
+                        return self.generate_right_hand_of_entity(node, &module_name, st, pos);
                     },
                     _=> return None,
                 }
@@ -388,5 +403,37 @@ mod test{
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
         assert_eq!(loc.target_uri, root_class_uri);
+    }
+
+    #[test]
+    fn test_module(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = create_uri_from_path("./test/workspace/aFourthClass.god");
+        // pos input to test, local var
+        let pos_input = Position::new(9, 8);
+
+        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let mut result = def_service.get_definition(&pos_input).unwrap();
+        assert_eq!(result.len(), 1);
+        let loc = result.pop().unwrap();
+        let target_uri = create_uri_from_path("./test/workspace/aModule.god");
+        assert_eq!(loc.target_uri, target_uri);
+    }
+
+    #[test]
+    fn test_module_member(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = create_uri_from_path("./test/workspace/aFourthClass.god");
+        // pos input to test, local var
+        let pos_input = Position::new(9, 19);
+
+        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let mut result = def_service.get_definition(&pos_input).unwrap();
+        assert_eq!(result.len(), 1);
+        let loc = result.pop().unwrap();
+        let target_uri = create_uri_from_path("./test/workspace/aModule.god");
+        assert_eq!(loc.target_uri, target_uri);
     }
 }

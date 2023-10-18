@@ -23,6 +23,7 @@ pub enum SymbolType {
     Func,
     Variable,
     Constant,
+    Module
 }
 
 #[derive(Debug, Default, Clone)]
@@ -77,7 +78,7 @@ pub struct SymbolTable {
     // populated with symbol tables from the uses_entities
     pub(crate) uses_symbol_table: Vec<Arc<Mutex<dyn ISymbolTable>>>,
     // string_table: HashMap<String, Arc<Mutex<String>>>,
-    pub for_class: Option<String>,
+    pub for_class_or_module: Option<String>,
 }
 
 impl SymbolTable {
@@ -89,7 +90,7 @@ impl SymbolTable {
             uses_symbol_table: Vec::new(),
             uses_entities: Vec::new(),
             // string_table: HashMap::new(),
-            for_class: None,
+            for_class_or_module: None,
         }
     }
 
@@ -123,7 +124,7 @@ impl ISymbolTable for SymbolTable {
         let mut result = match self.hash_map.get(&id.to_uppercase()) {
             Some(i) => {
                 return Some((
-                    self.for_class.unwrap_clone_or_empty_string(),
+                    self.for_class_or_module.unwrap_clone_or_empty_string(),
                     self.symbols_list.get(*i).cloned().unwrap(),
                 ))
             }
@@ -180,6 +181,6 @@ impl ISymbolTable for SymbolTable {
     }
 
     fn get_class(&self) -> Option<String> {
-        self.for_class.clone()
+        self.for_class_or_module.clone()
     }
 }

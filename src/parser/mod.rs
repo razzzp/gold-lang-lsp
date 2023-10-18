@@ -226,7 +226,7 @@ fn parse_module<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token
    return Ok((next, Arc::new(AstModule{
       raw_pos: module_token.raw_pos,
       range: create_new_range_from_irange(&module_token, &module_name),
-      name: module_name.get_value(),
+      id: module_name,
    }))); 
 }
 
@@ -1266,7 +1266,7 @@ mod test {
       let class = r.1.as_any().downcast_ref::<AstModule>().unwrap();
       check_node_pos_and_range(class, &input);
       assert_eq!(r.0.len(), 0);
-      assert_eq!(class.name, "SomeModule");
+      assert_eq!(class.id.get_value(), "SomeModule");
       assert_eq!(class.raw_pos, 0);
    }
 

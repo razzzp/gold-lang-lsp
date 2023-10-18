@@ -49,6 +49,7 @@ pub enum EvalType{
     Defined(TypeInfo),
     Class(String),
     Proc,
+    Module(String),
     // contains id of unresolved type
     Unresolved(String),
 }
