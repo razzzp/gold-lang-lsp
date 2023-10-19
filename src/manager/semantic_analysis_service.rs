@@ -30,14 +30,14 @@ impl SemanticAnalysisService {
         }
     }
 
-    fn check_already_seen(&mut self, uri: &Url) -> Result<(),ProjectManagerError>{
+    fn check_already_seen(&self, uri: &Url) -> Result<(),ProjectManagerError>{
         if self.already_seen_uri.lock().unwrap().contains(&uri.to_string()){
             return Err(ProjectManagerError::new(format!("{} already locked in request session",uri).as_str(), ErrorCode::RequestFailed));
         }
         self.already_seen_uri.lock().unwrap().insert(uri.to_string());
         return Ok(())
     }
-    pub fn get_symbol_table_class_def_only(&mut self, class: &String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+    pub fn get_symbol_table_class_def_only(&self, class: &String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         let uri = self.doc_service.get_uri_for_class(class)?;
         let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri, true)?;
         let st_option = doc.lock().unwrap().get_symbol_table().clone();
@@ -48,7 +48,7 @@ impl SemanticAnalysisService {
     }
 
     /// if no error occurs, annotated tree & symbol table is guranteed to be Some
-    pub fn analyze_uri(&mut self, uri : &Url, only_definitions: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn analyze_uri(&self, uri : &Url, only_definitions: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         
         // TODO !!! commenting this can cause stack overflow, but
         //  using will cause certain dependency cases to fail
@@ -75,7 +75,7 @@ impl SemanticAnalysisService {
         return self.analyze(doc, only_definitions);
     }
     
-    pub fn analyze(&mut self, doc: Arc<Mutex<Document>>, only_definitions: bool) -> 
+    pub fn analyze(&self, doc: Arc<Mutex<Document>>, only_definitions: bool) -> 
     Result<Arc<Mutex<Document>>, ProjectManagerError>{
         
         // let mut semantic_analysis_service = SemanticAnalysisService::new(

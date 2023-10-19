@@ -92,7 +92,7 @@ impl DefinitionService{
     }
 
     fn generate_loc_link(
-        &mut self, 
+        &self, 
         node:  &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
         st: &Arc<Mutex<dyn ISymbolTable>>,
         pos : &Position,
@@ -132,7 +132,7 @@ impl DefinitionService{
 
 
     fn generate_loc_link_rhs(
-        &mut self, 
+        &self, 
         node:  &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
         st: &Arc<Mutex<dyn ISymbolTable>>,
         pos : &Position,
@@ -164,7 +164,7 @@ impl DefinitionService{
     }
 
     fn generate_right_hand_of_entity(
-        &mut self,
+        &self,
         node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
         entity: &String,
         st: &Arc<Mutex<dyn ISymbolTable>>,
@@ -190,7 +190,7 @@ impl DefinitionService{
     }
 
     fn handle_generic(
-        &mut self, 
+        &self, 
         node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
         st: &Arc<Mutex<dyn ISymbolTable>>,
         pos: &Position
@@ -227,7 +227,7 @@ impl DefinitionService{
     }
 
     fn handle_node(
-        &mut self, 
+        &self, 
         node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, 
         st: &Arc<Mutex<dyn ISymbolTable>>,
         pos: &Position
@@ -244,7 +244,7 @@ impl DefinitionService{
         return Ok(Vec::new());
     }
 
-    pub fn get_definition(&mut self, pos : &Position)
+    pub fn get_definition(&self, pos : &Position)
     -> Result<Vec<lsp_types::LocationLink>, ProjectManagerError>
     {
         let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri, false)?;

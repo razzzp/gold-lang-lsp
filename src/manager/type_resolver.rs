@@ -16,7 +16,7 @@ impl TypeResolver {
         }
     }
 
-    pub fn search_sym_info(&mut self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<Arc<SymbolInfo>>{
+    pub fn search_sym_info(&self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<Arc<SymbolInfo>>{
         // already searches parent
         let mut sym_info = sym_table.lock().unwrap().get_symbol_info(id);
         if search_uses && sym_info.is_none() {
@@ -40,7 +40,7 @@ impl TypeResolver {
     }
 
     /// also returns the class the symbol is in
-    pub fn search_sym_info_w_class(&mut self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<(String,Arc<SymbolInfo>)>{
+    pub fn search_sym_info_w_class(&self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<(String,Arc<SymbolInfo>)>{
         // already searches parent
         let mut result = sym_table.lock().unwrap().search_symbol_info(id);
         if search_uses && result.is_none() {
@@ -64,12 +64,12 @@ impl TypeResolver {
     }
 
     /// returns list of all sym info matching id from parents
-    pub fn search_sym_info_through_parent(&mut self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Vec<(String,Arc<SymbolInfo>)>{
+    pub fn search_sym_info_through_parent(&self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Vec<(String,Arc<SymbolInfo>)>{
         // already searches parent
         return sym_table.lock().unwrap().search_all_symbol_info(id);
     }
 
-    fn resolve_type_basic(&mut self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
+    fn resolve_type_basic(&self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let node = node.as_any().downcast_ref::<AstTypeBasic>()?; 
         //
         match node.get_identifier().to_uppercase().as_str() {
@@ -104,7 +104,7 @@ impl TypeResolver {
         }
     }
 
-    fn resolve_type_refto(&mut self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
+    fn resolve_type_refto(&self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let node = node.as_any().downcast_ref::<AstTypeReference>()?; 
         //
         if node.ref_type.token_type == TokenType::RefTo{
@@ -120,7 +120,7 @@ impl TypeResolver {
             // below shouldn't be necessary unless we want to check type
             //  needs to be objec TODO
             // if not class, search types in parents and uses
-            let sym = self.search_sym_info(&id.to_string(),sym_table, true);
+            let sym = self.search_sym_info(&id.to_string(),sym_table, false);
             match sym{
                 Some(s)=> {
                     return Some(s.eval_type.as_ref().unwrap_or(&EvalType::Unknown).clone())
@@ -138,7 +138,7 @@ impl TypeResolver {
         
     }
 
-    fn resolve_terminal(&mut self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
+    fn resolve_terminal(&self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let node = node.as_any().downcast_ref::<AstTerminal>()?; 
         //
         let id =  node.get_identifier().to_uppercase();
@@ -165,7 +165,7 @@ impl TypeResolver {
         return Some(EvalType::Unknown)
     }
 
-    fn resolve_bin_op(&mut self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
+    fn resolve_bin_op(&self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let node = node.as_any().downcast_ref::<AstBinaryOp>()?; 
         //
         let left_node_type = self.resolve_node_type(&node.left_node, sym_table);
@@ -189,7 +189,7 @@ impl TypeResolver {
         }
     }
 
-    fn resolve_method_call(&mut self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
+    fn resolve_method_call(&self, node: &Arc<dyn IAstNode>, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let method_node = node.as_any().downcast_ref::<AstMethodCall>()?; 
         //
         let method_id = method_node.get_identifier().to_uppercase();
@@ -208,7 +208,7 @@ impl TypeResolver {
         }
     }
 
-    pub fn resolve_node_type(&mut self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> EvalType {
+    pub fn resolve_node_type(&self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> EvalType {
         let mut result = EvalType::Unknown;
         // case basic type node
         result = self.resolve_type_basic(node,sym_table).unwrap_or(result);
@@ -240,7 +240,7 @@ impl TypeResolver {
     }
 
     pub fn resolve_annotated_node_type(
-        &mut self, 
+        &self, 
         node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>,
     ) -> EvalType {
         let node_lock = &node.read().unwrap();
@@ -254,7 +254,7 @@ impl TypeResolver {
     }
 
     pub fn resolve_annotated_node_lock_type(
-        &mut self, 
+        &self, 
         node_lock: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>
     ) -> EvalType {
         let sym_table = match TypeResolver::get_nearest_symbol_table(&node_lock){

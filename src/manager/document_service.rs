@@ -54,7 +54,7 @@ impl DocumentService {
         })
     }
 
-    pub fn index_files(&mut self){
+    pub fn index_files(&self){
         if self.root_path.is_none() {return};
 
         let root_path = self.root_path.as_ref().unwrap().clone();
@@ -116,7 +116,7 @@ impl DocumentService {
         }
     }
 
-    pub fn get_document_info(&mut self, uri: &Url) -> Result<Arc<RwLock<DocumentInfo>>, ProjectManagerError>{
+    pub fn get_document_info(&self, uri: &Url) -> Result<Arc<RwLock<DocumentInfo>>, ProjectManagerError>{
         let uri_string = uri.to_string();
         let doc_info =  self.uri_docinfo_map.read().unwrap().get(&uri_string).cloned();
         if doc_info.is_some() {
@@ -148,12 +148,12 @@ impl DocumentService {
         Ok(new_doc_info)
     }
 
-    pub fn get_parsed_document_for_class(&mut self, class: &String, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn get_parsed_document_for_class(&self, class: &String, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let uri = self.get_uri_for_class(class)?;
         return self.get_parsed_document(&uri, wait_on_lock);
     }
 
-    pub fn get_parsed_document(&mut self, uri: &Url, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn get_parsed_document(&self, uri: &Url, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         let read_doc_info = match doc_info.try_read(){
             Ok(rw_lock) => rw_lock,
@@ -187,7 +187,7 @@ impl DocumentService {
         
     }
 
-    pub fn notify_document_saved(&mut self, uri: &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn notify_document_saved(&self, uri: &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_document(doc_info.write().unwrap().file_path.as_str())?;
         let new_doc = Arc::new(Mutex::new(new_doc));
@@ -196,7 +196,7 @@ impl DocumentService {
         return Ok(new_doc);
     }
 
-    pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn notify_document_changed(&self, uri: &Url, full_file_content: &String) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_content(full_file_content)?;
         let new_doc = Arc::new(Mutex::new(new_doc));
