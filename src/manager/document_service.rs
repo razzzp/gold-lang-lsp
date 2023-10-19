@@ -109,7 +109,7 @@ impl DocumentService {
         // });
     }
 
-    pub fn get_uri_for_class(& self, class_name: &String)-> Result<Url, ProjectManagerError>{
+    pub fn get_uri_for_class(&self, class_name: &String)-> Result<Url, ProjectManagerError>{
         match self.class_uri_map.read().unwrap().get(&class_name.to_uppercase()){
             Some(uri) => Ok(uri.clone()),
             _=> Err(ProjectManagerError::new("no uri found for class", ErrorCode::InternalError))
