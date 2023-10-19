@@ -561,7 +561,7 @@ proc Test
     obj.var1.var1
 endproc
         ".to_string();
-        let doc = proj_manager.doc_service.read().unwrap().parse_content(&test_input).unwrap();
+        let doc = proj_manager.doc_service.parse_content(&test_input).unwrap();
         let doc = Arc::new(Mutex::new(doc));
         let mut sem_service = create_test_sem_service(proj_manager.doc_service.clone());
         let doc = sem_service.analyze(doc, false).unwrap();
@@ -594,7 +594,7 @@ proc Test
     writeln(obj.var1.var1)
 endproc
         ".to_string();
-        let doc = proj_manager.doc_service.read().unwrap().parse_content(&test_input).unwrap();
+        let doc = proj_manager.doc_service.parse_content(&test_input).unwrap();
         let doc = Arc::new(Mutex::new(doc));
         let mut sem_service = create_test_sem_service(proj_manager.doc_service.clone());
         let doc = sem_service.analyze(doc, false).unwrap();
@@ -638,7 +638,7 @@ proc Test
     self.ObjectFunc(10).var1
 endproc
         ".to_string();
-        let doc = proj_manager.doc_service.read().unwrap().parse_content(&test_input).unwrap();
+        let doc = proj_manager.doc_service.parse_content(&test_input).unwrap();
         let doc = Arc::new(Mutex::new(doc));
         let mut sem_service = create_test_sem_service(proj_manager.doc_service.clone());
         let doc = sem_service.analyze(doc, false).unwrap();

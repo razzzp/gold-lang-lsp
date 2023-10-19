@@ -12,8 +12,8 @@ use std::error::Error;
 
 use crossbeam_channel::Sender;
 use lsp_types::notification::{DidChangeTextDocument, DidSaveTextDocument, DidOpenTextDocument};
-use lsp_types::{OneOf, DocumentSymbolResponse, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams};
-use lsp_types::request::{DocumentSymbolRequest, DocumentDiagnosticRequest, GotoDefinition};
+use lsp_types::{OneOf, DocumentSymbolResponse, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams, CompletionParams, CompletionResponse};
+use lsp_types::request::{DocumentSymbolRequest, DocumentDiagnosticRequest, GotoDefinition, Completion};
 use lsp_types::{
     InitializeParams, ServerCapabilities,
 };
@@ -136,6 +136,24 @@ fn main_loop(
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
                     Err(ExtractError::MethodMismatch(req)) => req,
                 };
+
+                let req = match cast_req::<Completion>(req) {
+                    Ok((id, params)) => {
+                        // heavy call to analyze doc, move to separate thread
+                        let sender = connection.sender.clone();
+                        let mut proj_manager = proj_manager.clone();
+                        let logger = logger.clone();
+                        threadpool.execute(move ||{
+                            match handle_completion_request(&mut proj_manager, id.clone(), params, &logger){
+                                Ok(resp) => {let _ = sender.send(resp);},
+                                Err(e) => {let _  = send_error(&sender, id, e.0, e.1);}
+                            };
+                        });
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
                 
                 // ...
             }
@@ -245,7 +263,7 @@ fn handle_goto_definition_request(
     let loc_links = match proj_manager.generate_goto_definitions(
         &params.text_document_position_params.text_document.uri, 
         &params.text_document_position_params.position.into()){
-        Ok(diag_report) => diag_report,
+        Ok(location_links) => location_links,
         Err(e) => return Err((e.error_code as i32, e.msg))
     };
     let result = GotoDefinitionResponse::Link(loc_links);
@@ -356,6 +374,29 @@ fn handle_did_open_notification(
     
     return Ok(result)
 }
+
+fn handle_completion_request(
+    proj_manager: &mut ProjectManager, 
+    id: RequestId, 
+    params: CompletionParams,
+    logger: &Arc<dyn ILoggerV2>,
+)
+    -> Result<Message, (i32, String)>
+{
+    logger.log_info(format!("handling Document Diagnostics request #{id}").as_str());
+    let completion_items = match proj_manager.generate_completion_proposals(
+        &params.text_document_position.text_document.uri, 
+        &params.text_document_position.position.into())
+    {
+        Ok(items) => items,
+        Err(e) => return Err((e.error_code as i32, e.msg))
+    };
+    let result = CompletionResponse::Array(completion_items);
+    let result = serde_json::to_value(&result).unwrap();
+    let resp = Response { id, result: Some(result), error: None };
+    return Ok(Message::Response(resp));
+}
+
 
 fn cast_req<R>(req: Request) -> Result<(RequestId, R::Params), ExtractError<Request>>
 where

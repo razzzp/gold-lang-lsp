@@ -12,7 +12,7 @@ use crate::manager::symbol_table::ISymbolTable;
 
 
 pub struct DefinitionService{
-    doc_service : Arc<RwLock<DocumentService>>,
+    doc_service : DocumentService,
     semantic_analysis_service: SemanticAnalysisService,
     type_resolver: TypeResolver,
     source_uri: Url,
@@ -20,7 +20,7 @@ pub struct DefinitionService{
 }
 impl DefinitionService{
     pub fn new(
-        doc_service : Arc<RwLock<DocumentService>>,
+        doc_service : DocumentService,
         semantic_analysis_service: SemanticAnalysisService, 
         logger: Arc<dyn ILoggerV2>,
         source_uri: &Url
@@ -114,7 +114,7 @@ impl DefinitionService{
             _=> return Err(ProjectManagerError::new("Cannot find symbol definition", lsp_server::ErrorCode::RequestFailed))
         };
 
-        let uri = match self.doc_service.read().unwrap().get_uri_for_class(&in_class){
+        let uri = match self.doc_service.get_uri_for_class(&in_class){
             Ok(u) => u,
             _=> return Err(ProjectManagerError::new("Cannot get uri for class", lsp_server::ErrorCode::RequestFailed)),
         };
@@ -148,7 +148,7 @@ impl DefinitionService{
 
         let mut result = Vec::new();
         for (class, sym) in sym_infos{
-            let uri = match self.doc_service.read().unwrap().get_uri_for_class(&class){
+            let uri = match self.doc_service.get_uri_for_class(&class){
                 Ok(u) => u,
                 _=> return Err(ProjectManagerError::new("Cannot get uri for class", lsp_server::ErrorCode::RequestFailed)),
             };
@@ -172,7 +172,7 @@ impl DefinitionService{
     ) -> Option<Result<Vec<lsp_types::LocationLink>, ProjectManagerError>>
     {
         // search right node in class
-        let uri = match self.doc_service.read().unwrap().get_uri_for_class(&entity){
+        let uri = match self.doc_service.get_uri_for_class(&entity){
             Ok(u) => u,
             _=> return None,
         };

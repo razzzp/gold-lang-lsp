@@ -84,7 +84,7 @@ impl TypeResolver {
             id => {
                 // try search class first, because its cheaper
                 if let Ok(_) = self.semantic_analysis_service
-                            .doc_service.read().unwrap()
+                            .doc_service
                             .get_uri_for_class(&id.to_string())
                 {
                     return Some(EvalType::Class(id.to_string()));
@@ -111,7 +111,7 @@ impl TypeResolver {
             let id = node.get_identifier();
             // just a class
             if let Ok(_) = self.semantic_analysis_service
-                        .doc_service.read().unwrap()
+                        .doc_service
                         .get_uri_for_class(&id.to_string())
             {
                 return Some(EvalType::Class(id.to_string()));

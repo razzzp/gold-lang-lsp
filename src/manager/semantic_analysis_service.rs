@@ -9,7 +9,7 @@ use super::{ProjectManager, annotated_node::{AnnotatedNode, EvalType, TypeInfo, 
 use crate::manager::symbol_table::{SymbolTable,SymbolInfo,SymbolType, ISymbolTable};
 #[derive(Debug, Clone)]
 pub struct SemanticAnalysisService {
-    pub doc_service : Arc<RwLock<DocumentService>>,
+    pub doc_service : DocumentService,
     logger: Arc<dyn ILoggerV2>,
     diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
     already_seen_uri: Arc<Mutex<HashSet<String>>>,
@@ -17,7 +17,7 @@ pub struct SemanticAnalysisService {
 
 impl SemanticAnalysisService {
     pub fn new(
-        doc_service: Arc<RwLock<DocumentService>>, 
+        doc_service: DocumentService, 
         logger: Arc<dyn ILoggerV2>, 
         diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
         already_seen_uri : Option<Arc<Mutex<HashSet<String>>>>
@@ -38,7 +38,7 @@ impl SemanticAnalysisService {
         return Ok(())
     }
     pub fn get_symbol_table_class_def_only(&mut self, class: &String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
-        let uri = self.doc_service.read().unwrap().get_uri_for_class(class)?;
+        let uri = self.doc_service.get_uri_for_class(class)?;
         let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri, true)?;
         let st_option = doc.lock().unwrap().get_symbol_table().clone();
         match st_option{
@@ -57,7 +57,7 @@ impl SemanticAnalysisService {
 
         self.logger.log_info(format!("[Req Analyze Uri:{}]{}", if !only_definitions {"Full"}else{"Light"},uri).as_str());
 
-        let doc: Arc<Mutex<Document>> = self.doc_service.write().unwrap().get_parsed_document(uri, true)?;
+        let doc: Arc<Mutex<Document>> = self.doc_service.get_parsed_document(uri, true)?;
         // is exist and only defs needed return existing,
         //  otherwise regenerate
         if doc.lock().unwrap().annotated_ast.is_some(){
@@ -118,7 +118,6 @@ mod test{
         let root_uri = create_uri_from_path("./test/workspace");
         let mut doc_service = create_test_doc_service(Some(root_uri));
         doc_service.index_files();
-        let doc_service = Arc::new(RwLock::new(doc_service));
         let mut sem_service = create_test_sem_service(doc_service);
 
         let result = sem_service.get_symbol_table_class_def_only(&"aRootClass".to_string()).unwrap();

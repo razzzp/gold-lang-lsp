@@ -1,7 +1,7 @@
 use std::{collections::{HashMap, HashSet}, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, error::Error, fmt::Display, str::FromStr};
 
 use lsp_server::ErrorCode;
-use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink};
+use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink, CompletionItem};
 
 use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector, IDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor, AnalyzerDiagnostic}, threadpool::ThreadPool};
 use data_structs::*;
@@ -19,15 +19,16 @@ pub mod symbol_table;
 pub mod ast_annotator;
 pub mod doc_symbol_generator;
 pub mod utils;
+pub mod  completion_service;
 
 #[derive(Debug, Clone)]
 pub struct ProjectManager{
-    pub doc_service: Arc<RwLock<DocumentService>>,
+    pub doc_service: DocumentService,
     logger: Arc<dyn ILoggerV2>,
 }
 impl ProjectManager{
     pub fn new(root_uri : Option<Url>, logger: Arc<dyn ILoggerV2>) -> Result<ProjectManager, ProjectManagerError>{
-        let doc_service = Arc::new(RwLock::new(DocumentService::new(root_uri.clone(), logger.clone())?));
+        let doc_service = DocumentService::new(root_uri.clone(), logger.clone())?;
 
         Ok(ProjectManager{
             doc_service,
@@ -36,11 +37,11 @@ impl ProjectManager{
     }
 
     pub fn index_files(&mut self){
-        return self.doc_service.write().unwrap().index_files();
+        return self.doc_service.index_files();
     }
 
     pub fn analyze_files(&mut self, thread_pool : &ThreadPool){
-        let partitions = self.doc_service.read().unwrap().partition_files(1000);
+        let partitions = self.doc_service.partition_files(1000);
         for partition in partitions.into_iter(){
             let mut sem_service = self.create_sem_service();
             thread_pool.execute(move ||{
@@ -58,30 +59,30 @@ impl ProjectManager{
     }
 
     pub fn generate_definitions(&mut self){
-        return self.doc_service.write().unwrap().index_files();
+        return self.doc_service.index_files();
     }
 
     pub fn get_document_info(&mut self, uri: &Url) -> Result<Arc<RwLock<DocumentInfo>>, ProjectManagerError>{
-        return self.doc_service.write().unwrap().get_document_info(uri);
+        return self.doc_service.get_document_info(uri);
     }
 
     pub fn get_parsed_document_for_class(&mut self, class: &String, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        return self.doc_service.write().unwrap().get_parsed_document_for_class(class, wait_on_lock);
+        return self.doc_service.get_parsed_document_for_class(class, wait_on_lock);
     }
 
     pub fn get_parsed_document(&mut self, uri: &Url, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        return self.doc_service.write().unwrap().get_parsed_document(uri, wait_on_lock);
+        return self.doc_service.get_parsed_document(uri, wait_on_lock);
     }
 
     pub fn notify_document_saved(&mut self, uri: &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        return self.doc_service.write().unwrap().notify_document_saved(uri);
+        return self.doc_service.notify_document_saved(uri);
     }
 
     pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String, threadpool: &ThreadPool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        let doc_info = self.doc_service.write().unwrap().get_document_info(uri)?;
+        let doc_info = self.doc_service.get_document_info(uri)?;
         // discard old doc, and analyze new content
         doc_info.write().unwrap().set_opened_document(None);
-        let new_doc = self.doc_service.write().unwrap().parse_content(full_file_content)?;
+        let new_doc = self.doc_service.parse_content(full_file_content)?;
         let new_doc = Arc::new(Mutex::new(new_doc));
         doc_info.write().unwrap().set_opened_document(Some(new_doc.clone()));
         let mut sem_service = self.create_sem_service();
@@ -93,7 +94,7 @@ impl ProjectManager{
     }
 
     pub fn notify_document_opened(&mut self, uri: &Url, threadpool: &ThreadPool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        let doc = self.doc_service.write().unwrap().get_parsed_document(uri, true)?;
+        let doc = self.doc_service.get_parsed_document(uri, true)?;
         // discard old doc, and analyze new content
         let doc_2 = doc.clone();
         let mut sem_service = self.create_sem_service();
@@ -104,7 +105,7 @@ impl ProjectManager{
     }
 
     pub fn get_uri_for_class(& self, class_name: &String)-> Result<Url, ProjectManagerError>{
-        return self.doc_service.read().unwrap().get_uri_for_class(class_name);
+        return self.doc_service.get_uri_for_class(class_name);
     }
 
     fn create_sem_service(&self) -> SemanticAnalysisService{
@@ -124,7 +125,7 @@ impl ProjectManager{
 
     pub fn generate_document_symbols(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
         // use lighter sym generator if doc not analyzed yet
-        let doc = self.doc_service.write().unwrap().get_parsed_document(uri, true)?;
+        let doc = self.doc_service.get_parsed_document(uri, true)?;
         if doc.lock().unwrap().annotated_ast.is_none(){
             let sym_gen = DocumentSymbolGeneratorFromAst::new();
             let ast = doc.lock().unwrap().ast.clone();
@@ -222,6 +223,15 @@ impl ProjectManager{
         analyzer_diags.iter().for_each(|d|{result.push(d.clone())});
         return Ok(result);
     }
+
+    pub fn generate_completion_proposals(
+        &mut self,
+        uri : &Url, 
+        pos : &Position,
+    ) -> Result<Vec<CompletionItem>, ProjectManagerError>
+    {   
+        todo!()
+    }
 }
 
 
@@ -282,7 +292,7 @@ pub mod test{
         return Arc::new(Mutex::new(GenericDiagnosticCollector::new()))
     }
 
-    pub fn create_test_sem_service(doc_service: Arc<RwLock<DocumentService>>)-> SemanticAnalysisService{
+    pub fn create_test_sem_service(doc_service: DocumentService)-> SemanticAnalysisService{
         return SemanticAnalysisService::new(
             doc_service,
             create_test_logger(),
@@ -291,12 +301,12 @@ pub mod test{
         )
     }
 
-    pub fn create_test_type_resolver(doc_service: Arc<RwLock<DocumentService>>) -> TypeResolver{
+    pub fn create_test_type_resolver(doc_service: DocumentService) -> TypeResolver{
         let sem_analysis_service = create_test_sem_service(doc_service);
         return TypeResolver::new(sem_analysis_service);
     }
 
-    pub fn create_test_def_service(doc_service: Arc<RwLock<DocumentService>>, uri: &Url) -> DefinitionService{
+    pub fn create_test_def_service(doc_service: DocumentService, uri: &Url) -> DefinitionService{
         let sem_analysis_service = create_test_sem_service(doc_service.clone());
         return DefinitionService::new(
             doc_service,
@@ -448,7 +458,7 @@ pub mod test{
         };
         let mut proj_manager= create_test_project_manager("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
         proj_manager.index_files();
-        assert!(proj_manager.doc_service.read().unwrap().count_files() > 54000);
+        assert!(proj_manager.doc_service.count_files() > 54000);
     }
 
     #[ignore="long running time"]
@@ -465,7 +475,7 @@ pub mod test{
         proj_manager.index_files();
         proj_manager.analyze_files(&threadpool);
         drop(threadpool);
-        assert!(proj_manager.doc_service.read().unwrap().count_files() > 54000);
+        assert!(proj_manager.doc_service.count_files() > 54000);
     }
 
     #[test]
