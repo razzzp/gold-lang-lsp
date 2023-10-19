@@ -11,7 +11,7 @@ pub fn search_encasing_node(node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, po
 {
     let r_node = node.read().unwrap();
     for child in &r_node.children{
-        // self.logger.log_info(format!("[Req Definition] Cur Node {}",child.read().unwrap().data.to_string_type_pos()).as_str());
+        println!("[Req Definition] Cur Node {}",child.read().unwrap().data.to_string_type_pos());
         if child.read().unwrap().data.get_range().contains_pos(pos){
             return search_encasing_node(child, pos)
         }
@@ -20,16 +20,23 @@ pub fn search_encasing_node(node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, po
 }
 
 /// returns the parent if it is a binary op node
-pub fn check_parent_dot_ops(node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>)
+pub fn check_dot_ops(node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>)
     ->Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
 {
-    let parent_node = node.read().unwrap().parent.as_ref()?.upgrade()?;
-    let lock = parent_node.read().unwrap();
+    let lock = node.read().unwrap();
     if let Some(bin_op) = lock.data.as_any().downcast_ref::<AstBinaryOp>(){
         if bin_op.op_token.token_type == TokenType::Dot{
-            return Some(parent_node.clone());
+            return Some(node.clone());
         } else {return  None;}
     } else {
         return None;
     }
+}
+
+/// returns the parent if it is a binary op node
+pub fn check_parent_dot_ops(node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>)
+    ->Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
+{
+    let parent_node = node.read().unwrap().parent.as_ref()?.upgrade()?;
+    return check_dot_ops(&parent_node);
 }

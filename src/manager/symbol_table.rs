@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 use core::fmt::Debug;
 
+use std::collections::HashSet;
 use std::sync::Mutex;
 
 use std::sync::Arc;
@@ -67,6 +68,7 @@ pub trait ISymbolTable: Debug + Send {
     fn print_all_symbols(&self);
     fn get_class(&self) -> Option<String>;
     fn search_all_symbol_info(&self, id: &String) -> Vec<(String, Arc<SymbolInfo>)>;
+    fn collect_unique_symbols_w_parents(&self) -> Vec<Arc<SymbolInfo>>;
 }
 
 #[derive(Debug)]
@@ -206,5 +208,31 @@ impl ISymbolTable for SymbolTable {
 
     fn get_class(&self) -> Option<String> {
         self.for_class_or_module.clone()
+    }
+
+    fn collect_unique_symbols_w_parents(&self) -> Vec<Arc<SymbolInfo>> {
+        let mut result = Vec::new();
+        let mut seen = HashSet::new();
+        result.extend(
+            self.iter_symbols().map(|s|{
+                seen.insert(&s.id);
+                s.clone()
+            })
+        );
+        match &self.parent_symbol_table{
+            Some(parent_st) => {
+                parent_st.lock().unwrap()
+                    .collect_unique_symbols_w_parents()
+                    .into_iter()
+                    .filter(|s|{
+                        return !seen.contains(&s.id);
+                    })
+                    .for_each(|s|{
+                        result.push(s.clone())
+                    })
+            }
+            _=> ()
+        }
+        return result;
     }
 }

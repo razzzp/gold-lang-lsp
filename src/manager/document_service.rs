@@ -281,15 +281,11 @@ mod test{
         let path = PathBuf::from("./test/workspace");
         let path =  fs::canonicalize(&path).unwrap().to_str().unwrap().to_string();
         let uri = Url::from_file_path(path.clone()).unwrap();
-       
-        let file_path= PathBuf::from("./test/workspace/Bundle2/aClass5.god");
-        let file_path =  fs::canonicalize(&file_path).unwrap().to_str().unwrap().to_string();
-        let file_uri = Url::from_file_path(file_path.clone()).unwrap();
 
-        let mut doc_manager = DocumentService::new(Some(uri), create_test_logger()).unwrap();
+        let doc_manager = DocumentService::new(Some(uri), create_test_logger()).unwrap();
         doc_manager.index_files();
         
-        assert_eq!(doc_manager.uri_docinfo_map.read().unwrap().len(), 10);
+        assert_eq!(doc_manager.uri_docinfo_map.read().unwrap().len(), 11);
         // ensure not locked
         drop(doc_manager.uri_docinfo_map.try_write().unwrap());
         drop(doc_manager.class_uri_map.try_write().unwrap());

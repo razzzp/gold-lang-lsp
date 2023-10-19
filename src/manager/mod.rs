@@ -6,7 +6,7 @@ use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagn
 use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector, IDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor, AnalyzerDiagnostic}, threadpool::ThreadPool};
 use data_structs::*;
 
-use self::{semantic_analysis_service::{SemanticAnalysisService}, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst};
+use self::{semantic_analysis_service::{SemanticAnalysisService}, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService};
 use crate::manager::doc_symbol_generator::DocumentSymbolGenerator;
 
 pub mod data_structs;
@@ -228,9 +228,14 @@ impl ProjectManager{
         &mut self,
         uri : &Url, 
         pos : &Position,
-    ) -> Result<Vec<CompletionItem>, ProjectManagerError>
+    ) -> Result<Option<Vec<CompletionItem>>, ProjectManagerError>
     {   
-        todo!()
+        let completion_service = CompletionService::new(
+            self.doc_service.clone(), 
+            self.create_sem_service(), 
+            uri.clone(),
+            self.logger.clone());
+        return completion_service.generate_completion_proposals(pos);
     }
 }
 

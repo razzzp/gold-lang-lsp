@@ -12,7 +12,7 @@ use std::error::Error;
 
 use crossbeam_channel::Sender;
 use lsp_types::notification::{DidChangeTextDocument, DidSaveTextDocument, DidOpenTextDocument};
-use lsp_types::{OneOf, DocumentSymbolResponse, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams, CompletionParams, CompletionResponse};
+use lsp_types::{OneOf, DocumentSymbolResponse, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams, CompletionParams, CompletionResponse, CompletionOptions};
 use lsp_types::request::{DocumentSymbolRequest, DocumentDiagnosticRequest, GotoDefinition, Completion};
 use lsp_types::{
     InitializeParams, ServerCapabilities,
@@ -56,6 +56,9 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions::default())),
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         definition_provider: Some(OneOf::Left(true)),
+        completion_provider: Some(CompletionOptions{
+            ..Default::default()
+        }),
         ..Default::default()
     }).unwrap();
     let initialization_params = connection.initialize(server_capabilities)?;
@@ -74,8 +77,8 @@ fn main_loop(
     let params: InitializeParams = serde_json::from_value(params).unwrap();
 
     //TODO implem multithreading
-    let mut logger : Arc<dyn ILoggerV2>= Arc::new(StdErrLogger::new("[Gold Lang Server]"));
-    let mut threadpool = ThreadPool::new(5, logger.clone());
+    let logger : Arc<dyn ILoggerV2>= Arc::new(StdErrLogger::new("[Gold Lang LSP]"));
+    let threadpool = ThreadPool::new(5, logger.clone());
     // TODO use same logger in server and project manager
     let mut proj_manager = match ProjectManager::new(
         params.root_uri,
@@ -383,7 +386,7 @@ fn handle_completion_request(
 )
     -> Result<Message, (i32, String)>
 {
-    logger.log_info(format!("handling Document Diagnostics request #{id}").as_str());
+    logger.log_info(format!("handling Completion request #{id}").as_str());
     let completion_items = match proj_manager.generate_completion_proposals(
         &params.text_document_position.text_document.uri, 
         &params.text_document_position.position.into())
@@ -391,9 +394,15 @@ fn handle_completion_request(
         Ok(items) => items,
         Err(e) => return Err((e.error_code as i32, e.msg))
     };
-    let result = CompletionResponse::Array(completion_items);
-    let result = serde_json::to_value(&result).unwrap();
-    let resp = Response { id, result: Some(result), error: None };
+    let result = match completion_items{
+        Some(items) => {
+            let result = CompletionResponse::Array(items);
+            let result = serde_json::to_value(&result).unwrap();
+            Some(result)
+        },
+        _=> None
+    };
+    let resp = Response { id, result, error: None };
     return Ok(Message::Response(resp));
 }
 
