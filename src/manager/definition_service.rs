@@ -130,6 +130,39 @@ impl DefinitionService{
 
     }
 
+
+    fn generate_loc_link_rhs(
+        &mut self, 
+        node:  &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
+        st: &Arc<Mutex<dyn ISymbolTable>>,
+        pos : &Position,
+    )
+    -> Result<Vec<lsp_types::LocationLink>, ProjectManagerError>
+    {
+        let origin_selection_range = self.get_origin_selection_range(node, pos);
+        let id = match self.get_id(node, pos){
+            Some(id) => id,
+            _=> return Err(ProjectManagerError::new("Cannot get id for node", lsp_server::ErrorCode::RequestFailed))
+        };
+        let sym_infos= self.type_resolver.search_sym_info_through_parent(&id, st);
+
+        let mut result = Vec::new();
+        for (class, sym) in sym_infos{
+            let uri = match self.doc_service.read().unwrap().get_uri_for_class(&class){
+                Ok(u) => u,
+                _=> return Err(ProjectManagerError::new("Cannot get uri for class", lsp_server::ErrorCode::RequestFailed)),
+            };
+            result.push(LocationLink{
+                origin_selection_range,
+                target_range: sym.range.as_lsp_type_range(),
+                target_selection_range: sym.selection_range.as_lsp_type_range(),
+                target_uri: uri
+            });
+        }
+        return  Ok(result);
+
+    }
+
     fn generate_right_hand_of_entity(
         &mut self,
         node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
@@ -153,7 +186,7 @@ impl DefinitionService{
             }
         };
         // don't search uses because the member should be in the st itself
-        return Some(self.generate_loc_link(node, &class_sym_table, pos, false))
+        return Some(self.generate_loc_link_rhs(node, &class_sym_table, pos))
     }
 
     fn handle_generic(
@@ -434,6 +467,25 @@ mod test{
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
         let target_uri = create_uri_from_path("./test/workspace/aModule.god");
+        assert_eq!(loc.target_uri, target_uri);
+    }
+
+    #[test]
+    fn test_multiple_def(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = create_uri_from_path("./test/workspace/aFifthClass.god");
+        // pos input to test, local var
+        let pos_input = Position::new(9, 20);
+
+        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let mut result = def_service.get_definition(&pos_input).unwrap();
+        assert_eq!(result.len(), 2);
+        let loc = result.pop().unwrap();
+        let target_uri = create_uri_from_path("./test/workspace/aFourthClass.god");
+        assert_eq!(loc.target_uri, target_uri);
+        let loc = result.pop().unwrap();
+        let target_uri = create_uri_from_path("./test/workspace/aFifthClass.god");
         assert_eq!(loc.target_uri, target_uri);
     }
 }

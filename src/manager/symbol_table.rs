@@ -66,6 +66,7 @@ pub trait ISymbolTable: Debug + Send {
     // for debug only
     fn print_all_symbols(&self);
     fn get_class(&self) -> Option<String>;
+    fn search_all_symbol_info(&self, id: &String) -> Vec<(String, Arc<SymbolInfo>)>;
 }
 
 #[derive(Debug)]
@@ -135,6 +136,29 @@ impl ISymbolTable for SymbolTable {
             let parent_st = self.parent_symbol_table.unwrap_ref();
             // don't need to search uses of parent
             result = parent_st.lock().unwrap().search_symbol_info(id);
+        }
+        return result;
+    }
+
+    /// returns list of syminfo matching id, searches through parent
+    fn search_all_symbol_info(&self, id: &String) -> Vec<(String, Arc<SymbolInfo>)> {
+        // search cur st first
+        let mut result = Vec::new();
+        match self.hash_map.get(&id.to_uppercase()) {
+            Some(i) => {
+                result.push((
+                    self.for_class_or_module.unwrap_clone_or_empty_string(),
+                    self.symbols_list.get(*i).cloned().unwrap(),
+                ));
+            }
+            _ => (),
+        };
+
+        match self.get_parent_symbol_table(){
+            Some(st) => {
+                result.extend(st.lock().unwrap().search_all_symbol_info(id))
+            }
+            _=>()
         }
         return result;
     }

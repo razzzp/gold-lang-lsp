@@ -63,6 +63,12 @@ impl TypeResolver {
         return result;
     }
 
+    /// returns list of all sym info matching id from parents
+    pub fn search_sym_info_through_parent(&mut self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Vec<(String,Arc<SymbolInfo>)>{
+        // already searches parent
+        return sym_table.lock().unwrap().search_all_symbol_info(id);
+    }
+
     fn resolve_type_basic(&mut self, node: &Arc<dyn IAstNode>,sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Option<EvalType> {
         let node = node.as_any().downcast_ref::<AstTypeBasic>()?; 
         //
