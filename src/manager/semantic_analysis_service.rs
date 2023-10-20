@@ -71,7 +71,7 @@ impl SemanticAnalysisService {
                 }
             }
         }
-        self.logger.log_info(format!("[Analyzing Uri]{}", uri).as_str());
+        // self.logger.log_info(format!("[Analyzing Uri]{}", uri).as_str());
         return self.analyze(doc, only_definitions);
     }
     

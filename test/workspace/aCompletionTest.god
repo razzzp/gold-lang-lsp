@@ -10,7 +10,6 @@ procedure FifthClassProc
    ; test
    self.
    self.sec
-   localVar.
-   localVar.se
-   
+   localVar.ThirdProc
+   localVar.sec
 endProc

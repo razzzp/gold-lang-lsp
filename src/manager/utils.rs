@@ -11,7 +11,7 @@ pub fn search_encasing_node(node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, po
 {
     let r_node = node.read().unwrap();
     for child in &r_node.children{
-        println!("[Req Definition] Cur Node {}",child.read().unwrap().data.to_string_type_pos());
+        // println!("[Req Definition] Cur Node {}",child.read().unwrap().data.to_string_type_pos());
         if child.read().unwrap().data.get_range().contains_pos(pos){
             return search_encasing_node(child, pos)
         }
