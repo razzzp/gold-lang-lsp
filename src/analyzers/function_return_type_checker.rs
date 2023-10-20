@@ -35,7 +35,7 @@ impl FunctionReturnTypeChecker{
          Some(n) => n,
          _=> return
       };
-      let token = &return_type_node.type_token;
+      let token = &return_type_node.id_token;
       if token.token_type == TokenType::Identifier {
          let tok_val = token.get_value_as_str().to_uppercase();
          if tok_val == "TVARBYTEARRAY" {

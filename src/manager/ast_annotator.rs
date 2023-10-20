@@ -189,9 +189,10 @@ impl AstAnnotator{
         let ori_node = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstClass>());
 
         let class_name = ori_node.get_identifier();
+        let class_name_arc = ori_node.identifier.get_value();
         self.root_symbol_table.unwrap_ref().lock().unwrap().for_class_or_module = Some(class_name.to_string());
         let mut sym_info = SymbolInfo::new(class_name.to_string(), SymbolType::Class);
-        sym_info.eval_type = Some(EvalType::Class(class_name.to_string()));
+        sym_info.eval_type = Some(EvalType::Class(class_name_arc));
 
         if let Some(parent_class) = &ori_node.parent_class{
             let parent_class_name = parent_class.get_value_as_str();
@@ -232,9 +233,10 @@ impl AstAnnotator{
         let ori_node = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstModule>());
 
         let module_name = ori_node.get_identifier();
+        let module_name_arc = ori_node.id.get_value();
         self.root_symbol_table.unwrap_ref().lock().unwrap().for_class_or_module = Some(module_name.to_string());
         let mut sym_info = SymbolInfo::new(module_name.to_string(), SymbolType::Module);
-        sym_info.eval_type = Some(EvalType::Module(module_name.to_string()));
+        sym_info.eval_type = Some(EvalType::Module(module_name_arc));
 
         sym_info.range = ori_node.get_range();
         sym_info.selection_range = ori_node.id.get_range();
@@ -502,7 +504,7 @@ impl AstAnnotator{
                     EvalType::Class(class_name)=>{
                         // search right node in class
                         // if class is self don't call sem service, because it will fail
-                        let class_sym_table = if class_name == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class_or_module.unwrap_clone_or_empty_string() {
+                        let class_sym_table = if class_name.to_string() == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class_or_module.unwrap_clone_or_empty_string() {
                             self.get_cur_sym_table()
                         } else {
                             match self.semantic_analysis_service.get_symbol_table_class_def_only(&class_name){
@@ -569,15 +571,15 @@ endproc
         // check obj
         let node = search_encasing_node(&root, &Position::new(6, 5));
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
-        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
         // check first right
         let node = search_encasing_node(&root, &Position::new(6, 8));
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
-        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
         // check second right
         let node = search_encasing_node(&root, &Position::new(6, 13));
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
-        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
     }
 
     #[test]
@@ -602,15 +604,15 @@ endproc
         // check obj
         let node = search_encasing_node(&root, &Position::new(6, 15));
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
-        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
         // check first right
         let node = search_encasing_node(&root, &Position::new(6, 19));
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
-        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
         // check second right
         let node = search_encasing_node(&root, &Position::new(6, 25));
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
-        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
     }
 
 
@@ -656,7 +658,7 @@ endproc
         // class func
         let node = search_encasing_node(&root, &Position::new(15, 15));
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
-        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class("aObject".to_string()));
+        assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
         
         // class func deref
         let node = search_encasing_node(&root, &Position::new(16, 28));

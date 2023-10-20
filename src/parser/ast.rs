@@ -245,13 +245,13 @@ impl IAstNode for AstUses {
 pub struct AstTypeBasic {
     pub raw_pos: usize,
     pub range: Range,
-    pub type_token: Token,
+    pub id_token: Token,
 }
 implem_irange!(AstTypeBasic);
 impl IAstNode for AstTypeBasic {
     implem_iastnode_common!(AstTypeBasic, "type_basic");
     fn get_identifier(&self) -> &str {
-        return self.type_token.get_value_as_str()
+        return self.id_token.get_value_as_str()
     }
 }
 

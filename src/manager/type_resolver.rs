@@ -87,7 +87,7 @@ impl TypeResolver {
                             .doc_service
                             .get_uri_for_class(&id.to_string())
                 {
-                    return Some(EvalType::Class(id.to_string()));
+                    return Some(EvalType::Class(node.id_token.get_value()));
                 }
                 // if not class, search types in parents and uses
                 let sym = self.search_sym_info(&id.to_string(),sym_table, true);
@@ -97,7 +97,7 @@ impl TypeResolver {
                     },
                     _=> {
                         // unknown
-                        return Some(EvalType::Unresolved(node.get_identifier().to_string()))
+                        return Some(EvalType::Unresolved(node.id_token.get_value()))
                     }
                 } 
             }
@@ -114,7 +114,7 @@ impl TypeResolver {
                         .doc_service
                         .get_uri_for_class(&id.to_string())
             {
-                return Some(EvalType::Class(id.to_string()));
+                return Some(EvalType::Class(node.ident_token.get_value()));
             } //else {return Some(EvalType::Unknown)}
 
             // below shouldn't be necessary unless we want to check type
@@ -127,11 +127,11 @@ impl TypeResolver {
                 },
                 _=> {
                     // unknown
-                    return Some(EvalType::Unresolved(node.get_identifier().to_string()))
+                    return Some(EvalType::Unresolved(node.ident_token.get_value()))
                 }
             } 
         } else if node.ref_type.token_type == TokenType::ListOf{
-            return Some(EvalType::Class("aListOfInstances".to_string()));
+            return Some(EvalType::Class(Arc::from("aListOfInstances")));
         } else {
             return Some(EvalType::Unknown);
         }

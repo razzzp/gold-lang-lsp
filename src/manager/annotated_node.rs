@@ -47,11 +47,11 @@ pub enum EvalType{
     Unknown,
     Native(NativeType),
     Defined(TypeInfo),
-    Class(String),
+    Class(Arc<str>),
     Proc,
-    Module(String),
+    Module(Arc<str>),
     // contains id of unresolved type
-    Unresolved(String),
+    Unresolved(Arc<str>),
 }
 
 #[derive(Debug)]

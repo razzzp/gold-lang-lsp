@@ -97,7 +97,7 @@ impl CompletionService{
 
     fn generate_rhs_of_entity(
         &self,
-        entity: &String,
+        entity: &str,
         st: &Arc<Mutex<dyn ISymbolTable>>,
     ) -> Result<Option<Vec<CompletionItem>>, ProjectManagerError>
     {

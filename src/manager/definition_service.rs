@@ -166,7 +166,7 @@ impl DefinitionService{
     fn generate_right_hand_of_entity(
         &self,
         node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
-        entity: &String,
+        entity: &str,
         st: &Arc<Mutex<dyn ISymbolTable>>,
         pos: &Position,
     ) -> Option<Result<Vec<lsp_types::LocationLink>, ProjectManagerError>>

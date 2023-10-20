@@ -388,7 +388,7 @@ fn parse_type_basic<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [T
       Ok((r, t)) => Ok((r, Arc::new(AstTypeBasic{
          raw_pos:t.raw_pos,
          range: t.range.clone(),
-         type_token: t}))),
+         id_token: t}))),
       Err(e) => Err(e)
    }
 }
@@ -1398,14 +1398,14 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
          assert_eq!(downcasted.get_pos(),input[count].get_pos());
          assert_eq!(downcasted.range,input[count].range);
          assert_eq!(
-            downcasted.type_token.token_type,
+            downcasted.id_token.token_type,
             input[count].token_type
          );
          count += 1;
          next = remaining;
          // additional checking last token
          if next.is_empty(){
-            assert_eq!(downcasted.type_token.get_value().deref(), "tCustomType")
+            assert_eq!(downcasted.id_token.get_value().deref(), "tCustomType")
          }
       }
    } 
@@ -1629,7 +1629,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
          let param_node = cast_and_unwrap::<AstParameterDeclaration>(param_node);
          let type_node = cast_and_unwrap::<AstTypeBasic>(&param_node.type_node.as_ref().unwrap());
          assert_eq!(param_node.identifier.get_value().deref(), expected_param_idents[i]);
-         assert_eq!(type_node.type_token.get_value().deref(), expected_param_types[i]);
+         assert_eq!(type_node.id_token.get_value().deref(), expected_param_types[i]);
       }
       // test modifiers
       let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
@@ -1682,11 +1682,11 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
          let param_node = cast_and_unwrap::<AstParameterDeclaration>(param_node);
          let type_node = cast_and_unwrap::<AstTypeBasic>(&param_node.type_node.as_ref().unwrap());
          assert_eq!(param_node.identifier.get_value().deref(), expected_param_idents[i]);
-         assert_eq!(type_node.type_token.get_value().deref(), expected_param_types[i]);
+         assert_eq!(type_node.id_token.get_value().deref(), expected_param_types[i]);
       }
       // test return type
       let return_node = downcasted.return_type.as_any().downcast_ref::<AstTypeBasic>().unwrap();
-      assert_eq!(return_node.type_token.get_value().deref(), "aReturnType");
+      assert_eq!(return_node.id_token.get_value().deref(), "aReturnType");
       // test modifiers
       let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
       let modifiers_node = modifiers_node.as_any().downcast_ref::<AstMethodModifiers>().unwrap();
@@ -1733,7 +1733,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
          let type_node = cast_and_unwrap::<AstTypeBasic>(&param_node.type_node.as_ref().unwrap());
          assert_eq!(param_node.modifier.as_ref().unwrap().get_value().deref(), input[1+0+i*5].get_value().deref());
          assert_eq!(param_node.identifier.get_value().deref(), input[1+1+i*5].get_value().deref());
-         assert_eq!(type_node.type_token.get_value().deref(), input[1+3+i*5].get_value().deref());
+         assert_eq!(type_node.id_token.get_value().deref(), input[1+3+i*5].get_value().deref());
       }
    }
 
@@ -1771,7 +1771,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       let type_node = cast_and_unwrap::<AstTypeBasic>(&param_node.type_node.as_ref().unwrap());
       assert!(modifier.is_none());
       assert_eq!(param_node.identifier.get_value().deref(), "SecondParam");
-      assert_eq!(type_node.type_token.get_value().deref(), "SecondParamType");
+      assert_eq!(type_node.id_token.get_value().deref(), "SecondParamType");
 
    } 
 
