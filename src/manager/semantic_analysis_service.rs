@@ -1,12 +1,13 @@
 use lsp_server::ErrorCode;
-use lsp_types::{DocumentSymbol, SymbolKind, Url};
+use lsp_types::Url;
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstTypeDeclaration, AstProcedure, AstFunction, AstTypeBasic, AstGlobalVariableDeclaration, AstUses, AstParameterDeclaration, AstLocalVariableDeclaration}, analyzers::{IVisitor, AnalyzerDiagnostic}, utils::{DynamicChild, Range, IRange, OptionString, ILogger, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2}, lexer::tokens::TokenType, unwrap_or_return};
+use crate::{analyzers::AnalyzerDiagnostic, utils::{IDiagnosticCollector, ILoggerV2}};
 use core::fmt::Debug;
-use std::{collections::{HashMap, HashSet}, sync::{Mutex, Arc, RwLock, RwLockWriteGuard, MutexGuard, LockResult}, ops::{DerefMut, Deref}, result, f32::consts::E, vec::IntoIter};
-use crate::utils::{OptionExt};
-use super::{ProjectManager, annotated_node::{AnnotatedNode, EvalType, TypeInfo, Location, NativeType, self}, data_structs::{Document, ProjectManagerError}, document_service::DocumentService, type_resolver::TypeResolver, ast_annotator::AstAnnotator};
-use crate::manager::symbol_table::{SymbolTable,SymbolInfo,SymbolType, ISymbolTable};
+use std::{collections::HashSet, sync::{Mutex, Arc}};
+
+use super::{data_structs::{Document, ProjectManagerError}, document_service::DocumentService, ast_annotator::AstAnnotator};
+use crate::manager::symbol_table::ISymbolTable;
+
 #[derive(Debug, Clone)]
 pub struct SemanticAnalysisService {
     pub doc_service : DocumentService,
@@ -30,6 +31,7 @@ impl SemanticAnalysisService {
         }
     }
 
+
     fn check_already_seen(&self, uri: &Url) -> Result<(),ProjectManagerError>{
         if self.already_seen_uri.lock().unwrap().contains(&uri.to_string()){
             return Err(ProjectManagerError::new(format!("{} already locked in request session",uri).as_str(), ErrorCode::RequestFailed));
@@ -37,6 +39,8 @@ impl SemanticAnalysisService {
         self.already_seen_uri.lock().unwrap().insert(uri.to_string());
         return Ok(())
     }
+
+
     pub fn get_symbol_table_class_def_only(&self, class: &str) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         let uri = self.doc_service.get_uri_for_class(class)?;
         let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri, true)?;
@@ -109,16 +113,16 @@ impl SemanticAnalysisService {
 
 #[cfg(test)]
 mod test{
-    use std::sync::{Arc, RwLock};
+    
 
     use crate::manager::test::{create_test_sem_service, create_test_doc_service, create_uri_from_path};
 
     #[test]
     fn test_get_symbol_table(){
         let root_uri = create_uri_from_path("./test/workspace");
-        let mut doc_service = create_test_doc_service(Some(root_uri));
+        let doc_service = create_test_doc_service(Some(root_uri));
         doc_service.index_files();
-        let mut sem_service = create_test_sem_service(doc_service);
+        let sem_service = create_test_sem_service(doc_service);
 
         let result = sem_service.get_symbol_table_class_def_only(&"aRootClass".to_string()).unwrap();
         let result = result.lock().unwrap();

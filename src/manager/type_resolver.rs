@@ -1,8 +1,8 @@
-use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 
 use crate::{parser::ast::{IAstNode, AstTypeBasic, AstBinaryOp, AstTerminal, AstTypeReference, AstMethodCall}, lexer::tokens::TokenType};
 
-use super::{annotated_node::{EvalType, NativeType, AnnotatedNode}, ProjectManager, semantic_analysis_service::SemanticAnalysisService};
+use super::{annotated_node::{EvalType, NativeType, AnnotatedNode}, semantic_analysis_service::SemanticAnalysisService};
 use crate::manager::symbol_table::{ISymbolTable,SymbolInfo};
 
 
@@ -270,11 +270,11 @@ impl TypeResolver {
 
 #[cfg(test)]
 mod test{
-    use std::sync::{RwLock, Arc, Mutex};
+    
 
-    use crate::{manager::{test::{create_test_project_manager, create_uri_from_path, create_test_logger, create_test_type_resolver}, semantic_analysis_service::SemanticAnalysisService, document_service::DocumentService, annotated_node::{EvalType, NativeType}}, utils::{IDiagnosticCollector, GenericDiagnosticCollector}, analyzers::AnalyzerDiagnostic};
+    use crate::manager::{test::{create_test_project_manager, create_uri_from_path, create_test_type_resolver}, annotated_node::{EvalType, NativeType}};
 
-    use super::TypeResolver;
+    
 
 
     /// 
@@ -294,7 +294,7 @@ mod test{
         // println!("{:#?}",second_writeln);
         let local_var_ref = second_writeln.read().unwrap().children.get(1).unwrap().clone();
 
-        let mut type_resolver = create_test_type_resolver(proj_manager.doc_service.clone());
+        let type_resolver = create_test_type_resolver(proj_manager.doc_service.clone());
         let eval_type = type_resolver.resolve_annotated_node_type(&local_var_ref);
         assert_eq!(eval_type, EvalType::Native(NativeType::CString));
     }

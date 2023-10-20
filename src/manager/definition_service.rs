@@ -1,13 +1,13 @@
 
 
-use std::{sync::{Arc, RwLock, Mutex, RwLockWriteGuard, RwLockReadGuard, Weak}, any::Any};
+use std::sync::{Arc, RwLock, Mutex, RwLockReadGuard};
 
 use lsp_server::ErrorCode;
 use lsp_types::{LocationLink, Url};
 
-use crate::{parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstTypeBasic, AstClass, AstTypeReference, AstMethodCall}, utils::{Position, IRange, ILoggerV2, Range}, lexer::tokens::TokenType, manager::type_resolver};
+use crate::{parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstTypeBasic, AstClass, AstTypeReference, AstMethodCall}, utils::{Position, IRange, ILoggerV2}, lexer::tokens::TokenType};
 
-use super::{ProjectManager, data_structs::{ProjectManagerError, Document}, annotated_node::{AnnotatedNode, EvalType}, semantic_analysis_service::SemanticAnalysisService, type_resolver::TypeResolver, document_service::DocumentService, utils::search_encasing_node};
+use super::{data_structs::ProjectManagerError, annotated_node::{AnnotatedNode, EvalType}, semantic_analysis_service::SemanticAnalysisService, type_resolver::TypeResolver, document_service::DocumentService, utils::search_encasing_node};
 use crate::manager::symbol_table::ISymbolTable;
 
 
@@ -263,7 +263,7 @@ impl DefinitionService{
 
 #[cfg(test)]
 mod test{
-    use crate::{manager::test::{create_test_project_manager, create_test_type_resolver, create_uri_from_path, create_test_sem_service, create_test_def_service}, utils::Position};
+    use crate::{manager::test::{create_test_project_manager, create_uri_from_path, create_test_def_service}, utils::Position};
 
 
     #[test]
@@ -274,7 +274,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(21, 12);
 
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -289,7 +289,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(23, 15);
 
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -304,7 +304,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(23, 35);
 
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -320,7 +320,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(36, 40);
 
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -337,7 +337,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(24, 14);
 
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -353,7 +353,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(24, 21);
 
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -369,7 +369,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(17, 29);
 
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -386,7 +386,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(7, 13);
 
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -402,7 +402,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(12, 25);
 
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -419,7 +419,7 @@ mod test{
         let third_class_uri = create_uri_from_path("./test/workspace/aThirdClass.god");
         let root_class_uri = create_uri_from_path("./test/workspace/aRootClass.god");
         let pos_input = Position::new(10, 15);
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -446,7 +446,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(9, 8);
 
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -462,7 +462,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(9, 19);
 
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
@@ -478,7 +478,7 @@ mod test{
         // pos input to test, local var
         let pos_input = Position::new(9, 20);
 
-        let mut def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
         let mut result = def_service.get_definition(&pos_input).unwrap();
         assert_eq!(result.len(), 2);
         let loc = result.pop().unwrap();

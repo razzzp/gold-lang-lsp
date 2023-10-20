@@ -1,8 +1,8 @@
-use std::{sync::{Arc, Mutex, RwLock}, fmt::{Display, Debug}, error::Error, collections::HashMap};
+use std::{sync::{Arc, Mutex, RwLock}, fmt::{Display, Debug}, error::Error};
 
 use lsp_server::ErrorCode;
-use lsp_types::{DocumentSymbol, RelatedFullDocumentDiagnosticReport, error_codes};
-use nom::error;
+
+
 
 use crate::parser::{ast::IAstNode, ParserDiagnostic};
 

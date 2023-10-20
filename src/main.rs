@@ -1,25 +1,25 @@
 use std::net::ToSocketAddrs;
 use std::ops::Deref;
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc};
 
 
 
 use crate::manager::ProjectManager;
 use crate::threadpool::ThreadPool;
-use crate::utils::ConsoleLogger;
+
 
 use std::error::Error;
 
 use crossbeam_channel::Sender;
 use lsp_types::notification::{DidChangeTextDocument, DidSaveTextDocument, DidOpenTextDocument};
-use lsp_types::{OneOf, DocumentSymbolResponse, Url, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams, CompletionParams, CompletionResponse, CompletionOptions};
+use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams, CompletionParams, CompletionResponse, CompletionOptions};
 use lsp_types::request::{DocumentSymbolRequest, DocumentDiagnosticRequest, GotoDefinition, Completion};
 use lsp_types::{
     InitializeParams, ServerCapabilities,
 };
 
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError, ErrorCode, Notification,};
-use utils::{ILogger, StdErrLogger, ILoggerV2};
+use utils::{StdErrLogger, ILoggerV2};
 
 
 
@@ -140,7 +140,7 @@ fn main_loop(
                     Err(ExtractError::MethodMismatch(req)) => req,
                 };
 
-                let req = match cast_req::<Completion>(req) {
+                let _req = match cast_req::<Completion>(req) {
                     Ok((id, params)) => {
                         // heavy call to analyze doc, move to separate thread
                         let sender = connection.sender.clone();

@@ -9,7 +9,7 @@ use crate::parser::ast::{AstClass, AstUses, IAstNode, AstTypeBasic, AstTypeEnum,
 
 use self::ast::{AstTypeProcedure, AstTypeFunction, AstTypeInstanceOf, AstMethodNameWithEvent, AstTerminal, AstModule, MemberModifiers, AstTypeSized, AstRoot};
 use self::body_parser::{parse_statement_v2, parse_literal_basic, parse_ident_token, parse_binary_ops_w_context};
-use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, opt_token, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context, parse_until_no_match_w_context, seq_parse_w_context};
+use self::utils::{prepend_msg_to_error, exp_token, take_until, alt_parse, opt_parse, parse_separated_list_token, seq_parse, opt_token, alt_parse_w_context, parse_separated_list_w_context, parse_until_strict_w_context, opt_parse_w_context, parse_repeat_w_context, parse_until_no_match_w_context};
 
 pub mod utils;
 pub mod body_parser;
@@ -204,7 +204,7 @@ fn parse_class<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token]
    }))); 
 }
 
-fn parse_parent_class<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  (Token,Token)), ParseError<'a>> {
+fn parse_parent_class<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Token], _context : &mut C) -> Result<(&'a [Token],  (Token,Token)), ParseError<'a>> {
    let (next, mut tokens) = seq_parse(&[
       exp_token(TokenType::OBracket),
       exp_token(TokenType::Identifier),

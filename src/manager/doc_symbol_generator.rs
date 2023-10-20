@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use std::{sync::{Arc, Mutex}, ops::Deref};
 
 use lsp_types::{DocumentSymbol, SymbolKind};
@@ -5,8 +6,6 @@ use lsp_types::{DocumentSymbol, SymbolKind};
 use crate::{utils::{OptionString, IRange}, parser::ast::{IAstNode, AstConstantDeclaration, AstTypeDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstFunction, AstClass}};
 
 use super::symbol_table::{ISymbolTable, SymbolType, SymbolInfo};
-
-
 
 pub struct DocumentSymbolGenerator{
 

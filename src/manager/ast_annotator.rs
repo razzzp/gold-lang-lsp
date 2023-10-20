@@ -398,7 +398,7 @@ impl AstAnnotator{
     fn eval_right_hand_of_entity(&mut self, left_entity_name : &str, right_id: &str) -> EvalType{
         // search right node in class
         // if class is self don't call sem service, because it will fail
-        let class_sym_table = if left_entity_name.clone() == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class_or_module.unwrap_clone_or_empty_string() {
+        let class_sym_table = if left_entity_name.to_string() == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class_or_module.unwrap_clone_or_empty_string() {
             self.get_cur_sym_table()
         } else {
             match self.semantic_analysis_service.get_symbol_table_class_def_only(&left_entity_name){
@@ -545,7 +545,7 @@ impl AstAnnotator{
 mod test{
     use std::sync::{Mutex, Arc};
 
-    use crate::{manager::{test::{create_test_project_manager, create_uri_from_path, create_test_def_service, create_test_sem_service}, utils::search_encasing_node, annotated_node::{EvalType, NativeType}}, utils::Position};
+    use crate::{manager::{test::{create_test_project_manager, create_test_sem_service}, utils::search_encasing_node, annotated_node::{EvalType, NativeType}}, utils::Position};
 
     #[test]
     fn test_bin_op(){
@@ -563,7 +563,7 @@ endproc
         ".to_string();
         let doc = proj_manager.doc_service.parse_content(&test_input).unwrap();
         let doc = Arc::new(Mutex::new(doc));
-        let mut sem_service = create_test_sem_service(proj_manager.doc_service.clone());
+        let sem_service = create_test_sem_service(proj_manager.doc_service.clone());
         let doc = sem_service.analyze(doc, false).unwrap();
         let root =doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         // check obj
@@ -596,7 +596,7 @@ endproc
         ".to_string();
         let doc = proj_manager.doc_service.parse_content(&test_input).unwrap();
         let doc = Arc::new(Mutex::new(doc));
-        let mut sem_service = create_test_sem_service(proj_manager.doc_service.clone());
+        let sem_service = create_test_sem_service(proj_manager.doc_service.clone());
         let doc = sem_service.analyze(doc, false).unwrap();
         let root =doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         // check obj
@@ -640,7 +640,7 @@ endproc
         ".to_string();
         let doc = proj_manager.doc_service.parse_content(&test_input).unwrap();
         let doc = Arc::new(Mutex::new(doc));
-        let mut sem_service = create_test_sem_service(proj_manager.doc_service.clone());
+        let sem_service = create_test_sem_service(proj_manager.doc_service.clone());
         let doc = sem_service.analyze(doc, false).unwrap();
         let root =doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         // native proc

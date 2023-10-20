@@ -1,9 +1,9 @@
-use std::{collections::{HashMap, HashSet}, fs::File, io::Read, rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, error::Error, fmt::Display, str::FromStr};
+use std::{rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, str::FromStr};
 
 use lsp_server::ErrorCode;
-use lsp_types::{DocumentSymbol, SymbolKind, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink, CompletionItem};
+use lsp_types::{DocumentSymbol, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink, CompletionItem};
 
-use crate::{parser::ast::{IAstNode, AstClass, AstConstantDeclaration, AstProcedure, AstGlobalVariableDeclaration, AstTypeDeclaration, AstFunction}, parser::{ParserDiagnostic, parse_gold}, lexer::GoldLexer, utils::{IRange, ILogger, GenericDiagnosticCollector, IDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer, IVisitor, AnalyzerDiagnostic}, threadpool::ThreadPool};
+use crate::{parser::ast::{IAstNode}, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
 use data_structs::*;
 
 use self::{semantic_analysis_service::{SemanticAnalysisService}, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService};
@@ -43,7 +43,7 @@ impl ProjectManager{
     pub fn analyze_files(&mut self, thread_pool : &ThreadPool){
         let partitions = self.doc_service.partition_files(1000);
         for partition in partitions.into_iter(){
-            let mut sem_service = self.create_sem_service();
+            let sem_service = self.create_sem_service();
             thread_pool.execute(move ||{
                 for uri_string in partition{
                     let uri = match Url::from_str(&uri_string.as_str()){
@@ -85,7 +85,7 @@ impl ProjectManager{
         let new_doc = self.doc_service.parse_content(full_file_content)?;
         let new_doc = Arc::new(Mutex::new(new_doc));
         doc_info.write().unwrap().set_opened_document(Some(new_doc.clone()));
-        let mut sem_service = self.create_sem_service();
+        let sem_service = self.create_sem_service();
         let new_doc_2 = new_doc.clone();
         threadpool.execute(move ||{
             let _ = sem_service.analyze(new_doc, false);
@@ -97,7 +97,7 @@ impl ProjectManager{
         let doc = self.doc_service.get_parsed_document(uri, true)?;
         // discard old doc, and analyze new content
         let doc_2 = doc.clone();
-        let mut sem_service = self.create_sem_service();
+        let sem_service = self.create_sem_service();
         threadpool.execute(move ||{
             let _ = sem_service.analyze(doc, false);
         });
@@ -118,7 +118,7 @@ impl ProjectManager{
     }
 
     pub fn analyze_doc(&mut self, uri : &Url, only_definitions:bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        let mut semantic_analysis_service = self.create_sem_service();
+        let semantic_analysis_service = self.create_sem_service();
         let doc = semantic_analysis_service.analyze_uri(uri, only_definitions)?;
         return Ok(doc);
     }
@@ -151,7 +151,7 @@ impl ProjectManager{
 
     pub fn generate_goto_definitions(&mut self, uri : &Url, pos: &Position) -> Result<Vec<LocationLink>, ProjectManagerError>{
         let sem_service = self.create_sem_service();
-        let mut def_service = DefinitionService::new(
+        let def_service = DefinitionService::new(
             self.doc_service.clone(), 
             sem_service, 
             self.logger.clone(),
@@ -244,11 +244,11 @@ impl ProjectManager{
 #[cfg(test)]
 /// tests at this module level are more towards integration testing
 pub mod test{
-    use std::{fs::{File, self}, io::Read, path::{PathBuf, Path}, time, thread, rc::Rc, cell::RefCell, sync::{Mutex, Arc, RwLock}, str::FromStr};
+    use std::{fs::{File, self}, io::Read, path::{PathBuf}, rc::Rc, cell::RefCell, sync::{Mutex, Arc}, str::FromStr};
 
     use lsp_types::Url;
 
-    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILogger, ConsoleLogger, IDiagnosticCollector, GenericDiagnosticCollector, StdErrLogger, ILoggerV2, StdOutLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, threadpool::ThreadPool};
+    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, threadpool::ThreadPool};
 
     use super::{ProjectManager, document_service::DocumentService, type_resolver::TypeResolver, semantic_analysis_service::SemanticAnalysisService, definition_service::DefinitionService};
 
@@ -390,7 +390,7 @@ pub mod test{
     fn test_unused_var_file() {
         let (asts, _) = parse_and_analyze("./test/aTestUnusedVar.god");
         let mut walker = create_test_ast_walker::<dyn IAnalyzer>();
-        let mut analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(UnusedVarAnalyzer::new()));
+        let analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(UnusedVarAnalyzer::new()));
         walker.register_visitor(&analyzer);
         walker.run(&asts);
         // for diag in diags{
@@ -403,9 +403,9 @@ pub mod test{
     fn test_varbytearray_param_checker_file() {
         let (asts, _) = parse_and_analyze("./test/aTestVarByteArrayParamChecker.god");
         let mut walker = create_test_ast_walker::<dyn IAnalyzer>();
-        let mut analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(InoutParamChecker::new()));
+        let analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(InoutParamChecker::new()));
         walker.register_visitor(&analyzer);
-        let diags = walker.run(&asts);
+        let _diags = walker.run(&asts);
         // for diag in diags{
         //     print!("{:#?}",diag);
         // }
@@ -418,7 +418,7 @@ pub mod test{
         let mut walker = create_test_ast_walker::<dyn IAnalyzer>();
         let analyzer:Rc<RefCell<dyn IAnalyzer>> = Rc::new(RefCell::new(FunctionReturnTypeChecker::new()));
         walker.register_visitor(&analyzer);
-        let diags = walker.run(&asts);
+        let _diags = walker.run(&asts);
         // for diag in diags{
         //     print!("{:#?}",diag);
         // }

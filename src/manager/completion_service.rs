@@ -199,7 +199,7 @@ impl CompletionService{
 mod test {
     use lsp_types::Url;
 
-    use crate::{manager::{test::{create_test_project_manager, create_uri_from_path, create_test_def_service, create_test_doc_service, create_test_sem_service, create_test_logger}, document_service::DocumentService}, utils::Position};
+    use crate::{manager::{test::{create_test_project_manager, create_uri_from_path, create_test_sem_service, create_test_logger}, document_service::DocumentService}, utils::Position};
 
     use super::CompletionService;
 

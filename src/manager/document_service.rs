@@ -2,9 +2,9 @@ use std::{sync::{Arc, RwLock, Mutex}, collections::HashMap, io::Read, fs::File};
 
 use lsp_server::ErrorCode;
 use lsp_types::Url;
-use regex::RegexSetBuilder;
 
-use crate::{utils::{ILogger, ILoggerV2}, lexer::GoldLexer, parser::{ParserDiagnostic, parse_gold}};
+
+use crate::{utils::ILoggerV2, lexer::GoldLexer, parser::{ParserDiagnostic, parse_gold}};
 
 use super::data_structs::{DocumentInfo, ProjectManagerError, Document};
 
@@ -260,11 +260,11 @@ impl DocumentService {
 
 #[cfg(test)]
 mod test{
-    use std::{sync::{Mutex, Arc}, path::PathBuf, fs};
+    use std::{path::PathBuf, fs};
 
     use lsp_types::Url;
 
-    use crate::{utils::{ILogger, ConsoleLogger, ILoggerV2, StdErrLogger}, manager::test::create_test_logger};
+    use crate::manager::test::create_test_logger;
 
     use super::DocumentService;
 
@@ -301,7 +301,7 @@ mod test{
         };
         let uri = Url::from_file_path(path.clone()).unwrap();
        
-        let mut doc_manager = DocumentService::new(Some(uri), create_test_logger()).unwrap();
+        let doc_manager = DocumentService::new(Some(uri), create_test_logger()).unwrap();
         doc_manager.index_files();
         
         println!("num of files: {}",doc_manager.uri_docinfo_map.read().unwrap().len());
