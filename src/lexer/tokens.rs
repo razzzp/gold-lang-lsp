@@ -1,5 +1,7 @@
 
 
+use std::sync::Arc;
+
 use crate::utils::{IRange, Position, Range};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -205,7 +207,7 @@ pub struct Token {
     pub raw_pos: usize,
     pub range: Range,
     pub token_type: TokenType,
-    pub value: Option<String>
+    pub value: Arc<str>
 }
 
 impl IRange for Token {
@@ -227,14 +229,14 @@ impl Token{
     pub fn get_pos(&self) -> Position{
         self.get_range().start
     }
-    pub fn get_value(&self) -> String {
-        match &self.value {
-            Some(s) => s.clone(),
-            None => "".to_string()
-        }
+    pub fn get_value_as_str(&self) -> &str {
+        return &self.value
+    }
+    pub fn get_value(&self) -> Arc<str> {
+        return self.value.clone()
     }
     pub fn to_string_val_and_pos(&self) -> String{
-        format!("{}:{}", self.get_value(), self.get_pos().to_string_brief())
+        format!("{}:{}", self.get_value_as_str(), self.get_pos().to_string_brief())
     }
 }
 

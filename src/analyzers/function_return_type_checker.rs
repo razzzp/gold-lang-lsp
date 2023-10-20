@@ -37,7 +37,7 @@ impl FunctionReturnTypeChecker{
       };
       let token = &return_type_node.type_token;
       if token.token_type == TokenType::Identifier {
-         let tok_val = token.get_value().to_uppercase();
+         let tok_val = token.get_value_as_str().to_uppercase();
          if tok_val == "TVARBYTEARRAY" {
             self.diagnostics.push(
                self.create_diagnostic(

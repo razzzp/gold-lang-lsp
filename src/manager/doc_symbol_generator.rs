@@ -196,8 +196,8 @@ impl DocumentSymbolGeneratorFromAst{
     fn generate_constant_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
         match ast_node.as_any().downcast_ref::<AstConstantDeclaration>(){
             Some(n) => Some(DocumentSymbol { 
-                    name: n.identifier.value.as_ref().unwrap().to_string(), 
-                    detail: Some(n.value.value.as_ref().unwrap().to_string()), 
+                    name: n.identifier.get_value_as_str().to_string(), 
+                    detail: Some(n.value_token.get_value_as_str().to_string()), 
                     kind: SymbolKind::CONSTANT, 
                     range: n.get_range().as_lsp_type_range(), 
                     selection_range: n.identifier.get_range().as_lsp_type_range(), 
@@ -212,7 +212,7 @@ impl DocumentSymbolGeneratorFromAst{
     fn generate_type_declaration_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
         match ast_node.as_any().downcast_ref::<AstTypeDeclaration>(){
             Some(n) => Some(DocumentSymbol { 
-                    name: n.identifier.value.as_ref().unwrap().to_string(), 
+                    name: n.identifier.get_value_as_str().to_string(), 
                     detail: None, 
                     kind: SymbolKind::PROPERTY, 
                     range: n.get_range().as_lsp_type_range(), 
@@ -228,8 +228,8 @@ impl DocumentSymbolGeneratorFromAst{
     fn generate_global_var_decl_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
         match ast_node.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
             Some(n) => Some(DocumentSymbol { 
-                    name: n.identifier.value.as_ref().unwrap().to_string(), 
-                    detail: Some(n.type_node.get_identifier()), 
+                    name: n.identifier.get_value_as_str().to_string(), 
+                    detail: Some(n.type_node.get_identifier().to_string()), 
                     kind: SymbolKind::FIELD, 
                     range: n.get_range().as_lsp_type_range(), 
                     selection_range: n.identifier.get_range().as_lsp_type_range(), 
@@ -244,7 +244,7 @@ impl DocumentSymbolGeneratorFromAst{
     fn generate_proc_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
         match ast_node.as_any().downcast_ref::<AstProcedure>(){
             Some(n) => Some(DocumentSymbol { 
-                    name: n.identifier.get_identifier(), 
+                    name: n.identifier.get_identifier().to_string(), 
                     detail: None, 
                     kind: SymbolKind::METHOD, 
                     range: n.get_range().as_lsp_type_range(), 
@@ -260,8 +260,8 @@ impl DocumentSymbolGeneratorFromAst{
     fn generate_func_symbol(&self, ast_node: &dyn IAstNode)-> Option<DocumentSymbol>{
         match ast_node.as_any().downcast_ref::<AstFunction>(){
             Some(n) => Some(DocumentSymbol { 
-                    name: n.identifier.get_identifier(), 
-                    detail: Some(n.return_type.get_identifier()), 
+                    name: n.identifier.get_identifier().to_string(), 
+                    detail: Some(n.return_type.get_identifier().to_string()), 
                     kind: SymbolKind::FUNCTION, 
                     range: n.get_range().as_lsp_type_range(), 
                     selection_range: n.identifier.get_range().as_lsp_type_range(), 
@@ -279,12 +279,12 @@ impl DocumentSymbolGeneratorFromAst{
             match ast_node.as_any().downcast_ref::<AstClass>(){
                 Some(n) => {
                     let parent_class_name = match &n.parent_class{
-                        Some(t) => Some(t.get_value()),
+                        Some(t) => Some(t.get_value_as_str()),
                         _=>None
                     };
                     result = Some(DocumentSymbol { 
-                        name: n.identifier.get_value(), 
-                        detail: parent_class_name, 
+                        name: n.identifier.get_value().to_string(), 
+                        detail: parent_class_name.map(|name|{name.to_string()}), 
                         kind: SymbolKind::CLASS, 
                         range: n.get_range().as_lsp_type_range(), 
                         selection_range: n.get_range().as_lsp_type_range(), 

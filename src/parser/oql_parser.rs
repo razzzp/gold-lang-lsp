@@ -351,7 +351,7 @@ mod test{
         assert_eq!(node.get_children_ref_dynamic().unwrap().len(), 3);
         let downcasted = node.as_any().downcast_ref::<AstOQLFromNode>().unwrap();
 
-        assert_eq!(downcasted.alias_token.get_value(), "y");
+        assert_eq!(downcasted.alias_token.get_value_as_str(), "y");
         assert_eq!(downcasted.source_node.get_identifier(), "SomeClass");
         assert_eq!(downcasted.join_nodes.len(), 2);
         assert!(downcasted.is_conditional);

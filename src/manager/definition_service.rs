@@ -70,7 +70,7 @@ impl DefinitionService{
         return None
     }
 
-    fn get_id(&self, node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, pos: &Position) -> Option<String>{
+    fn get_id<'a>(&'a self, node: &'a RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, pos: &Position) -> Option<&'a str>{
         if let Some(node) = node.data.as_any().downcast_ref::<AstTerminal>(){
             return Some(node.get_identifier());
         }
@@ -82,7 +82,7 @@ impl DefinitionService{
         }
         if let Some(node) = node.data.as_any().downcast_ref::<AstClass>(){
             if node.parent_class.as_ref()?.get_range().contains_pos(pos){
-                return Some(node.parent_class.as_ref()?.get_value());
+                return Some(node.parent_class.as_ref()?.get_value_as_str());
             }
         }
         if let Some(node) = node.data.as_any().downcast_ref::<AstMethodCall>(){

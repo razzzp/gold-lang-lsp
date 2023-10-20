@@ -16,7 +16,7 @@ impl TypeResolver {
         }
     }
 
-    pub fn search_sym_info(&self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<Arc<SymbolInfo>>{
+    pub fn search_sym_info(&self, id: &str, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<Arc<SymbolInfo>>{
         // already searches parent
         let mut sym_info = sym_table.lock().unwrap().get_symbol_info(id);
         if search_uses && sym_info.is_none() {
@@ -40,7 +40,7 @@ impl TypeResolver {
     }
 
     /// also returns the class the symbol is in
-    pub fn search_sym_info_w_class(&self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<(String,Arc<SymbolInfo>)>{
+    pub fn search_sym_info_w_class(&self, id: &str, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<(String,Arc<SymbolInfo>)>{
         // already searches parent
         let mut result = sym_table.lock().unwrap().search_symbol_info(id);
         if search_uses && result.is_none() {
@@ -64,7 +64,7 @@ impl TypeResolver {
     }
 
     /// returns list of all sym info matching id from parents
-    pub fn search_sym_info_through_parent(&self, id: &String, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Vec<(String,Arc<SymbolInfo>)>{
+    pub fn search_sym_info_through_parent(&self, id: &str, sym_table: &Arc<Mutex<dyn ISymbolTable>>) -> Vec<(String,Arc<SymbolInfo>)>{
         // already searches parent
         return sym_table.lock().unwrap().search_all_symbol_info(id);
     }
@@ -97,7 +97,7 @@ impl TypeResolver {
                     },
                     _=> {
                         // unknown
-                        return Some(EvalType::Unresolved(node.get_identifier()))
+                        return Some(EvalType::Unresolved(node.get_identifier().to_string()))
                     }
                 } 
             }
@@ -127,7 +127,7 @@ impl TypeResolver {
                 },
                 _=> {
                     // unknown
-                    return Some(EvalType::Unresolved(node.get_identifier()))
+                    return Some(EvalType::Unresolved(node.get_identifier().to_string()))
                 }
             } 
         } else if node.ref_type.token_type == TokenType::ListOf{
@@ -180,7 +180,7 @@ impl TypeResolver {
                     Ok(s) => s,
                     _=> return None,
                 };
-                let right_node_sym_info=c_sym_table.lock().unwrap().get_symbol_info(&node.right_node.get_identifier())?;
+                let right_node_sym_info=c_sym_table.lock().unwrap().get_symbol_info(&node.right_node.get_identifier().to_string())?;
                 return right_node_sym_info.eval_type.clone()
             }
             _=>{

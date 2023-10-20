@@ -55,19 +55,19 @@ pub trait ISymbolTableGenerator {
 }
 
 pub trait ISymbolTable: Debug + Send {
-    fn get_symbol_info(&mut self, id: &String) -> Option<Arc<SymbolInfo>>;
-    fn search_symbol_info(&self, id: &String) -> Option<(String, Arc<SymbolInfo>)>;
-    fn insert_symbol_info(&mut self, id: String, info: SymbolInfo) -> &SymbolInfo;
+    fn get_symbol_info(&mut self, id: &str) -> Option<Arc<SymbolInfo>>;
+    fn search_symbol_info(&self, id: &str) -> Option<(String, Arc<SymbolInfo>)>;
+    fn insert_symbol_info(&mut self, id: &str, info: SymbolInfo) -> &SymbolInfo;
     fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Arc<SymbolInfo>> + 'a>;
     fn get_parent_symbol_table(&self) -> Option<Arc<Mutex<dyn ISymbolTable>>>;
-    fn identifier_exists(&mut self, id: &String) -> bool;
+    fn identifier_exists(&mut self, id: &str) -> bool;
     fn as_isymbol_table_mut(&mut self) -> &mut dyn ISymbolTable;
-    fn add_uses_entity(&mut self, entity_name: &String);
+    fn add_uses_entity(&mut self, entity_name: &str);
     fn get_list_of_uses(&self) -> Vec<String>;
     // for debug only
     fn print_all_symbols(&self);
     fn get_class(&self) -> Option<String>;
-    fn search_all_symbol_info(&self, id: &String) -> Vec<(String, Arc<SymbolInfo>)>;
+    fn search_all_symbol_info(&self, id: &str) -> Vec<(String, Arc<SymbolInfo>)>;
     fn collect_unique_symbols_w_parents(&self) -> Vec<Arc<SymbolInfo>>;
 }
 
@@ -107,7 +107,7 @@ impl SymbolTable {
 }
 
 impl ISymbolTable for SymbolTable {
-    fn get_symbol_info(&mut self, id: &String) -> Option<Arc<SymbolInfo>> {
+    fn get_symbol_info(&mut self, id: &str) -> Option<Arc<SymbolInfo>> {
         // search cur st first
         let mut result = match self.hash_map.get(&id.to_uppercase()) {
             Some(i) => self.symbols_list.get(*i).cloned(),
@@ -122,7 +122,7 @@ impl ISymbolTable for SymbolTable {
         return result;
     }
 
-    fn search_symbol_info(&self, id: &String) -> Option<(String, Arc<SymbolInfo>)> {
+    fn search_symbol_info(&self, id: &str) -> Option<(String, Arc<SymbolInfo>)> {
         // search cur st first
         let mut result = match self.hash_map.get(&id.to_uppercase()) {
             Some(i) => {
@@ -143,7 +143,7 @@ impl ISymbolTable for SymbolTable {
     }
 
     /// returns list of syminfo matching id, searches through parent
-    fn search_all_symbol_info(&self, id: &String) -> Vec<(String, Arc<SymbolInfo>)> {
+    fn search_all_symbol_info(&self, id: &str) -> Vec<(String, Arc<SymbolInfo>)> {
         // search cur st first
         let mut result = Vec::new();
         match self.hash_map.get(&id.to_uppercase()) {
@@ -169,7 +169,7 @@ impl ISymbolTable for SymbolTable {
         self.uses_entities.iter().map(|s| s.clone()).collect()
     }
 
-    fn insert_symbol_info(&mut self, id: String, symbol_info: SymbolInfo) -> &SymbolInfo {
+    fn insert_symbol_info(&mut self, id: &str, symbol_info: SymbolInfo) -> &SymbolInfo {
         let idx = self.symbols_list.len();
         self.symbols_list.push(Arc::new(symbol_info));
         // uppercase keys
@@ -195,15 +195,15 @@ impl ISymbolTable for SymbolTable {
         self.iter_symbols().for_each(|s| eprintln!("{}", s.id))
     }
 
-    fn identifier_exists(&mut self, id: &String) -> bool {
+    fn identifier_exists(&mut self, id: &str) -> bool {
         return self.get_symbol_info(id).is_some();
     }
 
     fn as_isymbol_table_mut(&mut self) -> &mut dyn ISymbolTable {
         self
     }
-    fn add_uses_entity(&mut self, entity_name: &String) {
-        self.uses_entities.push(entity_name.clone())
+    fn add_uses_entity(&mut self, entity_name: &str) {
+        self.uses_entities.push(entity_name.to_string())
     }
 
     fn get_class(&self) -> Option<String> {

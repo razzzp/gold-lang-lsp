@@ -156,7 +156,7 @@ fn parse_comment<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [Toke
       raw_pos: comment_token.raw_pos,
       pos: comment_token.get_pos(),
       range: comment_token.range.clone(),
-      comment: comment_token.value.unwrap()
+      comment: comment_token.get_value()
    })))
 }
 
@@ -268,7 +268,7 @@ fn parse_constant_declaration<'a, C: IParserContext<ParserDiagnostic> + 'a>(inpu
          raw_pos: const_token.raw_pos,
          pos: const_token.get_pos(),
          identifier: ident_token,
-         value: value_token.clone(),
+         value_token: value_token.clone(),
          range: create_new_range_from_irange(&const_token, &value_token),
          is_multi_lang : if multilang_token.is_some() {true} else {false} 
       })
@@ -768,6 +768,7 @@ fn parse_method_name_uievent<'a, C: IParserContext<ParserDiagnostic> + 'a>(input
    let (next, method_name) = parse_identifier(input, context)?;
    let (next, _pound) = exp_token(TokenType::Pound)(next)?;
    let (next, event) = parse_identifier(next, context)?;
+   let id = Arc::from(format!("{}#{}", method_name.get_identifier(), event.get_identifier()));
    return Ok((
       next,
       Arc::new(AstMethodNameWithEvent{
@@ -775,6 +776,7 @@ fn parse_method_name_uievent<'a, C: IParserContext<ParserDiagnostic> + 'a>(input
          range: create_new_range(method_name.get_range(), event.get_range()),
          method_name,
          event,
+         id,
       })
    ));
 }
@@ -1073,7 +1075,7 @@ fn parse_method_external<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &
             raw_pos: ext_t.get_raw_pos(),
             range: create_new_range(ext_t.get_range(), str_t.get_range()),
             token_type: str_t.token_type,
-            value: Some(str_t.get_value()),
+            value: str_t.value.clone(),
          }))
       },
       Err(e) => return Err(e)
@@ -1103,7 +1105,7 @@ fn parse_method_modifiers<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : 
    let end = modifier_tokens.last().unwrap().get_range();
    let member_modifiers = get_member_modifers(&modifier_tokens);
 
-   let (mut external_dll_name,mut is_forward) = (None,false);
+   let (mut external_dll_name, mut is_forward) = (None,false);
    modifier_tokens.iter().for_each(|t|{
       match t.token_type {
             TokenType::Forward => {is_forward=true},
@@ -1205,7 +1207,7 @@ fn parse_method_body<'a, C: IParserContext<ParserDiagnostic> + 'a>(input : &'a [
 
 #[cfg(test)]
 mod test {
-   use std::path::PathBuf;
+   use std::{path::PathBuf, ops::Deref, sync::Arc};
 
 use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant, AstModule, AstTypeSized, AstParameterDeclarationList, AstMethodModifiers}, IParserContext, parse_module, parse_gold}, utils::ast_to_string_brief_recursive};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
@@ -1218,16 +1220,20 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
    pub fn gen_list_of_tokens(list : &[(TokenType, Option<String>)]) -> Vec<Token> {
       let mut result = Vec::<Token>::new();
       let mut raw_pos = 0;
-      for (tok_type, val) in list.to_vec() {
+      for (tok_type, val) in list.iter() {
          let start_pos = Position{line: raw_pos/20, character: raw_pos%20};
          let end_pos = Position{line:start_pos.line, character: start_pos.character+val.as_ref().unwrap_or(&"".to_string()).len()};
+         let val : Arc<str>= match val{
+            Some(val) => Arc::from(val.clone()),
+            _=> Arc::from(""),
+         };
          result.push(Token { 
             raw_pos: raw_pos, 
             range: Range{start:start_pos, end:end_pos},
-            token_type: tok_type, 
+            token_type: tok_type.clone(), 
             value: val.clone() 
          });
-         raw_pos+=val.as_ref().unwrap().len()+5;
+         raw_pos+=val.deref().len()+5;
       }  
       return result;
    }
@@ -1277,7 +1283,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       assert_eq!(r.0.len(), 0);
       assert_eq!(class.get_identifier(), "aTestClass");
       assert_eq!(class.raw_pos, 0);
-      assert_eq!(class.parent_class.as_ref().unwrap().get_value(), "aParentClass");
+      assert_eq!(class.parent_class.as_ref().unwrap().get_value_as_str(), "aParentClass");
    }
 
    #[test]
@@ -1291,7 +1297,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       let class = r.1.as_any().downcast_ref::<AstModule>().unwrap();
       check_node_pos_and_range(class, &input);
       assert_eq!(r.0.len(), 0);
-      assert_eq!(class.id.get_value(), "SomeModule");
+      assert_eq!(class.id.get_value_as_str(), "SomeModule");
       assert_eq!(class.raw_pos, 0);
    }
 
@@ -1338,13 +1344,13 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       let token = &uses_node.list_of_uses[0];
       assert_eq!(token.raw_pos, input.get(1).unwrap().get_raw_pos());
       assert_eq!(token.token_type, TokenType::Identifier);
-      assert_eq!(token.value.as_ref().unwrap().as_str(), "aTestClass");
+      assert_eq!(token.get_value().deref(), "aTestClass");
 
       // second uses
       let token = &uses_node.list_of_uses[1];
       assert_eq!(token.raw_pos, input.get(3).unwrap().get_raw_pos());
       assert_eq!(token.token_type, TokenType::Identifier);
-      assert_eq!(token.value.as_ref().unwrap().as_str(), "aParentClass");
+      assert_eq!(token.get_value().deref(), "aParentClass");
    }
 
    #[test]
@@ -1399,7 +1405,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
          next = remaining;
          // additional checking last token
          if next.is_empty(){
-            assert_eq!(downcasted.type_token.value.as_ref().unwrap().as_str(), "tCustomType")
+            assert_eq!(downcasted.type_token.get_value().deref(), "tCustomType")
          }
       }
    } 
@@ -1431,7 +1437,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
          .get_children_ref().unwrap()
          .get(1).unwrap()
          .as_any().downcast_ref::<AstEnumVariant>().unwrap();
-      assert_eq!(second_node.value_token.as_ref().unwrap().get_value(), "10");
+      assert_eq!(second_node.value_token.as_ref().unwrap().get_value_as_str(), "10");
    }
 
    #[test]
@@ -1482,11 +1488,11 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       check_node_pos_and_range(downcasted, &input);
       assert_eq!(downcasted.ref_type.token_type, TokenType::RefTo);
       assert_eq!(downcasted.options.len(), 3);
-      assert_eq!(downcasted.ident_token.get_value(), "aType".to_string());
-      assert_eq!(downcasted.inverse_var_token.as_ref().unwrap().get_value(), "InvVar".to_string());
-      assert_eq!(downcasted.options[0].value.as_ref().unwrap().as_str(), "A");
-      assert_eq!(downcasted.options[1].value.as_ref().unwrap().as_str(), "P");
-      assert_eq!(downcasted.options[2].value.as_ref().unwrap().as_str(), "T");
+      assert_eq!(downcasted.ident_token.get_value_as_str(), "aType".to_string());
+      assert_eq!(downcasted.inverse_var_token.as_ref().unwrap().get_value_as_str(), "InvVar".to_string());
+      assert_eq!(downcasted.options[0].get_value().deref(), "A");
+      assert_eq!(downcasted.options[1].get_value().deref(), "P");
+      assert_eq!(downcasted.options[2].get_value().deref(), "T");
    }
 
    #[test]
@@ -1513,15 +1519,15 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       };
       let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeDeclaration>().unwrap();
       check_node_pos_and_range(downcasted, &input);
-      assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "tTestType");
+      assert_eq!(downcasted.identifier.get_value().deref(), "tTestType");
 
       // test refto type
       let downcasted = downcasted.type_node.as_any().downcast_ref::<AstTypeReference>().unwrap();
       assert_eq!(downcasted.ref_type.token_type, TokenType::RefTo);
       assert_eq!(downcasted.options.len(), 3);
-      assert_eq!(downcasted.options[0].value.as_ref().unwrap().as_str(), "A");
-      assert_eq!(downcasted.options[1].value.as_ref().unwrap().as_str(), "P");
-      assert_eq!(downcasted.options[2].value.as_ref().unwrap().as_str(), "T");
+      assert_eq!(downcasted.options[0].get_value().deref(), "A");
+      assert_eq!(downcasted.options[1].get_value().deref(), "P");
+      assert_eq!(downcasted.options[2].get_value().deref(), "T");
    }
 
    #[test]
@@ -1540,8 +1546,8 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       };
       let downcasted = node.as_ref().as_any().downcast_ref::<AstConstantDeclaration>().unwrap();
       check_node_pos_and_range(downcasted, &input);
-      assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "cAConstant");
-      assert_eq!(downcasted.value.value.as_ref().unwrap().as_str(), "a constant string");
+      assert_eq!(downcasted.identifier.get_value().deref(), "cAConstant");
+      assert_eq!(downcasted.value_token.get_value().deref(), "a constant string");
    }
 
    #[test]
@@ -1570,7 +1576,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       };
       let downcasted = node.as_ref().as_any().downcast_ref::<AstGlobalVariableDeclaration>().unwrap();
       check_node_pos_and_range(downcasted, &input);
-      assert_eq!(downcasted.identifier.value.as_ref().unwrap().as_str(), "aVariable");
+      assert_eq!(downcasted.identifier.get_value().deref(), "aVariable");
       assert!(downcasted.modifiers.as_ref().unwrap().modifiers.is_override);
       assert!(downcasted.modifiers.as_ref().unwrap().modifiers.is_protected);
 
@@ -1578,9 +1584,9 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       let downcasted = downcasted.type_node.as_any().downcast_ref::<AstTypeReference>().unwrap();
       assert_eq!(downcasted.ref_type.token_type, TokenType::RefTo);
       assert_eq!(downcasted.options.len(), 3);
-      assert_eq!(downcasted.options[0].value.as_ref().unwrap().as_str(), "A");
-      assert_eq!(downcasted.options[1].value.as_ref().unwrap().as_str(), "P");
-      assert_eq!(downcasted.options[2].value.as_ref().unwrap().as_str(), "T");
+      assert_eq!(downcasted.options[0].get_value().deref(), "A");
+      assert_eq!(downcasted.options[1].get_value().deref(), "P");
+      assert_eq!(downcasted.options[2].get_value().deref(), "T");
    }
 
    #[test]
@@ -1621,11 +1627,9 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       let expected_param_types = ["FirstParamType", "SecondParamType"];
       for (i, param_node) in params.parameter_list.iter().enumerate() {
          let param_node = cast_and_unwrap::<AstParameterDeclaration>(param_node);
-         let ident = param_node.identifier.value.as_ref().unwrap().as_str();
          let type_node = cast_and_unwrap::<AstTypeBasic>(&param_node.type_node.as_ref().unwrap());
-         let type_ident = type_node.type_token.value.as_ref().unwrap().as_str();
-         assert_eq!(ident, expected_param_idents[i]);
-         assert_eq!(type_ident, expected_param_types[i]);
+         assert_eq!(param_node.identifier.get_value().deref(), expected_param_idents[i]);
+         assert_eq!(type_node.type_token.get_value().deref(), expected_param_types[i]);
       }
       // test modifiers
       let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
@@ -1634,7 +1638,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       assert!(modifiers_node.member_modifiers.is_protected);
       assert!(modifiers_node.member_modifiers.is_final);
       assert!(modifiers_node.member_modifiers.is_override);
-      assert_eq!(modifiers_node.external_dll_name.as_ref().unwrap().as_str(), "SomeDLL.Method");
+      assert_eq!(modifiers_node.external_dll_name.as_ref().unwrap().deref(), "SomeDLL.Method");
       assert!(modifiers_node.is_forward);
    }
 
@@ -1676,15 +1680,13 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       let expected_param_types = ["FirstParamType", "SecondParamType"];
       for (i, param_node) in params.parameter_list.iter().enumerate() {
          let param_node = cast_and_unwrap::<AstParameterDeclaration>(param_node);
-         let ident = param_node.identifier.value.as_ref().unwrap().as_str();
          let type_node = cast_and_unwrap::<AstTypeBasic>(&param_node.type_node.as_ref().unwrap());
-         let type_ident = type_node.type_token.value.as_ref().unwrap().as_str();
-         assert_eq!(ident, expected_param_idents[i]);
-         assert_eq!(type_ident, expected_param_types[i]);
+         assert_eq!(param_node.identifier.get_value().deref(), expected_param_idents[i]);
+         assert_eq!(type_node.type_token.get_value().deref(), expected_param_types[i]);
       }
       // test return type
       let return_node = downcasted.return_type.as_any().downcast_ref::<AstTypeBasic>().unwrap();
-      assert_eq!(return_node.type_token.value.as_ref().unwrap().as_str(), "aReturnType");
+      assert_eq!(return_node.type_token.get_value().deref(), "aReturnType");
       // test modifiers
       let modifiers_node = &downcasted.modifiers.as_ref().unwrap();
       let modifiers_node = modifiers_node.as_any().downcast_ref::<AstMethodModifiers>().unwrap();
@@ -1728,13 +1730,10 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       assert_eq!(node.parameter_list.len(), 3);
       for (i, param_node) in node.parameter_list.iter().enumerate() {
          let param_node = cast_and_unwrap::<AstParameterDeclaration>(param_node);
-         let ident = param_node.identifier.value.as_ref().unwrap().as_str();
-         let modifier = param_node.modifier.as_ref().unwrap().value.as_ref().unwrap().as_str();
          let type_node = cast_and_unwrap::<AstTypeBasic>(&param_node.type_node.as_ref().unwrap());
-         let type_ident = type_node.type_token.value.as_ref().unwrap().as_str();
-         assert_eq!(modifier, input[1+0+i*5].value.as_ref().unwrap().as_str());
-         assert_eq!(ident, input[1+1+i*5].value.as_ref().unwrap().as_str());
-         assert_eq!(type_ident, input[1+3+i*5].value.as_ref().unwrap().as_str());
+         assert_eq!(param_node.modifier.as_ref().unwrap().get_value().deref(), input[1+0+i*5].get_value().deref());
+         assert_eq!(param_node.identifier.get_value().deref(), input[1+1+i*5].get_value().deref());
+         assert_eq!(type_node.type_token.get_value().deref(), input[1+3+i*5].get_value().deref());
       }
    }
 
@@ -1761,22 +1760,18 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       assert_eq!(node.parameter_list.len(), 2);
       // test param 1
       let param_node = cast_and_unwrap::<AstParameterDeclaration>(&node.parameter_list[0]);
-      let ident = param_node.identifier.value.as_ref().unwrap().as_str();
-      let modifier = param_node.modifier.as_ref().unwrap().value.as_ref().unwrap().as_str();
       let type_node = &param_node.type_node;
       assert!(type_node.is_none());
-      assert_eq!(modifier, "inout");
-      assert_eq!(ident, "FirstParam");
+      assert_eq!(param_node.modifier.as_ref().unwrap().get_value().deref(), "inout");
+      assert_eq!(param_node.identifier.get_value().deref(), "FirstParam");
 
       // test param 2
       let param_node = cast_and_unwrap::<AstParameterDeclaration>(&node.parameter_list[1]);
-      let ident = param_node.identifier.value.as_ref().unwrap().as_str();
       let modifier = &param_node.modifier;
       let type_node = cast_and_unwrap::<AstTypeBasic>(&param_node.type_node.as_ref().unwrap());
-      let type_ident = type_node.type_token.value.as_ref().unwrap().as_str();
       assert!(modifier.is_none());
-      assert_eq!(ident, "SecondParam");
-      assert_eq!(type_ident, "SecondParamType");
+      assert_eq!(param_node.identifier.get_value().deref(), "SecondParam");
+      assert_eq!(type_node.type_token.get_value().deref(), "SecondParamType");
 
    } 
 
@@ -1803,7 +1798,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       assert!(node.member_modifiers.is_protected);
       assert!(node.member_modifiers.is_override);
       assert!(node.member_modifiers.is_final);
-      assert_eq!(node.external_dll_name.unwrap(), "SomeDLL.Method".to_string());
+      assert_eq!(node.external_dll_name.unwrap().deref(), "SomeDLL.Method".to_string());
       assert!(node.is_forward);
    }
 
@@ -1921,7 +1916,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
 
       let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeArray>().unwrap();
 
-      assert_eq!(downcasted.array_seq_token.get_value(), "array");
+      assert_eq!(downcasted.array_seq_token.get_value_as_str(), "array");
       downcasted.index_nodes.first().unwrap().as_any().downcast_ref::<AstTypeRange>().unwrap();
       assert_eq!(downcasted.object_type.get_identifier(), "Type");
    }
@@ -2027,7 +2022,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
 
       let downcasted = node.as_ref().as_any().downcast_ref::<AstTypeSized>().unwrap();
       assert_eq!(downcasted.get_identifier(), "Int");
-      assert_eq!(downcasted.size_token.get_value(), "10");
+      assert_eq!(downcasted.size_token.get_value_as_str(), "10");
    }
 
 }

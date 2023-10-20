@@ -971,6 +971,8 @@ fn parse_binary_op_w_context<'a, C:IParserContext<ParserDiagnostic> +'a>(
 #[cfg(test)]
 mod test{
 
+    use std::ops::Deref;
+
     use crate::parser::IParserContext;
     use crate::parser::ast::{AstBinaryOp, AstCast, AstTerminal, AstUnaryOp, AstMethodCall, IAstNode, AstIfBlock, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstSetLiteral, AstSwitchBlock, AstArrayAccess, AstRepeatBlock};
     use crate::parser::test::{check_node_pos_and_range, create_context};
@@ -997,7 +999,7 @@ mod test{
         
         let node = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         assert_eq!(node.left_node.get_identifier(), "First");
-        assert_eq!(node.op_token.value.as_ref().unwrap(), "+");
+        assert_eq!(node.op_token.get_value().deref(), "+");
         assert_eq!(node.right_node.get_identifier(), "Second");
     }
 
@@ -1040,11 +1042,11 @@ mod test{
         //       .   Third
         //      / \
         //   First Second
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().get_value());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value_as_str());
     }
 
     #[test]
@@ -1064,11 +1066,11 @@ mod test{
         let bin_op = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
         let dfs = dfs(bin_op);
         // expect same tree struct as dot_ops
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().get_value());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().get_value());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().get_value_as_str());
     }
 
     #[test]
@@ -1093,11 +1095,11 @@ mod test{
         //     First '/'
         //           / \
         //        Second Third
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().get_value());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value_as_str());
     }
 
     #[test]
@@ -1122,11 +1124,11 @@ mod test{
         //     First bAnd
         //           / \
         //        Second Third
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().get_value());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value_as_str());
     }
 
     #[test]
@@ -1151,11 +1153,11 @@ mod test{
         //      <<   Third
         //     / \
         //  First Second
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().get_value());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().get_value());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().get_value_as_str());
     }
 
     #[test]
@@ -1180,11 +1182,11 @@ mod test{
         //      <<   Third
         //     / \
         //  First Second
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().get_value());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().get_value());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(1).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(3).unwrap().get_value_as_str());
     }
 
     #[test]
@@ -1209,11 +1211,11 @@ mod test{
         //     First and
         //           / \
         //        Second Third
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().get_value());
-        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(2).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(3).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(4).unwrap().get_identifier(), input.get(1).unwrap().get_value_as_str());
     }
 
     #[test]
@@ -1235,7 +1237,7 @@ mod test{
         // TODO related to bracket closure, pos & range
         // check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
-        assert_eq!(node.op_token.get_value(), "not");
+        assert_eq!(node.op_token.get_value_as_str(), "not");
         assert_eq!(node.expr_node.get_identifier(), "bNot");
     }
 
@@ -1259,7 +1261,7 @@ mod test{
         // TODO related to bracket closure, pos & range
         // check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
-        assert_eq!(node.op_token.get_value(), "-");
+        assert_eq!(node.op_token.get_value_as_str(), "-");
         assert_eq!(node.expr_node.get_identifier(), "bNot");
     }
 
@@ -1278,7 +1280,7 @@ mod test{
         // TODO related to bracket closure, pos & range
         // check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
-        assert_eq!(node.op_token.get_value(), "-");
+        assert_eq!(node.op_token.get_value_as_str(), "-");
         assert_eq!(node.expr_node.get_identifier(), "100");
     }
 
@@ -1301,7 +1303,7 @@ mod test{
         // TODO related to bracket closure, pos & range
         check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
-        assert_eq!(node.op_token.get_value(), "++");
+        assert_eq!(node.op_token.get_value_as_str(), "++");
         assert_eq!(node.expr_node.get_identifier(), ".");
         assert_eq!(node.expr_node.get_children_ref().unwrap().get(0).unwrap().get_identifier(), ".");
     }
@@ -1321,7 +1323,7 @@ mod test{
         // TODO related to bracket closure, pos & range
         check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstUnaryOp>().unwrap();
-        assert_eq!(node.op_token.get_value(), "++");
+        assert_eq!(node.op_token.get_value_as_str(), "++");
         assert_eq!(node.expr_node.get_identifier(), "First");
     }
 
@@ -1336,7 +1338,7 @@ mod test{
         check_node_pos_and_range(node.as_ast_node(), &input);
         let bin_op = node.as_any().downcast_ref::<AstTerminal>().unwrap();
         let dfs = dfs(bin_op);
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value_as_str());
     }
 
     #[test]
@@ -1358,7 +1360,7 @@ mod test{
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstMethodCall>().unwrap();
-        assert_eq!(node.get_identifier(), input.get(0).unwrap().get_value());
+        assert_eq!(node.get_identifier(), input.get(0).unwrap().get_value_as_str());
         assert_eq!(node.parameter_list.len(), 3);
     }
 
@@ -1382,7 +1384,7 @@ mod test{
         assert_eq!(next.len(), 0);
         check_node_pos_and_range(node.as_ast_node(), &input);
         let node = node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
-        assert_eq!(node.op_token.get_value(), ".");
+        assert_eq!(node.op_token.get_value_as_str(), ".");
         let _left_node = node.left_node.as_any().downcast_ref::<AstArrayAccess>().unwrap();
         let _right_node = node.right_node.as_any().downcast_ref::<AstArrayAccess>().unwrap();
         let _right_index_node = _right_node.index_node.as_any().downcast_ref::<AstBinaryOp>().unwrap();
@@ -1417,14 +1419,14 @@ mod test{
         assert_eq!(dfs.len(), 10);
         dfs.iter().for_each(|n| {println!("{}",ast_to_string_brief(n.as_ast_node()))});
         // 
-        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value());
-        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(6).unwrap().get_value());
-        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(2).unwrap().get_value());
-        assert_eq!(dfs.get(5).unwrap().get_identifier(), input.get(11).unwrap().get_value());
-        assert_eq!(dfs.get(6).unwrap().get_identifier(), input.get(13).unwrap().get_value());
-        assert_eq!(dfs.get(7).unwrap().get_identifier(), input.get(12).unwrap().get_value());
-        assert_eq!(dfs.get(8).unwrap().get_identifier(), input.get(9).unwrap().get_value());
+        assert_eq!(dfs.get(0).unwrap().get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(1).unwrap().get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(2).unwrap().get_identifier(), input.get(6).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(3).unwrap().get_identifier(), input.get(2).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(5).unwrap().get_identifier(), input.get(11).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(6).unwrap().get_identifier(), input.get(13).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(7).unwrap().get_identifier(), input.get(12).unwrap().get_value_as_str());
+        assert_eq!(dfs.get(8).unwrap().get_identifier(), input.get(9).unwrap().get_value_as_str());
     }
 
     #[test]
@@ -1452,11 +1454,11 @@ mod test{
         // bfs.iter().for_each(|n|{
         //     println!("{}", print_ast_brief(n.data))
         // });
-        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(3).unwrap().get_value());
-        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(1).unwrap().get_value());
-        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(0).unwrap().get_value());
-        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(2).unwrap().get_value());
+        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(3).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(1).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(2).unwrap().get_value_as_str());
     }
 
     #[test]
@@ -1493,15 +1495,15 @@ mod test{
         // bfs.iter().for_each(|n|{
         //     println!("{}", print_ast_brief(n.data))
         // });
-        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(2).unwrap().get_value());
-        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(5).unwrap().get_value());
-        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(1).unwrap().get_value());
-        assert_eq!(bfs.get(5).unwrap().data.get_identifier(), input.get(3).unwrap().get_value());
-        assert_eq!(bfs.get(6).unwrap().data.get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(bfs.get(7).unwrap().data.get_identifier(), input.get(7).unwrap().get_value());
-        assert_eq!(bfs.get(8).unwrap().data.get_identifier(), input.get(6).unwrap().get_value());
-        assert_eq!(bfs.get(9).unwrap().data.get_identifier(), input.get(8).unwrap().get_value());
+        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(2).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(5).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(1).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(5).unwrap().data.get_identifier(), input.get(3).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(6).unwrap().data.get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(7).unwrap().data.get_identifier(), input.get(7).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(8).unwrap().data.get_identifier(), input.get(6).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(9).unwrap().data.get_identifier(), input.get(8).unwrap().get_value_as_str());
     }
 
     #[test]
@@ -1657,11 +1659,11 @@ mod test{
         // bfs.iter().for_each(|n|{
         //     println!("{}", print_ast_brief(n.data))
         // });
-        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(7).unwrap().get_value());
-        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(3).unwrap().get_value());
-        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(5).unwrap().get_value());
+        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(7).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(3).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(5).unwrap().get_value_as_str());
         
     }
 
@@ -1703,13 +1705,13 @@ mod test{
         // bfs.iter().for_each(|n|{
         //     println!("{}", print_ast_brief(n.data))
         // });
-        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(7).unwrap().get_value());
+        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(7).unwrap().get_value_as_str());
         // body here
-        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(9).unwrap().get_value());
-        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(3).unwrap().get_value());
-        assert_eq!(bfs.get(5).unwrap().data.get_identifier(), input.get(5).unwrap().get_value());
+        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(9).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(3).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(5).unwrap().data.get_identifier(), input.get(5).unwrap().get_value_as_str());
         
     }
 
@@ -1753,13 +1755,13 @@ mod test{
         // bfs.iter().for_each(|n|{
         //     println!("{}", print_ast_brief(n.data))
         // });
-        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(4).unwrap().get_value());
-        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(7).unwrap().get_value());
+        assert_eq!(bfs.get(0).unwrap().data.get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(1).unwrap().data.get_identifier(), input.get(4).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(2).unwrap().data.get_identifier(), input.get(7).unwrap().get_value_as_str());
         // body here, check that it is a for node
-        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(8).unwrap().to_string_val_and_pos());
-        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(3).unwrap().get_value());
-        assert_eq!(bfs.get(5).unwrap().data.get_identifier(), input.get(5).unwrap().get_value());
+        assert_eq!(bfs.get(3).unwrap().data.get_identifier(), input.get(8).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(4).unwrap().data.get_identifier(), input.get(3).unwrap().get_value_as_str());
+        assert_eq!(bfs.get(5).unwrap().data.get_identifier(), input.get(5).unwrap().get_value_as_str());
         
     }
 
@@ -1784,10 +1786,10 @@ mod test{
         check_node_pos_and_range(node.as_ast_node(), &input);
         let foreach_node = node.as_any().downcast_ref::<AstForEachBlock>().unwrap();
         // check counter var
-        assert_eq!(foreach_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(foreach_node.in_expr_node.to_string_ident_pos(), format!("in:{}", input.get(1).unwrap().get_pos().to_string_brief()));
+        assert_eq!(foreach_node.get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(foreach_node.in_expr_node.get_identifier(), "in");
         assert_eq!(foreach_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
-        assert_eq!(foreach_node.statements.as_ref().unwrap().first().unwrap().to_string_ident_pos(), format!("=:{}", input.get(4).unwrap().get_pos().to_string_brief()));
+        assert_eq!(foreach_node.statements.as_ref().unwrap().first().unwrap().get_identifier(), "=");
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
         // expect
         //                foreach 
@@ -1819,9 +1821,9 @@ mod test{
         check_node_pos_and_range(node.as_ast_node(), &input);
         let foreach_node = node.as_any().downcast_ref::<AstForEachBlock>().unwrap();
         // check counter var
-        assert_eq!(foreach_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
-        assert_eq!(foreach_node.using_var.as_ref().unwrap().get_identifier(), "SomeVar".to_string());
-        assert_eq!(foreach_node.in_expr_node.to_string_ident_pos(), format!("in:{}", input.get(1).unwrap().get_pos().to_string_brief()));
+        assert_eq!(foreach_node.get_identifier(), input.get(0).unwrap().get_value_as_str());
+        assert_eq!(foreach_node.using_var.as_ref().unwrap().get_identifier(), "SomeVar");
+        assert_eq!(foreach_node.in_expr_node.get_identifier(), "in");
         assert_eq!(foreach_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
         assert_eq!(foreach_node.statements.as_ref().unwrap().len(), 0);   
         assert!(foreach_node.is_downto);
@@ -1848,7 +1850,7 @@ mod test{
         check_node_pos_and_range(node.as_ast_node(), &input);
         let while_node = node.as_any().downcast_ref::<AstWhileBlock>().unwrap();
         // check counter var
-        assert_eq!(while_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
+        assert_eq!(while_node.get_identifier(), input.get(0).unwrap().get_value_as_str());
         assert_eq!(while_node.end_token.as_ref().unwrap().clone(), input.last().unwrap().clone());
         // println!("{}", print_ast_brief_recursive(node.as_ast_node()));
         // bfs.iter().for_each(|n|{
@@ -1899,7 +1901,7 @@ mod test{
         let var_decl = node.as_any().downcast_ref::<AstLocalVariableDeclaration>().unwrap();
         
         // check ident
-        assert_eq!(var_decl.get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(var_decl.get_identifier(), input.get(1).unwrap().get_value_as_str());
         assert_eq!(var_decl.get_children_ref().unwrap().len(), 1);  
     }
 
@@ -1920,10 +1922,10 @@ mod test{
         let var_decl = node.as_any().downcast_ref::<AstLocalVariableDeclaration>().unwrap();
         
         // check ident
-        assert_eq!(var_decl.get_identifier(), input.get(1).unwrap().get_value());
+        assert_eq!(var_decl.get_identifier(), input.get(1).unwrap().get_value_as_str());
         assert_eq!(var_decl.get_children_ref().unwrap().len(), 2);
         // check abs
-        assert_eq!(var_decl.get_children_ref().unwrap().get(1).unwrap().get_identifier(), input.last().unwrap().get_value());  
+        assert_eq!(var_decl.get_children_ref().unwrap().get(1).unwrap().get_identifier(), input.last().unwrap().get_value_as_str());  
     }
 
     #[test]
@@ -2056,7 +2058,7 @@ mod test{
         check_node_pos_and_range(node.as_ast_node(), &input);
         let repeat_node = node.as_any().downcast_ref::<AstRepeatBlock>().unwrap();
 
-        assert_eq!(repeat_node.get_identifier(), input.get(0).unwrap().to_string_val_and_pos());
+        assert_eq!(repeat_node.get_identifier(), input.get(0).unwrap().get_value_as_str());
         assert_eq!(repeat_node.cond_block.get_children_ref().unwrap().len(), 2);
      
     }

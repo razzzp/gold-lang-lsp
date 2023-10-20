@@ -64,7 +64,7 @@ impl UnusedVarAnalyzer {
     }
     fn notify_terminal_node(&mut self, node: &DynamicChild<dyn IAstNode>) {
         // let ident = node.data.get_identifier();
-        match self.cur_local_vars.get_mut(&node.data.get_identifier()) {
+        match self.cur_local_vars.get_mut(&node.data.get_identifier().to_string()) {
             Some(var_info) => {
                 // check is on the left side of bin_op to prevent false positive with
                 //  member variables
@@ -76,7 +76,7 @@ impl UnusedVarAnalyzer {
         }
     }
     fn notify_local_var_node(&mut self, node: &AstLocalVariableDeclaration) {
-        if self.cur_local_vars.get(&node.get_identifier()).is_some() {
+        if self.cur_local_vars.get(&node.get_identifier().to_string()).is_some() {
             self.diagnostics.push(lsp_types::Diagnostic::new(
                 node.identifier.get_range().as_lsp_type_range(),
                 Some(DiagnosticSeverity::ERROR),
@@ -88,7 +88,7 @@ impl UnusedVarAnalyzer {
             ))
         } else {
             self.cur_local_vars.insert(
-                node.get_identifier(),
+                node.get_identifier().to_string(),
                 VarInfo {
                     use_count: 0,
                     ident_token: node.identifier.clone(),

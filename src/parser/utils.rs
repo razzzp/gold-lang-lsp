@@ -159,7 +159,7 @@ pub fn exp_ident_with_value(
         let mut it = input.iter();
         loop{
             match it.next() {
-                Some(t) if t.token_type == TokenType::Identifier && t.get_value().as_str().to_uppercase() == value.to_uppercase() => 
+                Some(t) if t.token_type == TokenType::Identifier && t.get_value_as_str().to_uppercase() == value.to_uppercase() => 
                     return Ok((it.as_slice(), t.clone())),
                 Some(t) => {
                     if t.token_type == TokenType::Comment{
@@ -170,7 +170,7 @@ pub fn exp_ident_with_value(
                         input: input,
                         msg: String::from(format!(
                             "Unexpected {:?} token found",
-                            t.get_value()
+                            t.get_value_as_str()
                         )),
                     })
                 },

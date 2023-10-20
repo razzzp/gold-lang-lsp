@@ -156,7 +156,7 @@ impl AstAnnotator{
         return cur_st;
     }
 
-    fn check_identifier_already_defined(&mut self, id: &String, range: Range) -> bool{
+    fn check_identifier_already_defined(&mut self, id: &str, range: Range) -> bool{
         // do we need to check uses?
         match self.get_cur_sym_table().lock().unwrap().get_symbol_info(id){
             Some(sym)=>{
@@ -173,7 +173,7 @@ impl AstAnnotator{
     } 
 
     /// Inserts the symbol to the current scope, last in stack/root
-    fn insert_symbol_info(&mut self, id: String, symbol: SymbolInfo){
+    fn insert_symbol_info(&mut self, id: &str, symbol: SymbolInfo){
         let cur_st = self.get_cur_sym_table();
         cur_st.lock().unwrap().insert_symbol_info(id, symbol);
     }
@@ -189,20 +189,20 @@ impl AstAnnotator{
         let ori_node = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstClass>());
 
         let class_name = ori_node.get_identifier();
-        self.root_symbol_table.unwrap_ref().lock().unwrap().for_class_or_module = Some(class_name.clone());
-        let mut sym_info = SymbolInfo::new(class_name.clone(), SymbolType::Class);
-        sym_info.eval_type = Some(EvalType::Class(class_name.clone()));
+        self.root_symbol_table.unwrap_ref().lock().unwrap().for_class_or_module = Some(class_name.to_string());
+        let mut sym_info = SymbolInfo::new(class_name.to_string(), SymbolType::Class);
+        sym_info.eval_type = Some(EvalType::Class(class_name.to_string()));
 
         if let Some(parent_class) = &ori_node.parent_class{
-            let parent_class_name = parent_class.get_value();
+            let parent_class_name = parent_class.get_value_as_str();
             if parent_class_name == class_name{
                 // parent class can't be itself
                 self.diag_collector.lock().unwrap().add_diagnostic(
                     AnalyzerDiagnostic::new("Parent class cannot be itself", parent_class.get_range())
                 );
             }
-            sym_info.parent = Some(parent_class_name.clone());
-            let parent_symbol_table = self.semantic_analysis_service.get_symbol_table_class_def_only(&parent_class_name);
+            sym_info.parent = Some(parent_class_name.to_string());
+            let parent_symbol_table = self.semantic_analysis_service.get_symbol_table_class_def_only(&parent_class_name.to_string());
             match parent_symbol_table{
                 Ok(st) => {
                     // set parent symbol table
@@ -223,7 +223,7 @@ impl AstAnnotator{
         // add self to sym table
         let mut self_sym = sym_info;
         self_sym.id = "self".to_string();
-        self.insert_symbol_info("self".to_string(), self_sym);
+        self.insert_symbol_info("self", self_sym);
     }
 
 
@@ -232,9 +232,9 @@ impl AstAnnotator{
         let ori_node = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstModule>());
 
         let module_name = ori_node.get_identifier();
-        self.root_symbol_table.unwrap_ref().lock().unwrap().for_class_or_module = Some(module_name.clone());
-        let mut sym_info = SymbolInfo::new(module_name.clone(), SymbolType::Module);
-        sym_info.eval_type = Some(EvalType::Module(module_name.clone()));
+        self.root_symbol_table.unwrap_ref().lock().unwrap().for_class_or_module = Some(module_name.to_string());
+        let mut sym_info = SymbolInfo::new(module_name.to_string(), SymbolType::Module);
+        sym_info.eval_type = Some(EvalType::Module(module_name.to_string()));
 
         sym_info.range = ori_node.get_range();
         sym_info.selection_range = ori_node.id.get_range();
@@ -245,10 +245,10 @@ impl AstAnnotator{
         let node_lock = node.write().unwrap();
         let cst_decl = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstConstantDeclaration>());
 
-        self.check_identifier_already_defined(&cst_decl.get_identifier(), cst_decl.get_range());
+        self.check_identifier_already_defined(&cst_decl.get_identifier().to_string(), cst_decl.get_range());
         
-        let mut sym_info = SymbolInfo::new(cst_decl.get_identifier(), SymbolType::Constant);
-        sym_info.eval_type = match &cst_decl.value.token_type{
+        let mut sym_info = SymbolInfo::new(cst_decl.get_identifier().to_string(), SymbolType::Constant);
+        sym_info.eval_type = match &cst_decl.value_token.token_type{
             TokenType::StringLiteral => Some(EvalType::Native(NativeType::String)),
             TokenType::NumericLiteral => Some(EvalType::Native(NativeType::Num)),
             _=> Some(EvalType::Unknown)
@@ -264,8 +264,8 @@ impl AstAnnotator{
 
         self.check_identifier_already_defined(&type_decl.get_identifier(), type_decl.get_range());
         
-        let mut sym_info = SymbolInfo::new(type_decl.get_identifier(), SymbolType::Type);
-        sym_info.type_str = Some(type_decl.type_node.get_identifier());
+        let mut sym_info = SymbolInfo::new(type_decl.get_identifier().to_string(), SymbolType::Type);
+        sym_info.type_str = Some(type_decl.type_node.get_identifier().to_string());
         // set eval type
         sym_info.eval_type = Some(self.get_eval_type(&type_decl.type_node));
         sym_info.range = type_decl.get_range();
@@ -282,7 +282,7 @@ impl AstAnnotator{
 
         self.check_identifier_already_defined(&proc_decl.get_identifier(), proc_decl.get_range());
 
-        let mut sym_info = SymbolInfo::new(proc_decl.get_identifier(), SymbolType::Proc);
+        let mut sym_info = SymbolInfo::new(proc_decl.get_identifier().to_string(), SymbolType::Proc);
         sym_info.range = proc_decl.get_range();
         sym_info.eval_type = Some(EvalType::Proc);
         sym_info.selection_range = proc_decl.identifier.get_range();
@@ -301,8 +301,8 @@ impl AstAnnotator{
 
         self.check_identifier_already_defined(&func_decl.get_identifier(), func_decl.get_range());
 
-        let mut sym_info = SymbolInfo::new(func_decl.get_identifier(), SymbolType::Func);
-        sym_info.type_str = Some(func_decl.return_type.get_identifier());
+        let mut sym_info = SymbolInfo::new(func_decl.get_identifier().to_string(), SymbolType::Func);
+        sym_info.type_str = Some(func_decl.return_type.get_identifier().to_string());
         // set eval type
         sym_info.eval_type = Some(self.get_eval_type(&func_decl.return_type));
         sym_info.range = func_decl.get_range();
@@ -323,8 +323,8 @@ impl AstAnnotator{
 
         self.check_identifier_already_defined(&field_decl.get_identifier(), field_decl.get_range());
 
-        let mut sym_info = SymbolInfo::new(field_decl.get_identifier(), SymbolType::Field);
-        sym_info.type_str = Some(field_decl.type_node.get_identifier());
+        let mut sym_info = SymbolInfo::new(field_decl.get_identifier().to_string(), SymbolType::Field);
+        sym_info.type_str = Some(field_decl.type_node.get_identifier().to_string());
         sym_info.eval_type = Some(self.get_eval_type(&field_decl.type_node));
         sym_info.range = field_decl.get_range();
         sym_info.selection_range = field_decl.identifier.get_range();
@@ -336,7 +336,7 @@ impl AstAnnotator{
         let uses_node = unwrap_or_return!(node_lock.data.as_any().downcast_ref::<AstUses>());
 
         for uses in &uses_node.list_of_uses{
-            self.get_cur_sym_table().lock().unwrap().add_uses_entity(&uses.get_value());
+            self.get_cur_sym_table().lock().unwrap().add_uses_entity(&uses.get_value_as_str());
 
             // get st for uses, causes stack overflow :)
             // let uses_sym_table = match self.get_symbol_table_for_class(&uses.get_value()) {
@@ -353,10 +353,10 @@ impl AstAnnotator{
 
         self.check_identifier_already_defined(&param_decl.get_identifier(), param_decl.get_range());
 
-        let mut sym_info = SymbolInfo::new(param_decl.get_identifier(), SymbolType::Variable);
+        let mut sym_info = SymbolInfo::new(param_decl.get_identifier().to_string(), SymbolType::Variable);
         match &param_decl.type_node{
             Some(t) => {
-                sym_info.type_str = Some(t.get_identifier());
+                sym_info.type_str = Some(t.get_identifier().to_string());
                 sym_info.eval_type = Some(self.get_eval_type(&t));
             },
             _=> ()
@@ -372,8 +372,8 @@ impl AstAnnotator{
 
         self.check_identifier_already_defined(&var_decl.get_identifier(), var_decl.get_range());
 
-        let mut sym_info = SymbolInfo::new(var_decl.get_identifier(), SymbolType::Variable);
-        sym_info.type_str = Some(var_decl.type_node.get_identifier());
+        let mut sym_info = SymbolInfo::new(var_decl.get_identifier().to_string(), SymbolType::Variable);
+        sym_info.type_str = Some(var_decl.type_node.get_identifier().to_string());
         sym_info.eval_type = Some(self.get_eval_type(&var_decl.type_node));
         sym_info.range = var_decl.get_range();
         sym_info.selection_range = var_decl.identifier.get_range();
@@ -395,7 +395,7 @@ impl AstAnnotator{
         }
     }
 
-    fn eval_right_hand_of_entity(&mut self, left_entity_name : &String, right_id: &String) -> EvalType{
+    fn eval_right_hand_of_entity(&mut self, left_entity_name : &str, right_id: &str) -> EvalType{
         // search right node in class
         // if class is self don't call sem service, because it will fail
         let class_sym_table = if left_entity_name.clone() == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class_or_module.unwrap_clone_or_empty_string() {

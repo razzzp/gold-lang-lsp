@@ -37,7 +37,7 @@ impl SemanticAnalysisService {
         self.already_seen_uri.lock().unwrap().insert(uri.to_string());
         return Ok(())
     }
-    pub fn get_symbol_table_class_def_only(&self, class: &String) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+    pub fn get_symbol_table_class_def_only(&self, class: &str) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         let uri = self.doc_service.get_uri_for_class(class)?;
         let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri, true)?;
         let st_option = doc.lock().unwrap().get_symbol_table().clone();

@@ -1,5 +1,5 @@
 
-use std::{str::Chars, iter::{Peekable, Enumerate}};
+use std::{str::Chars, iter::{Peekable, Enumerate}, sync::Arc};
 
 use self::tokens::{Token, TokenType};
 use crate::utils::{Position, Range};
@@ -112,28 +112,28 @@ impl GoldLexer{
                 _ => break
             }
         }
-        return Ok(self.create_token(pos, TokenType::NumericLiteral, Some(number)));
+        return Ok(self.create_token(pos, TokenType::NumericLiteral, number));
     }
 
     fn read_symbol(&mut self, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, GoldLexerError> {
         let next = buf.next().unwrap();
         let pos = next.0;
         let token: Result<Token, GoldLexerError> = match next.1 {
-            '(' => Ok(self.create_token(pos, TokenType::OBracket, Some(next.1.to_string()))),
-            ')' => Ok(self.create_token(pos, TokenType::CBracket, Some(next.1.to_string()))),
-            '[' => Ok(self.create_token(pos, TokenType::OSqrBracket, Some(next.1.to_string()))),
-            ']' => Ok(self.create_token(pos, TokenType::CSqrBracket, Some(next.1.to_string()))),
-            '{' => Ok(self.create_token(pos, TokenType::OCurBracket, Some(next.1.to_string()))),
-            '}' => Ok(self.create_token(pos, TokenType::CCurBracket, Some(next.1.to_string()))),
-            '*' => Ok(self.create_token(pos, TokenType::Asterisk, Some(next.1.to_string()))),
-            '/' => Ok(self.create_token(pos, TokenType::Divide, Some(next.1.to_string()))),
-            '%' => Ok(self.create_token(pos, TokenType::Modulus, Some(next.1.to_string()))),
-            '@' => Ok(self.create_token(pos, TokenType::AddressOf, Some(next.1.to_string()))),
-            '.' => Ok(self.create_token(pos, TokenType::Dot, Some(next.1.to_string()))),
-            '=' => Ok(self.create_token(pos, TokenType::Equals, Some(next.1.to_string()))),
+            '(' => Ok(self.create_token(pos, TokenType::OBracket, next.1.to_string())),
+            ')' => Ok(self.create_token(pos, TokenType::CBracket, next.1.to_string())),
+            '[' => Ok(self.create_token(pos, TokenType::OSqrBracket, next.1.to_string())),
+            ']' => Ok(self.create_token(pos, TokenType::CSqrBracket, next.1.to_string())),
+            '{' => Ok(self.create_token(pos, TokenType::OCurBracket, next.1.to_string())),
+            '}' => Ok(self.create_token(pos, TokenType::CCurBracket, next.1.to_string())),
+            '*' => Ok(self.create_token(pos, TokenType::Asterisk, next.1.to_string())),
+            '/' => Ok(self.create_token(pos, TokenType::Divide, next.1.to_string())),
+            '%' => Ok(self.create_token(pos, TokenType::Modulus, next.1.to_string())),
+            '@' => Ok(self.create_token(pos, TokenType::AddressOf, next.1.to_string())),
+            '.' => Ok(self.create_token(pos, TokenType::Dot, next.1.to_string())),
+            '=' => Ok(self.create_token(pos, TokenType::Equals, next.1.to_string())),
             '\'' => Ok(self.read_string_constant(pos, buf)),
             '\"' => Ok(self.read_string_constant_doublequotes(pos, buf)),
-            ',' => Ok(self.create_token(pos, TokenType::Comma, Some(next.1.to_string()))),
+            ',' => Ok(self.create_token(pos, TokenType::Comma, next.1.to_string())),
             '<' => self.read_double_char_op(next.1, pos, buf),
             '>' => self.read_double_char_op(next.1, pos, buf),
             '+' => self.read_double_char_op(next.1, pos, buf),
@@ -162,7 +162,7 @@ impl GoldLexer{
                 None => break
             }
         }
-        return self.create_token(pos, TokenType::StringLiteral, Some(value))
+        return self.create_token(pos, TokenType::StringLiteral, value)
     }
 
     fn read_string_constant_doublequotes(&mut self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token {
@@ -174,7 +174,7 @@ impl GoldLexer{
                 None => break
             }
         }
-        return self.create_token(pos, TokenType::StringLiteral, Some(value))
+        return self.create_token(pos, TokenType::StringLiteral, value)
     }
     
     fn read_comment(&mut self, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Token{
@@ -189,7 +189,7 @@ impl GoldLexer{
                 _ => break
             }
         }
-        return self.create_token(pos, TokenType::Comment, Some(comment));
+        return self.create_token(pos, TokenType::Comment, comment);
     }
     
     fn read_double_char_op(&self, first_op: char, pos: usize, buf: &mut Peekable<Enumerate<Chars>>) -> Result<Token, GoldLexerError> {
@@ -199,38 +199,38 @@ impl GoldLexer{
         let result: Result<Token, GoldLexerError>;
         if  first_op == '<'{
             result = match next {
-                Some((_,'<')) => Ok(self.create_token(pos, TokenType::LeftShift, Some("<<".to_string()))),
-                Some((_,'=')) => Ok(self.create_token(pos, TokenType::LessThanOrEqual, Some("<=".to_string()))),
-                Some((_,'>')) => Ok(self.create_token(pos, TokenType::NotEquals, Some("<>".to_string()))),
-                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::LessThan, Some("<".to_string())))}
+                Some((_,'<')) => Ok(self.create_token(pos, TokenType::LeftShift, "<<".to_string())),
+                Some((_,'=')) => Ok(self.create_token(pos, TokenType::LessThanOrEqual, "<=".to_string())),
+                Some((_,'>')) => Ok(self.create_token(pos, TokenType::NotEquals, "<>".to_string())),
+                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::LessThan, "<".to_string()))}
             };
         } else if  first_op == '>'{
             result = match next {
-                Some((_,'>')) => Ok(self.create_token(pos, TokenType::RightShift, Some(">>".to_string()))),
-                Some((_,'=')) => Ok(self.create_token(pos, TokenType::GreaterThanOrEqual, Some(">=".to_string()))),
-                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::GreaterThan, Some(">".to_string())))}
+                Some((_,'>')) => Ok(self.create_token(pos, TokenType::RightShift, ">>".to_string())),
+                Some((_,'=')) => Ok(self.create_token(pos, TokenType::GreaterThanOrEqual, ">=".to_string())),
+                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::GreaterThan, ">".to_string()))}
             };
         } else if  first_op == '&'{
             result = match next {
-                Some((_,'&')) => Ok(self.create_token(pos, TokenType::StringConcat, Some("&&".to_string()))),
-                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::StringConcat2, Some("&".to_string())))}
+                Some((_,'&')) => Ok(self.create_token(pos, TokenType::StringConcat, "&&".to_string())),
+                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::StringConcat2, "&".to_string()))}
             };
         } else if  first_op == '+'{
             result = match next{
-                Some((_,'+')) => Ok(self.create_token(pos, TokenType::Increment, Some("++".to_string()))),
-                Some((_,'=')) => Ok(self.create_token(pos, TokenType::IncrementAssign, Some("+=".to_string()))),
-                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::Plus, Some("+".to_string())))}
+                Some((_,'+')) => Ok(self.create_token(pos, TokenType::Increment, "++".to_string())),
+                Some((_,'=')) => Ok(self.create_token(pos, TokenType::IncrementAssign, "+=".to_string())),
+                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::Plus, "+".to_string()))}
             };
         } else if  first_op == '-'{
             result = match next {
-                Some((_,'-')) => Ok(self.create_token(pos, TokenType::Decrement, Some("--".to_string()))),
-                Some((_,'=')) => Ok(self.create_token(pos, TokenType::DecrementAssign, Some("-=".to_string()))),
-                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::Minus, Some("-".to_string())))}
+                Some((_,'-')) => Ok(self.create_token(pos, TokenType::Decrement, "--".to_string())),
+                Some((_,'=')) => Ok(self.create_token(pos, TokenType::DecrementAssign, "-=".to_string())),
+                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::Minus, "-".to_string()))}
             };
         } else if  first_op == ':'{
             result = match next {
-                Some((_,'=')) => Ok(self.create_token(pos, TokenType::DeepAssign, Some(":=".to_string()))),
-                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::Colon, Some(":".to_string())))}
+                Some((_,'=')) => Ok(self.create_token(pos, TokenType::DeepAssign, ":=".to_string())),
+                _ => {is_double_op = false; Ok(self.create_token(pos, TokenType::Colon, ":".to_string()))}
             };
         } else {
             result = Err(GoldLexerError { range: self.create_range(pos, 1), msg: format!("Unknown first symbol: {}", first_op) });
@@ -255,168 +255,168 @@ impl GoldLexer{
             }
         }
         let token_type = if int_char.len() == 1 {TokenType::Pound} else {TokenType::StringLiteral};
-        return self.create_token(pos, token_type, Some(int_char));
+        return self.create_token(pos, token_type, int_char);
     }
 
     fn create_word_token(&self, pos: usize, word : String) -> Token {
         match word.to_uppercase().as_str() {
-            "CLASS" =>self.create_token(pos, TokenType::Class, Some(word)),
-            "FUNC" | "FUNCTION" =>self.create_token(pos, TokenType::Func, Some(word)),
-            "ENDFUNC" =>self.create_token(pos, TokenType::EndFunc, Some(word)),
-            "PROC" | "PROCEDURE" =>self.create_token(pos, TokenType::Proc, Some(word)),
-            "ENDPROC" =>self.create_token(pos, TokenType::EndProc, Some(word)),
-            "ABSOLUTE" =>self.create_token(pos, TokenType::Absolute, Some(word)),
-            "ABSTRACT" =>self.create_token(pos, TokenType::Abstract, Some(word)),
-            "ARRAY" =>self.create_token(pos, TokenType::Array, Some(word)),
-            "CONST" =>self.create_token(pos, TokenType::Const, Some(word)),
-            "EXTERNAL" =>self.create_token(pos, TokenType::External, Some(word)),
-            "FINAL" =>self.create_token(pos, TokenType::Final, Some(word)),
-            "FORWARD" =>self.create_token(pos, TokenType::Forward, Some(word)),
-            "INOUT" =>self.create_token(pos, TokenType::InOut, Some(word)),
+            "CLASS" =>self.create_token(pos, TokenType::Class, word),
+            "FUNC" | "FUNCTION" =>self.create_token(pos, TokenType::Func, word),
+            "ENDFUNC" =>self.create_token(pos, TokenType::EndFunc, word),
+            "PROC" | "PROCEDURE" =>self.create_token(pos, TokenType::Proc, word),
+            "ENDPROC" =>self.create_token(pos, TokenType::EndProc, word),
+            "ABSOLUTE" =>self.create_token(pos, TokenType::Absolute, word),
+            "ABSTRACT" =>self.create_token(pos, TokenType::Abstract, word),
+            "ARRAY" =>self.create_token(pos, TokenType::Array, word),
+            "CONST" =>self.create_token(pos, TokenType::Const, word),
+            "EXTERNAL" =>self.create_token(pos, TokenType::External, word),
+            "FINAL" =>self.create_token(pos, TokenType::Final, word),
+            "FORWARD" =>self.create_token(pos, TokenType::Forward, word),
+            "INOUT" =>self.create_token(pos, TokenType::InOut, word),
             // types
-            // "DECIMAL" =>self.create_token(pos, TokenType::Decimal, Some(word)),
-            // "CHAR" =>self.create_token(pos, TokenType::Char, Some(word)),
-            // "CSTRING" =>self.create_token(pos, TokenType::CString, Some(word)),
-            // "TEXT" =>self.create_token(pos, TokenType::Text, Some(word)),
-            // "INT" =>self.create_token(pos, TokenType::Int, Some(word)),
-            // "INT1" =>self.create_token(pos, TokenType::Int1, Some(word)),
-            // "INT2" =>self.create_token(pos, TokenType::Int2, Some(word)),
-            // "INT4" =>self.create_token(pos, TokenType::Int4, Some(word)),
-            // "INT8" =>self.create_token(pos, TokenType::Int8, Some(word)),
-            // "BOOLEAN" =>self.create_token(pos, TokenType::Int8, Some(word)),
-            // "NUM" =>self.create_token(pos, TokenType::Num, Some(word)),
-            // "NUM4" =>self.create_token(pos, TokenType::Num4, Some(word)),
-            // "NUM8" =>self.create_token(pos, TokenType::Num8, Some(word)),
-            // "NUM10" =>self.create_token(pos, TokenType::Num10, Some(word)),
-            // "STRING" =>self.create_token(pos, TokenType::String, Some(word)),
+            // "DECIMAL" =>self.create_token(pos, TokenType::Decimal, word),
+            // "CHAR" =>self.create_token(pos, TokenType::Char, word),
+            // "CSTRING" =>self.create_token(pos, TokenType::CString, word),
+            // "TEXT" =>self.create_token(pos, TokenType::Text, word),
+            // "INT" =>self.create_token(pos, TokenType::Int, word),
+            // "INT1" =>self.create_token(pos, TokenType::Int1, word),
+            // "INT2" =>self.create_token(pos, TokenType::Int2, word),
+            // "INT4" =>self.create_token(pos, TokenType::Int4, word),
+            // "INT8" =>self.create_token(pos, TokenType::Int8, word),
+            // "BOOLEAN" =>self.create_token(pos, TokenType::Int8, word),
+            // "NUM" =>self.create_token(pos, TokenType::Num, word),
+            // "NUM4" =>self.create_token(pos, TokenType::Num4, word),
+            // "NUM8" =>self.create_token(pos, TokenType::Num8, word),
+            // "NUM10" =>self.create_token(pos, TokenType::Num10, word),
+            // "STRING" =>self.create_token(pos, TokenType::String, word),
 
-            "INVERSE" =>self.create_token(pos, TokenType::Inverse, Some(word)),
-            "LISTOF" =>self.create_token(pos, TokenType::ListOf, Some(word)),
-            "MEMORY" =>self.create_token(pos, TokenType::Memory, Some(word)),
-            "OF" =>self.create_token(pos, TokenType::Of, Some(word)),
-            "OVERRIDE" =>self.create_token(pos, TokenType::Override, Some(word)),
-            "PRIVATE" =>self.create_token(pos, TokenType::Private, Some(word)),
-            "PROTECTED" =>self.create_token(pos, TokenType::Protected, Some(word)),
-            "RECORD" =>self.create_token(pos, TokenType::Record, Some(word)),
-            "REFTO" =>self.create_token(pos, TokenType::RefTo, Some(word)),
-            "REIMPLEM" =>self.create_token(pos, TokenType::ReImplem, Some(word)),
-            "TYPE" =>self.create_token(pos, TokenType::Type, Some(word)),
-            "VAR" =>self.create_token(pos, TokenType::Var, Some(word)),
-            "VERSIONED" =>self.create_token(pos, TokenType::Versioned, Some(word)),
-            "IF" =>self.create_token(pos, TokenType::If, Some(word)),
-            "ENDIF" =>self.create_token(pos, TokenType::EndIf, Some(word)),
-            "BEGIN" =>self.create_token(pos, TokenType::Begin, Some(word)),
-            "BREAK" =>self.create_token(pos, TokenType::Break, Some(word)),
-            "CATCH" =>self.create_token(pos, TokenType::Catch, Some(word)),
-            "CONTINUE" =>self.create_token(pos, TokenType::Continue, Some(word)),
-            "DOWNTO" =>self.create_token(pos, TokenType::DownTo, Some(word)),
-            "ELSE" =>self.create_token(pos, TokenType::Else, Some(word)),
-            "ELSEIF" =>self.create_token(pos, TokenType::ElseIf, Some(word)),
-            "END" =>self.create_token(pos, TokenType::End, Some(word)),
-            "FOR" =>self.create_token(pos, TokenType::For, Some(word)),
-            "FOREACH" =>self.create_token(pos, TokenType::ForEach, Some(word)),
-            "ENDFOR" =>self.create_token(pos, TokenType::EndFor, Some(word)),
-            "ENDCLASS" =>self.create_token(pos, TokenType::EndClass, Some(word)),
-            "ENDLOOP" =>self.create_token(pos, TokenType::EndLoop, Some(word)),
-            "ENDRECORD" =>self.create_token(pos, TokenType::EndRecord, Some(word)),
-            "ENDSWITCH" =>self.create_token(pos, TokenType::EndSwitch, Some(word)),
-            "ENDTRY" =>self.create_token(pos, TokenType::EndTry, Some(word)),
-            "ENDWHEN" =>self.create_token(pos, TokenType::EndWhen, Some(word)),
-            "ENDWHILE" =>self.create_token(pos, TokenType::EndWhile, Some(word)),
-            "EXIT" =>self.create_token(pos, TokenType::Exit, Some(word)),
-            "FINALLY" =>self.create_token(pos, TokenType::Finally, Some(word)),
-            "LOOP" =>self.create_token(pos, TokenType::Loop, Some(word)),
-            "NATIVERECORD" =>self.create_token(pos, TokenType::NativeRecord, Some(word)),
-            "ENDNATIVERECORD" =>self.create_token(pos, TokenType::EndNativeRecord, Some(word)),
-            "REPEAT" =>self.create_token(pos, TokenType::Repeat, Some(word)),
-            "RETURN" =>self.create_token(pos, TokenType::Return, Some(word)),
-            "STEP" =>self.create_token(pos, TokenType::Step, Some(word)),
-            "SWITCH" =>self.create_token(pos, TokenType::Switch, Some(word)),
-            "THROW" =>self.create_token(pos, TokenType::Throw, Some(word)),
-            "TO" =>self.create_token(pos, TokenType::To, Some(word)),
-            "TRY" =>self.create_token(pos, TokenType::Try, Some(word)),
-            "UNTIL" =>self.create_token(pos, TokenType::Until, Some(word)),
-            "WHEN" =>self.create_token(pos, TokenType::When, Some(word)),
-            "WHILE" =>self.create_token(pos, TokenType::While, Some(word)),
-            "AND" =>self.create_token(pos, TokenType::And, Some(word)),
-            "BAND" =>self.create_token(pos, TokenType::BAnd, Some(word)),
-            "BNOT" =>self.create_token(pos, TokenType::BNot, Some(word)),
-            "BOR" =>self.create_token(pos, TokenType::BOr, Some(word)),
-            "BXOR" =>self.create_token(pos, TokenType::BXor, Some(word)),
-            "IN" =>self.create_token(pos, TokenType::In, Some(word)),
-            "LIKE" =>self.create_token(pos, TokenType::Like, Some(word)),
-            "NOT" =>self.create_token(pos, TokenType::Not, Some(word)),
-            "OR" =>self.create_token(pos, TokenType::Or, Some(word)),
-            "XOR" =>self.create_token(pos, TokenType::Xor, Some(word)),
+            "INVERSE" =>self.create_token(pos, TokenType::Inverse, word),
+            "LISTOF" =>self.create_token(pos, TokenType::ListOf, word),
+            "MEMORY" =>self.create_token(pos, TokenType::Memory, word),
+            "OF" =>self.create_token(pos, TokenType::Of, word),
+            "OVERRIDE" =>self.create_token(pos, TokenType::Override, word),
+            "PRIVATE" =>self.create_token(pos, TokenType::Private, word),
+            "PROTECTED" =>self.create_token(pos, TokenType::Protected, word),
+            "RECORD" =>self.create_token(pos, TokenType::Record, word),
+            "REFTO" =>self.create_token(pos, TokenType::RefTo, word),
+            "REIMPLEM" =>self.create_token(pos, TokenType::ReImplem, word),
+            "TYPE" =>self.create_token(pos, TokenType::Type, word),
+            "VAR" =>self.create_token(pos, TokenType::Var, word),
+            "VERSIONED" =>self.create_token(pos, TokenType::Versioned, word),
+            "IF" =>self.create_token(pos, TokenType::If, word),
+            "ENDIF" =>self.create_token(pos, TokenType::EndIf, word),
+            "BEGIN" =>self.create_token(pos, TokenType::Begin, word),
+            "BREAK" =>self.create_token(pos, TokenType::Break, word),
+            "CATCH" =>self.create_token(pos, TokenType::Catch, word),
+            "CONTINUE" =>self.create_token(pos, TokenType::Continue, word),
+            "DOWNTO" =>self.create_token(pos, TokenType::DownTo, word),
+            "ELSE" =>self.create_token(pos, TokenType::Else, word),
+            "ELSEIF" =>self.create_token(pos, TokenType::ElseIf, word),
+            "END" =>self.create_token(pos, TokenType::End, word),
+            "FOR" =>self.create_token(pos, TokenType::For, word),
+            "FOREACH" =>self.create_token(pos, TokenType::ForEach, word),
+            "ENDFOR" =>self.create_token(pos, TokenType::EndFor, word),
+            "ENDCLASS" =>self.create_token(pos, TokenType::EndClass, word),
+            "ENDLOOP" =>self.create_token(pos, TokenType::EndLoop, word),
+            "ENDRECORD" =>self.create_token(pos, TokenType::EndRecord, word),
+            "ENDSWITCH" =>self.create_token(pos, TokenType::EndSwitch, word),
+            "ENDTRY" =>self.create_token(pos, TokenType::EndTry, word),
+            "ENDWHEN" =>self.create_token(pos, TokenType::EndWhen, word),
+            "ENDWHILE" =>self.create_token(pos, TokenType::EndWhile, word),
+            "EXIT" =>self.create_token(pos, TokenType::Exit, word),
+            "FINALLY" =>self.create_token(pos, TokenType::Finally, word),
+            "LOOP" =>self.create_token(pos, TokenType::Loop, word),
+            "NATIVERECORD" =>self.create_token(pos, TokenType::NativeRecord, word),
+            "ENDNATIVERECORD" =>self.create_token(pos, TokenType::EndNativeRecord, word),
+            "REPEAT" =>self.create_token(pos, TokenType::Repeat, word),
+            "RETURN" =>self.create_token(pos, TokenType::Return, word),
+            "STEP" =>self.create_token(pos, TokenType::Step, word),
+            "SWITCH" =>self.create_token(pos, TokenType::Switch, word),
+            "THROW" =>self.create_token(pos, TokenType::Throw, word),
+            "TO" =>self.create_token(pos, TokenType::To, word),
+            "TRY" =>self.create_token(pos, TokenType::Try, word),
+            "UNTIL" =>self.create_token(pos, TokenType::Until, word),
+            "WHEN" =>self.create_token(pos, TokenType::When, word),
+            "WHILE" =>self.create_token(pos, TokenType::While, word),
+            "AND" =>self.create_token(pos, TokenType::And, word),
+            "BAND" =>self.create_token(pos, TokenType::BAnd, word),
+            "BNOT" =>self.create_token(pos, TokenType::BNot, word),
+            "BOR" =>self.create_token(pos, TokenType::BOr, word),
+            "BXOR" =>self.create_token(pos, TokenType::BXor, word),
+            "IN" =>self.create_token(pos, TokenType::In, word),
+            "LIKE" =>self.create_token(pos, TokenType::Like, word),
+            "NOT" =>self.create_token(pos, TokenType::Not, word),
+            "OR" =>self.create_token(pos, TokenType::Or, word),
+            "XOR" =>self.create_token(pos, TokenType::Xor, word),
             // remove tokens not used crucial to grammar, to simplify parsing
-            // "_METHODNAME" =>self.create_token(pos, TokenType::MethodName, Some(word)),
-            // "_MODULENAME" =>self.create_token(pos, TokenType::ModuleName, Some(word)),
-            // "_MOVE" =>self.create_token(pos, TokenType::Move, Some(word)),
-            // "CHR" =>self.create_token(pos, TokenType::Chr, Some(word)),
-            // "CONCAT" =>self.create_token(pos, TokenType::Concat, Some(word)),
-            // "DISPOSE" =>self.create_token(pos, TokenType::Dispose, Some(word)),
-            // "FIRST" =>self.create_token(pos, TokenType::First, Some(word)),
-            // "LAST" =>self.create_token(pos, TokenType::Last, Some(word)),
-            "INHERITED" =>self.create_token(pos, TokenType::Inherited, Some(word)),
-            "INSTANCEOF" =>self.create_token(pos, TokenType::InstanceOf, Some(word)),
-            // "LENGTH" =>self.create_token(pos, TokenType::Length, Some(word)),
-            // "MEMBER" =>self.create_token(pos, TokenType::Member, Some(word)),
-            // "METAMODELENTITY" =>self.create_token(pos, TokenType::MetaModelEntity, Some(word)),
-            // "NEW" =>self.create_token(pos, TokenType::New, Some(word)),
-            "NIL" =>self.create_token(pos, TokenType::Nil, Some(word)),
-            // "ORD" =>self.create_token(pos, TokenType::Ord, Some(word)),
-            // "PASS" =>self.create_token(pos, TokenType::Pass, Some(word)),
-            // "PRED" =>self.create_token(pos, TokenType::Pred, Some(word)),
-            // "SCENARIO" =>self.create_token(pos, TokenType::Scenario, Some(word)),
-            // "SIZEOF" =>self.create_token(pos, TokenType::SizeOf, Some(word)),
-            // "SUCC" =>self.create_token(pos, TokenType::Succ, Some(word)),
-            // "UPCASE" =>self.create_token(pos, TokenType::Upcase, Some(word)),
-            "USES" =>self.create_token(pos, TokenType::Uses, Some(word)),
-            // "WRITE" =>self.create_token(pos, TokenType::Write, Some(word)),
-            // "WRITELN" =>self.create_token(pos, TokenType::WriteLn, Some(word)),
-            "OQL" =>self.create_token(pos, TokenType::OQL, Some(word)),
-            "TOP" =>self.create_token(pos, TokenType::Top, Some(word)),
-            "DISTINCT" =>self.create_token(pos, TokenType::Distinct, Some(word)),
-            "FROM" =>self.create_token(pos, TokenType::From, Some(word)),
-            "USING" =>self.create_token(pos, TokenType::Using, Some(word)),
-            "WHERE" =>self.create_token(pos, TokenType::Where, Some(word)),
-            "FETCH" =>self.create_token(pos, TokenType::Fetch, Some(word)),
-            "INTO" =>self.create_token(pos, TokenType::Into, Some(word)),
-            "DESCENDING" =>self.create_token(pos, TokenType::Descending, Some(word)),
-            "CONDITIONAL" =>self.create_token(pos, TokenType::Conditional, Some(word)),
-            "ALLVERSIONSOF" =>self.create_token(pos, TokenType::AllVersionsOf, Some(word)),
-            "PHANTOMSTOO" =>self.create_token(pos, TokenType::PhantomsToo, Some(word)),
-            "SELECT" =>self.create_token(pos, TokenType::Select, Some(word)),
-            // "OQLCLASSID" =>self.create_token(pos, TokenType::OQLClassId, Some(word)),
-            // "OQLCOUNT" =>self.create_token(pos, TokenType::OQLCount, Some(word)),
-            // "OQLMAX" =>self.create_token(pos, TokenType::OQLMax, Some(word)),
-            // "OQLMIN" =>self.create_token(pos, TokenType::OQLMin, Some(word)),
-            // "OQLSUM" =>self.create_token(pos, TokenType::OQLSum, Some(word)),
-            // "OQLUPDATEDATE" =>self.create_token(pos, TokenType::OQLUpdateDate, Some(word)),
-            // "OQLUPDATETIME" =>self.create_token(pos, TokenType::OQLUpdateTime, Some(word)),
-            "ORDER" =>self.create_token(pos, TokenType::Order, Some(word)),
-            "BY" =>self.create_token(pos, TokenType::By, Some(word)),
+            // "_METHODNAME" =>self.create_token(pos, TokenType::MethodName, word),
+            // "_MODULENAME" =>self.create_token(pos, TokenType::ModuleName, word),
+            // "_MOVE" =>self.create_token(pos, TokenType::Move, word),
+            // "CHR" =>self.create_token(pos, TokenType::Chr, word),
+            // "CONCAT" =>self.create_token(pos, TokenType::Concat, word),
+            // "DISPOSE" =>self.create_token(pos, TokenType::Dispose, word),
+            // "FIRST" =>self.create_token(pos, TokenType::First, word),
+            // "LAST" =>self.create_token(pos, TokenType::Last, word),
+            "INHERITED" =>self.create_token(pos, TokenType::Inherited, word),
+            "INSTANCEOF" =>self.create_token(pos, TokenType::InstanceOf, word),
+            // "LENGTH" =>self.create_token(pos, TokenType::Length, word),
+            // "MEMBER" =>self.create_token(pos, TokenType::Member, word),
+            // "METAMODELENTITY" =>self.create_token(pos, TokenType::MetaModelEntity, word),
+            // "NEW" =>self.create_token(pos, TokenType::New, word),
+            "NIL" =>self.create_token(pos, TokenType::Nil, word),
+            // "ORD" =>self.create_token(pos, TokenType::Ord, word),
+            // "PASS" =>self.create_token(pos, TokenType::Pass, word),
+            // "PRED" =>self.create_token(pos, TokenType::Pred, word),
+            // "SCENARIO" =>self.create_token(pos, TokenType::Scenario, word),
+            // "SIZEOF" =>self.create_token(pos, TokenType::SizeOf, word),
+            // "SUCC" =>self.create_token(pos, TokenType::Succ, word),
+            // "UPCASE" =>self.create_token(pos, TokenType::Upcase, word),
+            "USES" =>self.create_token(pos, TokenType::Uses, word),
+            // "WRITE" =>self.create_token(pos, TokenType::Write, word),
+            // "WRITELN" =>self.create_token(pos, TokenType::WriteLn, word),
+            "OQL" =>self.create_token(pos, TokenType::OQL, word),
+            "TOP" =>self.create_token(pos, TokenType::Top, word),
+            "DISTINCT" =>self.create_token(pos, TokenType::Distinct, word),
+            "FROM" =>self.create_token(pos, TokenType::From, word),
+            "USING" =>self.create_token(pos, TokenType::Using, word),
+            "WHERE" =>self.create_token(pos, TokenType::Where, word),
+            "FETCH" =>self.create_token(pos, TokenType::Fetch, word),
+            "INTO" =>self.create_token(pos, TokenType::Into, word),
+            "DESCENDING" =>self.create_token(pos, TokenType::Descending, word),
+            "CONDITIONAL" =>self.create_token(pos, TokenType::Conditional, word),
+            "ALLVERSIONSOF" =>self.create_token(pos, TokenType::AllVersionsOf, word),
+            "PHANTOMSTOO" =>self.create_token(pos, TokenType::PhantomsToo, word),
+            "SELECT" =>self.create_token(pos, TokenType::Select, word),
+            // "OQLCLASSID" =>self.create_token(pos, TokenType::OQLClassId, word),
+            // "OQLCOUNT" =>self.create_token(pos, TokenType::OQLCount, word),
+            // "OQLMAX" =>self.create_token(pos, TokenType::OQLMax, word),
+            // "OQLMIN" =>self.create_token(pos, TokenType::OQLMin, word),
+            // "OQLSUM" =>self.create_token(pos, TokenType::OQLSum, word),
+            // "OQLUPDATEDATE" =>self.create_token(pos, TokenType::OQLUpdateDate, word),
+            // "OQLUPDATETIME" =>self.create_token(pos, TokenType::OQLUpdateTime, word),
+            "ORDER" =>self.create_token(pos, TokenType::Order, word),
+            "BY" =>self.create_token(pos, TokenType::By, word),
 
-            // "SELF" =>self.create_token(pos, TokenType::TSelf, Some(word)),
-            // "_RESULT" =>self.create_token(pos, TokenType::Result, Some(word)),
-            "MODULE" =>self.create_token(pos, TokenType::Module, Some(word)),
-            "MULTILANG" => self.create_token(pos, TokenType::MultiLang, Some(word)),
-            "TRUE" => self.create_token(pos, TokenType::BooleanTrue, Some(word)),
-            "FALSE" => self.create_token(pos, TokenType::BooleanFalse, Some(word)),
-            "SEQUENCE" => self.create_token(pos, TokenType::Sequence, Some(word)),
-            _ =>self.create_token(pos, TokenType::Identifier, Some(word))
+            // "SELF" =>self.create_token(pos, TokenType::TSelf, word),
+            // "_RESULT" =>self.create_token(pos, TokenType::Result, word),
+            "MODULE" =>self.create_token(pos, TokenType::Module, word),
+            "MULTILANG" => self.create_token(pos, TokenType::MultiLang, word),
+            "TRUE" => self.create_token(pos, TokenType::BooleanTrue, word),
+            "FALSE" => self.create_token(pos, TokenType::BooleanFalse, word),
+            "SEQUENCE" => self.create_token(pos, TokenType::Sequence, word),
+            _ =>self.create_token(pos, TokenType::Identifier, word)
         }
     }
     
     
-    fn create_token(&self, pos: usize, token_type: TokenType, value: Option<String>) -> Token{
+    fn create_token(&self, pos: usize, token_type: TokenType, value: String) -> Token{
         // plus 1 for zero based offset
-        let range = self.create_range(pos, value.as_ref().unwrap_or(&"".to_string()).len());
+        let range = self.create_range(pos, value.len());
         return Token {
             raw_pos: pos,
             range: range,
             token_type,
-            value 
+            value: Arc::from(value)
         };
     }
 
@@ -442,7 +442,7 @@ impl GoldLexer{
 
 #[cfg(test)]
 mod test {
-    use std::{iter::{Enumerate, Peekable}, str::Chars, fs::File, io::Read, path::PathBuf};
+    use std::{iter::{Enumerate, Peekable}, str::Chars, fs::File, io::Read, path::PathBuf, ops::Deref};
 
     use crate::lexer::{TokenType, GoldLexer};
     use crate::utils::Position;
@@ -463,7 +463,7 @@ mod test {
         assert_eq!(token.get_pos().line, 0);
         assert_eq!(token.get_pos().character, 0);
         assert_eq!(token.token_type, TokenType::Plus);
-        assert_eq!(token.value.unwrap().as_str(), "+");
+        assert_eq!(token.value.deref(), "+");
     }
 
     #[test]
@@ -551,17 +551,17 @@ mod test {
         assert_eq!(token[0].token_type, TokenType::StringLiteral);
         assert_eq!(token[0].raw_pos, 0);
         assert_eq!(token[0].get_pos(), Position {line:0,character:0});
-        assert_eq!(token[0].value.as_ref().unwrap().as_str(), "first string constant");
+        assert_eq!(token[0].value.deref(), "first string constant");
         // second
         assert_eq!(token[1].token_type, TokenType::StringLiteral);
         assert_eq!(token[1].raw_pos, 27);
         assert_eq!(token[1].get_pos(), Position {line:0,character:27});
-        assert_eq!(token[1].value.as_ref().unwrap().as_str(), "b");
+        assert_eq!(token[1].value.deref(), "b");
         // third
         assert_eq!(token[2].token_type, TokenType::StringLiteral);
         assert_eq!(token[2].raw_pos, 32);
         assert_eq!(token[2].get_pos(), Position {line:1,character:1});
-        assert_eq!(token[2].value.as_ref().unwrap().as_str(), "double quote of newline");
+        assert_eq!(token[2].value.deref(), "double quote of newline");
     }
 
     #[test]
@@ -577,22 +577,22 @@ mod test {
         assert_eq!(token[0].token_type, TokenType::NumericLiteral);
         assert_eq!(token[0].raw_pos, 0);
         assert_eq!(token[0].get_pos(), Position {line:0,character:0});
-        assert_eq!(token[0].value.as_ref().unwrap().as_str(), "10");
+        assert_eq!(token[0].value.deref(), "10");
         // second
         assert_eq!(token[1].token_type, TokenType::NumericLiteral);
         assert_eq!(token[1].raw_pos, 3);
         assert_eq!(token[1].get_pos(), Position {line:0,character:3});
-        assert_eq!(token[1].value.as_ref().unwrap().as_str(), "12.55");
+        assert_eq!(token[1].value.deref(), "12.55");
         // third
         assert_eq!(token[2].token_type, TokenType::NumericLiteral);
         assert_eq!(token[2].raw_pos, 9);
         assert_eq!(token[2].get_pos(), Position {line:0,character:9});
-        assert_eq!(token[2].value.as_ref().unwrap().as_str(), "10000");
+        assert_eq!(token[2].value.deref(), "10000");
         // fourth
         assert_eq!(token[3].token_type, TokenType::NumericLiteral);
         assert_eq!(token[3].raw_pos, 16);
         assert_eq!(token[3].get_pos(), Position {line:1,character:1});
-        assert_eq!(token[3].value.as_ref().unwrap().as_str(), "77.1234134141412424");
+        assert_eq!(token[3].value.deref(), "77.1234134141412424");
     }
 
 

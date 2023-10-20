@@ -20,7 +20,7 @@ impl InoutParamChecker {
     fn create_diagnostic(
         &self,
         node: &AstParameterDeclaration,
-        param_type: String,
+        param_type: &str,
     ) -> lsp_types::Diagnostic {
         return lsp_types::Diagnostic::new(
             node.get_range().as_lsp_type_range(),
@@ -48,7 +48,7 @@ impl InoutParamChecker {
         match param_decl_node.type_node.as_ref() {
             Some(n) => {
                 let ident = n.get_identifier();
-                if self.param_type_needs_inout(ident.as_str()) {
+                if self.param_type_needs_inout(ident) {
                     match &param_decl_node.modifier {
                         Some(t) => {
                             let modifier = t.token_type;

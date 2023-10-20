@@ -67,7 +67,7 @@ pub trait IAstNode: std::fmt::Debug + IRange + Send + Sync{
         }
     }
     /// main identifier of the node, if none exist, return the pos as string
-    fn get_identifier(&self) -> String{
+    fn get_identifier(&self) -> &str{
         todo!()
     }
     fn to_string_type_pos(&self) -> String {
@@ -108,8 +108,8 @@ impl IAstNode for AstRoot{
     fn get_type(&self) -> &'static str {
         return "AstRoot";
     }
-    fn get_identifier(&self) -> String {
-        "".to_string()
+    fn get_identifier(&self) -> &str {
+        ""
     }
     fn get_raw_pos(&self) -> usize {
         0
@@ -162,8 +162,8 @@ impl IAstNode for AstTerminal {
         return "Terminal";
     }
 
-    fn get_identifier(&self) -> String {
-        self.token.get_value()
+    fn get_identifier(&self) -> &str {
+        self.token.get_value_as_str()
     }
 
     fn get_raw_pos(&self) -> usize {
@@ -190,8 +190,8 @@ pub struct AstClass {
 implem_irange!(AstClass);
 impl IAstNode for AstClass {
     implem_iastnode_common!(AstClass, "class");
-    fn get_identifier(&self) -> String {
-        self.identifier.get_value()
+    fn get_identifier(&self) -> &str {
+        self.identifier.get_value_as_str()
     }
 }
 
@@ -204,8 +204,8 @@ pub struct AstModule {
 implem_irange!(AstModule);
 impl IAstNode for AstModule {
     implem_iastnode_common!(AstModule, "module");
-    fn get_identifier(&self) -> String {
-        self.id.get_value()
+    fn get_identifier(&self) -> &str {
+        self.id.get_value_as_str()
     }
 }
 
@@ -233,8 +233,8 @@ impl IAstNode for AstUses {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.pos.to_string()
+    fn get_identifier(&self) -> &str {
+        "uses"
     }
     fn to_string_type(&self) -> String {
         "uses".to_string()
@@ -250,8 +250,8 @@ pub struct AstTypeBasic {
 implem_irange!(AstTypeBasic);
 impl IAstNode for AstTypeBasic {
     implem_iastnode_common!(AstTypeBasic, "type_basic");
-    fn get_identifier(&self) -> String {
-        return self.type_token.get_value()
+    fn get_identifier(&self) -> &str {
+        return self.type_token.get_value_as_str()
     }
 }
 
@@ -265,8 +265,8 @@ pub struct AstTypeSized {
 implem_irange!(AstTypeSized);
 impl IAstNode for AstTypeSized {
     implem_iastnode_common!(AstTypeSized, "type_sized");
-    fn get_identifier(&self) -> String {
-        return self.type_token.get_value()
+    fn get_identifier(&self) -> &str {
+        return self.type_token.get_value_as_str()
     }
 }
 
@@ -286,8 +286,8 @@ impl AstEmpty{
 implem_irange!(AstEmpty);
 impl IAstNode for AstEmpty {
     implem_iastnode_common!(AstEmpty, "empty_node");
-    fn get_identifier(&self) -> String {
-        "empty_node".to_string()
+    fn get_identifier(&self) -> &str {
+        "empty_node"
     }
 }
 
@@ -313,8 +313,8 @@ impl IAstNode for AstEnumVariant {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.identifier.get_value()
+    fn get_identifier(&self) -> &str {
+        self.identifier.get_value_as_str()
     }
     fn to_string_type(&self) -> String {
         "enum_variant".to_string()
@@ -354,8 +354,8 @@ impl IAstNode for AstTypeEnum {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.pos.to_string()
+    fn get_identifier(&self) -> &str {
+        "type_enum"
     }
     fn to_string_type(&self) -> String {
         "type_enum".to_string()
@@ -374,8 +374,8 @@ pub struct AstTypeReference {
 implem_irange!(AstTypeReference);
 impl IAstNode for AstTypeReference {
     implem_iastnode_common!(AstTypeReference,"type_ref");
-    fn get_identifier(&self) -> String {
-        return self.ident_token.get_value();
+    fn get_identifier(&self) -> &str {
+        return self.ident_token.get_value_as_str();
     }
 }
 
@@ -404,7 +404,7 @@ impl IAstNode for AstTypeSet {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
+    fn get_identifier(&self) -> &str {
         self.set_type.get_identifier()
     }
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
@@ -460,8 +460,8 @@ impl IAstNode for AstTypeDeclaration {
         result.push(&self.type_node);
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.identifier.get_value()
+    fn get_identifier(&self) -> &str {
+        self.identifier.get_value_as_str()
     }
     fn to_string_type(&self) -> String {
         "type_decl".to_string()
@@ -474,7 +474,7 @@ pub struct AstConstantDeclaration {
     pub pos: Position,
     pub range: Range,
     pub identifier: Token,
-    pub value: Token,
+    pub value_token: Token,
     pub is_multi_lang : bool
 }
 implem_irange!(AstConstantDeclaration);
@@ -496,8 +496,8 @@ impl IAstNode for AstConstantDeclaration {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.identifier.get_value()
+    fn get_identifier(&self) -> &str {
+        self.identifier.get_value_as_str()
     }
     fn to_string_type(&self) -> String {
         "const_decl".to_string()
@@ -543,8 +543,8 @@ impl IAstNode for AstGlobalVariableDeclaration {
         result.push(&self.type_node);
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.identifier.get_value()
+    fn get_identifier(&self) -> &str {
+        self.identifier.get_value_as_str()
     }
     fn to_string_type(&self) -> String {
         "gvar_decl".to_string()
@@ -581,7 +581,7 @@ impl IAstNode for AstProcedure {
         result.extend(self.body.iter());
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
+    fn get_identifier(&self) -> &str {
         self.identifier.get_identifier()
     }
 }
@@ -620,7 +620,7 @@ impl IAstNode for AstFunction {
         result.extend(self.body.iter());
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
+    fn get_identifier(&self) -> &str {
         self.identifier.get_identifier()
     }
 }
@@ -657,8 +657,8 @@ impl IAstNode for AstParameterDeclarationList {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "param_decls"
     }
     fn to_string_type(&self) -> String {
         "param_decls".to_string()
@@ -704,8 +704,8 @@ impl IAstNode for AstParameterDeclaration {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.identifier.get_value()
+    fn get_identifier(&self) -> &str {
+        self.identifier.get_value_as_str()
     }
     fn to_string_type(&self) -> String {
         "param_decl".to_string()
@@ -729,8 +729,8 @@ pub struct AstMemberModifiers {
 implem_irange!(AstMemberModifiers);
 impl IAstNode for AstMemberModifiers {
     implem_iastnode_common!(AstMemberModifiers, "member_modifiers");
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "member_modifiers"
     }
 }
 #[derive(Debug,Default)]
@@ -739,14 +739,14 @@ pub struct AstMethodModifiers {
     pub range: Range,
     pub modifier_tokens: Vec<Token>,
     pub member_modifiers: MemberModifiers,
-    pub external_dll_name: Option<String>,
+    pub external_dll_name: Option<Arc<str>>,
     pub is_forward: bool
 }
 implem_irange!(AstMethodModifiers);
 impl IAstNode for AstMethodModifiers {
     implem_iastnode_common!(AstMethodModifiers, "method_modifiers");
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "method_modifiers"
     }
 }
 
@@ -765,8 +765,8 @@ impl IAstNode for AstMethodBody {
     fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         return Some(self.statements.iter().collect());
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "method_body"
     }
 }
 
@@ -775,7 +775,7 @@ pub struct AstComment {
     pub raw_pos: usize,
     pub pos: Position,
     pub range: Range,
-    pub comment: String,
+    pub comment: Arc<str>,
 }
 implem_irange!(AstComment);
 impl IAstNode for AstComment {
@@ -796,8 +796,8 @@ impl IAstNode for AstComment {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.pos.to_string()
+    fn get_identifier(&self) -> &str {
+        "comment"
     }
     fn to_string_type(&self) -> String {
         "comment".to_string()
@@ -815,8 +815,8 @@ pub struct AstBinaryOp {
 implem_irange!(AstBinaryOp);
 impl IAstNode for AstBinaryOp {
     implem_iastnode_common!(AstBinaryOp, "bin_op");
-    fn get_identifier(&self) -> String {
-        self.op_token.get_value()
+    fn get_identifier(&self) -> &str {
+        self.op_token.get_value_as_str()
     }
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
@@ -846,8 +846,8 @@ impl IAstNode for AstCast {
         "Cast"
     }
 
-    fn get_identifier(&self) -> String {
-        format!("{}", self.type_node.get_identifier())
+    fn get_identifier(&self) -> &str {
+        self.type_node.get_identifier()
     }
 
     fn get_raw_pos(&self) -> usize {
@@ -894,8 +894,8 @@ impl IAstNode for AstUnaryOp {
         "Unary Op"
     }
 
-    fn get_identifier(&self) -> String {
-        self.op_token.get_value()
+    fn get_identifier(&self) -> &str {
+        self.op_token.get_value_as_str()
     }
 
     fn get_raw_pos(&self) -> usize {
@@ -949,7 +949,7 @@ impl IAstNode for AstMethodCall {
         result.extend(self.parameter_list.iter());
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
+    fn get_identifier(&self) -> &str {
         self.identifier.get_identifier()
     }
 }
@@ -983,8 +983,8 @@ impl IAstNode for AstConditionalBlock {
         result.extend(self.statements.iter());
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "cond_block"
     }
 }
 
@@ -1037,8 +1037,8 @@ impl IAstNode for AstIfBlock {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "if"
     }
     fn to_string_type(&self) -> String {
         "if".to_string()
@@ -1102,8 +1102,8 @@ impl IAstNode for AstForBlock {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "for"
     }
     fn to_string_type(&self) -> String {
         "for".to_string()
@@ -1170,8 +1170,8 @@ impl IAstNode for AstForEachBlock {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "foreach"
     }
     fn to_string_type(&self) -> String {
         "foreach".to_string()
@@ -1218,8 +1218,8 @@ impl IAstNode for AstWhileBlock {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "while"
     }
     fn to_string_type(&self) -> String {
         "while".to_string()
@@ -1267,8 +1267,8 @@ impl IAstNode for AstLoopBlock {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "loop"
     }
     fn to_string_type(&self) -> String {
         "loop".to_string()
@@ -1320,8 +1320,8 @@ impl IAstNode for AstLocalVariableDeclaration {
         return Some(result);
     }
 	
-    fn get_identifier(&self) -> String {
-        self.identifier.get_value()
+    fn get_identifier(&self) -> &str {
+        self.identifier.get_value_as_str()
     }
     fn to_string_type(&self) -> String {
         "lvar_decl".to_string()
@@ -1365,8 +1365,8 @@ impl IAstNode for AstReturnNode {
         result.push(&self.return_expr);
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "return"
     }
     fn to_string_type(&self) -> String {
         "return".to_string()
@@ -1407,8 +1407,8 @@ impl IAstNode for AstSetLiteral {
         return Some(self.set_items.iter().collect());
     }
 	
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "set_lit"
     }
     fn to_string_type(&self) -> String {
         "set_lit".to_string()
@@ -1453,8 +1453,8 @@ impl IAstNode for AstWhenBlock {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "when_block"
     }
     fn to_string_type(&self) -> String {
         "when_block".to_string()
@@ -1504,8 +1504,8 @@ impl IAstNode for AstSwitchBlock {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "switch"
     }
     fn to_string_type(&self) -> String {
         "switch".to_string()
@@ -1544,8 +1544,8 @@ impl IAstNode for AstTypeRecordField {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.identifier.get_value()
+    fn get_identifier(&self) -> &str {
+        self.identifier.get_value_as_str()
     }
     fn to_string_type(&self) -> String {
         "type_record_field".to_string()
@@ -1584,8 +1584,8 @@ impl IAstNode for AstTypeRecord {
         });
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "type_record"
     }
 }
 
@@ -1620,8 +1620,8 @@ impl IAstNode for AstTypePointer {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "type_pointer"
     }
     fn to_string_type(&self) -> String {
         "type_pointer".to_string()
@@ -1665,8 +1665,8 @@ impl IAstNode for AstTypeArray {
     fn as_ast_node(&self) -> &dyn IAstNode{
         self
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "type_array"
     }
     fn to_string_type(&self) -> String {
         "type_array".to_string()
@@ -1707,8 +1707,8 @@ impl IAstNode for AstTypeRange {
         result.push(&self.to);
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "type_range"
     }
     fn to_string_type(&self) -> String {
         "type_range".to_string()
@@ -1746,8 +1746,8 @@ impl IAstNode for AstTypeProcedure {
         result.extend(self.parameter_list.iter());
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "type_proc"
     }
     fn to_string_type(&self) -> String {
         "type_proc".to_string()
@@ -1792,8 +1792,8 @@ impl IAstNode for AstTypeFunction {
         result.push(&self.return_type);
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "type_func"
     }
     fn to_string_type(&self) -> String {
         "type_func".to_string()
@@ -1811,7 +1811,7 @@ impl IAstNode for AstTypeInstanceOf {
     fn get_type(&self) -> &'static str {
         return "Type InstanceOf";
     }
-    fn get_identifier(&self) -> String {
+    fn get_identifier(&self) -> &str {
         return self.instance_type.get_identifier()
     }
     fn get_raw_pos(&self) -> usize {
@@ -1848,7 +1848,7 @@ pub struct AstArrayAccess {
 implem_irange!(AstArrayAccess);
 impl IAstNode for AstArrayAccess {
     implem_iastnode_common!(AstArrayAccess, "array_access");
-    fn get_identifier(&self) -> String {
+    fn get_identifier(&self) -> &str {
         return self.left_node.get_identifier()
     }
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
@@ -1885,8 +1885,8 @@ impl IAstNode for AstRepeatBlock {
         result.push(&self.cond_block);
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "repeat"
     }
 }
 
@@ -1895,7 +1895,8 @@ pub struct AstMethodNameWithEvent {
     pub raw_pos: usize,
     pub range: Range,
     pub method_name: Arc<dyn IAstNode>,
-    pub event: Arc<dyn IAstNode>
+    pub event: Arc<dyn IAstNode>,
+    pub id : Arc<str>
 }
 implem_irange!(AstMethodNameWithEvent);
 impl IAstNode for AstMethodNameWithEvent {
@@ -1912,8 +1913,8 @@ impl IAstNode for AstMethodNameWithEvent {
         result.push(&self.event);
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        format!("{}#{}", self.method_name.get_identifier(), self.event.get_identifier())
+    fn get_identifier(&self) -> &str {
+        &self.id
     }
 }
 
@@ -1976,8 +1977,8 @@ impl IAstNode for AstOQLSelect {
         }
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "oql_select"
     }
 }
 
@@ -2008,8 +2009,8 @@ impl IAstNode for AstOQLFromNode {
         result.extend(self.join_nodes.iter());
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.alias_token.get_value()
+    fn get_identifier(&self) -> &str {
+        self.alias_token.get_value_as_str()
     }
 }
 
@@ -2033,8 +2034,8 @@ impl IAstNode for AstOQLJoin {
         result.push(&self.cond_node);
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.join_token.get_value()
+    fn get_identifier(&self) -> &str {
+        self.join_token.get_value_as_str()
     }
 }
 
@@ -2058,8 +2059,8 @@ impl IAstNode for AstOQLOrderBy {
         result.push(&self.field_node);
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "oql_order_by_node"
     }
 }
 
@@ -2091,7 +2092,7 @@ impl IAstNode for AstOQLFetch {
         }
         return Some(result);
     }
-    fn get_identifier(&self) -> String {
-        self.to_string_type_pos()
+    fn get_identifier(&self) -> &str {
+        "oql_fetch"
     }
 }
