@@ -8,8 +8,9 @@ completionClassField : aRootClass override
 procedure FifthClassProc
    var localVar : aFifthClass
    ; test
-   self.
+   self.asd
    self.sec
    localVar.ThirdProc
    localVar.sec
+   
 endProc

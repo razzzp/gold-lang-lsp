@@ -35,7 +35,7 @@ impl CompletionService{
         }
     }
 
-    fn generate_completion_items_members_only(&self, st: &Arc<Mutex<dyn ISymbolTable>>,) -> Vec<CompletionItem>{
+    fn generate_completion_items_rhs(&self, st: &Arc<Mutex<dyn ISymbolTable>>,) -> Vec<CompletionItem>{
         let st_lock = st.lock().unwrap();
         let result = st_lock
             .collect_unique_symbols_w_parents()
@@ -48,7 +48,6 @@ impl CompletionService{
             })
             .map(|sym_info| {
                     let item_kind = match sym_info.sym_type{
-                        SymbolType::Class => Some(CompletionItemKind::CLASS),
                         SymbolType::Field => Some(CompletionItemKind::FIELD),
                         SymbolType::Func => Some(CompletionItemKind::FUNCTION),
                         SymbolType::Proc => Some(CompletionItemKind::FUNCTION),
@@ -64,22 +63,26 @@ impl CompletionService{
         return result
     }
 
-    fn generate_completion_items_method(&self, st: &Arc<Mutex<dyn ISymbolTable>>,) -> Vec<CompletionItem>{
+    fn generate_completion_items_lhs(&self, st: &Arc<Mutex<dyn ISymbolTable>>,) -> Vec<CompletionItem>{
         let result = st.lock().unwrap()
             .collect_unique_symbols_w_parents()
             .into_iter()
             .filter(|sym_info|{
+                // filter out class members or the list will be too large
                 match sym_info.sym_type{
-                    SymbolType::Class | SymbolType::Module | SymbolType::Type => return false,
+                    SymbolType::Class 
+                    | SymbolType::Module 
+                    | SymbolType::Type 
+                    | SymbolType::Field
+                    | SymbolType::Proc 
+                    | SymbolType::Func=> return false,
                     _=> return true
                 }
             })
             .map(|sym_info| {
                     let item_kind = match sym_info.sym_type{
-                        SymbolType::Class => Some(CompletionItemKind::CLASS),
-                        SymbolType::Field => Some(CompletionItemKind::FIELD),
-                        SymbolType::Func => Some(CompletionItemKind::FUNCTION),
-                        SymbolType::Proc => Some(CompletionItemKind::FUNCTION),
+                        SymbolType::Variable => Some(CompletionItemKind::VARIABLE),
+                        SymbolType::Constant => Some(CompletionItemKind::CONSTANT),
                         _=> None
                     };
                     CompletionItem{
@@ -113,7 +116,7 @@ impl CompletionService{
             }
         };
         // don't search uses because the member should be in the st itself
-        return Ok(Some(self.generate_completion_items_members_only(&class_sym_table)))
+        return Ok(Some(self.generate_completion_items_rhs(&class_sym_table)))
     }
 
     fn generate_for_node(
@@ -142,7 +145,7 @@ impl CompletionService{
                 }
             } else {
                 // if left node, just search sym table
-                return Ok(None)
+                return Ok(Some(self.generate_completion_items_lhs(st)))
             }
         } else if let Some(dot_op_parent) = check_parent_dot_ops(node){
             let parent_lock = dot_op_parent.read().unwrap();
@@ -151,7 +154,7 @@ impl CompletionService{
             let left_node = &bin_op_node.left_node;
             if Arc::ptr_eq(left_node, &node.read().unwrap().data){
                 // if left node, just search sym table
-                return Ok(None)
+                return Ok(Some(self.generate_completion_items_lhs(st)))
             } else {
                 // if right node, check left node type first
                 let left_node_type = parent_lock.children[0].read().unwrap().eval_type.clone().unwrap_or_default();
@@ -169,7 +172,7 @@ impl CompletionService{
             }
         } else {
             // enough to check symbol table in current doc
-            return Ok(Some(self.generate_completion_items_method(st)))
+            return Ok(Some(self.generate_completion_items_lhs(st)))
         }
     }
 
@@ -278,8 +281,8 @@ mod test {
 
         let mut result = completion_service.generate_completion_proposals(&pos_input).unwrap().unwrap();
 
-        assert_eq!(result.len(), 12);
+        assert_eq!(result.len(), 2);
         let prop = result.pop().unwrap();
-        assert_eq!(prop.label, "ThirdProc");
+        assert_eq!(prop.label, "cRootConstant");
     }
 }
