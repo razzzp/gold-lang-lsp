@@ -257,7 +257,7 @@ impl DocumentService {
         return result;
     }
 
-    pub fn for_each_uri_docinfo(&self, process_func : impl Fn((&String, &Arc<RwLock<DocumentInfo>>))){
+    pub fn for_each_uri_docinfo(&self, process_func : impl FnMut((&String, &Arc<RwLock<DocumentInfo>>))){
         self.uri_docinfo_map.read().unwrap().iter().for_each(process_func);
     }
 }

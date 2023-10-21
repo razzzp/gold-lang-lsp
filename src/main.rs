@@ -89,7 +89,15 @@ fn main_loop(
             return Err(Box::new(e));
         }
     };
+    // creates uri & file path mapping for all .god files
     proj_manager.index_files();
+
+    // builds class tree, and tracks modules
+    let class_tree_service = proj_manager.class_module_tree_service.clone();
+    let doc_service = proj_manager.doc_service.clone();
+    threadpool.execute(move ||{
+        class_tree_service.build_tree(&doc_service);
+    });
 
     for msg in &connection.receiver {
         // eprintln!("got msg: {msg:?}");

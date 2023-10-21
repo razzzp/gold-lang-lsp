@@ -6,7 +6,7 @@ use lsp_types::{DocumentSymbol, Diagnostic, RelatedFullDocumentDiagnosticReport,
 use crate::{parser::ast::{IAstNode}, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
 use data_structs::*;
 
-use self::{semantic_analysis_service::{SemanticAnalysisService}, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService};
+use self::{semantic_analysis_service::{SemanticAnalysisService}, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, class_tree_service::ClassModuleTreeService};
 use crate::manager::doc_symbol_generator::DocumentSymbolGenerator;
 
 pub mod data_structs;
@@ -25,15 +25,17 @@ pub mod class_tree_service;
 #[derive(Debug, Clone)]
 pub struct ProjectManager{
     pub doc_service: DocumentService,
+    pub class_module_tree_service: ClassModuleTreeService,
     logger: Arc<dyn ILoggerV2>,
 }
 impl ProjectManager{
     pub fn new(root_uri : Option<Url>, logger: Arc<dyn ILoggerV2>) -> Result<ProjectManager, ProjectManagerError>{
         let doc_service = DocumentService::new(root_uri.clone(), logger.clone())?;
-
+        let class_module_tree_service = ClassModuleTreeService::new(logger.clone());
         Ok(ProjectManager{
             doc_service,
-            logger
+            logger,
+            class_module_tree_service,
         })
     }
 
