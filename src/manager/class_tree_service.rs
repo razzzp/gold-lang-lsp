@@ -144,7 +144,7 @@ impl ClassModuleTreeService{
                 }
             }
         });
-        self.logger.log_info(format!("Class tree built in {:#?}", timer.elapsed()).as_str());
+        self.logger.log_info(format!("Class tree built in {:#?}; Found {} entities", timer.elapsed(), map_lock.len()).as_str());
     }
 
     pub fn get_root_class(&self) -> Option<Arc<Mutex<EntityInfo>>>{
