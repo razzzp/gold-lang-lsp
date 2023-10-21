@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{Mutex, Weak, Arc, RwLock, RwLockWriteGuard}, fs::File, io::{BufReader, BufRead}};
+use std::{collections::HashMap, sync::{Mutex, Weak, Arc, RwLock, RwLockWriteGuard}, fs::File, io::{BufReader, BufRead}, alloc::System};
 
 use regex::Regex;
 
@@ -54,6 +54,7 @@ impl ClassModuleTreeService{
 
     pub fn build_tree(&self, doc_service: &DocumentService){
         
+        let timer = std::time::Instant::now();
         self.logger.log_info("Building Class tree");
 
         // precompile regex
@@ -143,7 +144,7 @@ impl ClassModuleTreeService{
                 }
             }
         });
-        self.logger.log_info("Class tree built");
+        self.logger.log_info(format!("Class tree built in {:#?}", timer.elapsed()).as_str());
     }
 
     pub fn get_root_class(&self) -> Option<Arc<Mutex<EntityInfo>>>{
