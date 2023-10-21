@@ -95,6 +95,17 @@ impl DocumentInfo{
     pub fn set_opened_document(&mut self, doc: Option<Arc<Mutex<Document>>>){
         self.opened = doc;
     }
+
+    /// get opened doc if avail, or saved doc
+    pub fn get_document(&self) -> Option<Arc<Mutex<Document>>> {
+        if let Some(doc) = &self.opened {
+            return Some(doc.clone())
+        } else if let Some(doc) = &self.saved{
+            return Some(doc.clone())
+        } else {
+            return None
+        }
+    }
 }
 
 #[derive(Debug)]

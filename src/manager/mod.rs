@@ -19,7 +19,8 @@ pub mod symbol_table;
 pub mod ast_annotator;
 pub mod doc_symbol_generator;
 pub mod utils;
-pub mod  completion_service;
+pub mod completion_service;
+pub mod class_tree_service;
 
 #[derive(Debug, Clone)]
 pub struct ProjectManager{
