@@ -174,6 +174,16 @@ impl Range{
         return false
     }
 }
+impl From<lsp_types::Range> for Range {
+    fn from(value: lsp_types::Range) -> Self {
+        return Range { start: value.start.into(), end: value.end.into() }
+    }
+}
+impl Into<lsp_types::Range> for Range {
+    fn into(self) -> lsp_types::Range {
+        self.as_lsp_type_range()
+    }
+}
 
 #[derive(Debug,Clone,PartialEq,Eq, Default)]
 pub struct Position {

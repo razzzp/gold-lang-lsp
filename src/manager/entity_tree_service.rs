@@ -159,13 +159,13 @@ impl EntityTreeService{
 }
 
 #[cfg(test)]
-mod test{
+pub mod test{
     use crate::manager::test::{create_test_doc_service, create_test_logger, create_uri_from_path};
 
     use super::EntityTreeService;
 
 
-    pub fn create_test_class_tree_service() -> EntityTreeService{
+    pub fn create_test_entity_tree_service() -> EntityTreeService{
         return EntityTreeService::new(create_test_logger())
     }
 
@@ -175,7 +175,7 @@ mod test{
         let doc_service = create_test_doc_service(Some(root_uri));
         doc_service.index_files();
         
-        let class_service = create_test_class_tree_service();
+        let class_service = create_test_entity_tree_service();
 
         class_service.build_tree(&doc_service);
 
