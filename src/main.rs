@@ -12,13 +12,23 @@ use std::error::Error;
 
 use crossbeam_channel::Sender;
 use lsp_types::notification::{DidChangeTextDocument, DidSaveTextDocument, DidOpenTextDocument};
-use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams, CompletionParams, CompletionResponse, CompletionOptions};
-use lsp_types::request::{DocumentSymbolRequest, DocumentDiagnosticRequest, GotoDefinition, Completion};
+use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams, CompletionParams, CompletionResponse, CompletionOptions, TypeHierarchyRegistrationOptions, TypeHierarchyOptions, TypeHierarchyPrepareParams};
+use lsp_types::request::{
+    DocumentSymbolRequest, 
+    DocumentDiagnosticRequest, 
+    GotoDefinition, 
+    Completion, 
+    TypeHierarchyPrepare,
+    TypeHierarchySubtypes,
+    TypeHierarchySupertypes,
+};
+
 use lsp_types::{
     InitializeParams, ServerCapabilities,
 };
 
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError, ErrorCode, Notification,};
+use serde_json::Value;
 use utils::{StdErrLogger, ILoggerV2};
 
 
@@ -32,7 +42,27 @@ pub mod threadpool;
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Note that  we must have our logging only write out to stderr.
-    eprintln!("starting generic LSP server");
+    let logger : Arc<dyn ILoggerV2>= Arc::new(StdErrLogger::new("[Gold Lang LSP]"));
+    logger.log_info("Starting Gold Lang LSP server");
+    // server capabilities
+    let mut server_capabilities = serde_json::to_value(&ServerCapabilities {
+        document_symbol_provider: Some(OneOf::Left(true)),
+        diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions::default())),
+        text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+        definition_provider: Some(OneOf::Left(true)),
+        completion_provider: Some(CompletionOptions{
+            ..Default::default()
+        }),
+        ..Default::default()
+    }).unwrap();
+    // add type hierarchy options
+    if let Some(map) = server_capabilities.as_object_mut(){
+        let type_hierarchy_provider = serde_json::to_value(&TypeHierarchyOptions::default()).unwrap();
+        // println!("{:#?}", type_hierarchy_provider);
+        map.insert("typeHierarchyProvider".to_string(),type_hierarchy_provider);
+        // println!("{:#?}", map);
+    }
+    logger.log_info(format!("Server Capabilities {:#?}", server_capabilities).as_str());
     // determine which transport to use
     let args: Vec<String>= std::env::args().collect();
     let transport_arg = args.iter().fold(String::new(),
@@ -51,18 +81,9 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         _=> Connection::connect(addrs_iter.next().unwrap())?,
     };
     // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
-    let server_capabilities = serde_json::to_value(&ServerCapabilities {
-        document_symbol_provider: Some(OneOf::Left(true)),
-        diagnostic_provider: Some(DiagnosticServerCapabilities::Options(DiagnosticOptions::default())),
-        text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
-        definition_provider: Some(OneOf::Left(true)),
-        completion_provider: Some(CompletionOptions{
-            ..Default::default()
-        }),
-        ..Default::default()
-    }).unwrap();
+
     let initialization_params = connection.initialize(server_capabilities)?;
-    main_loop(connection, initialization_params)?;
+    main_loop(connection, initialization_params,logger)?;
     io_threads.join()?;
 
     // Shut down gracefully.
@@ -73,11 +94,12 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
 fn main_loop(
     connection: Connection,
     params: serde_json::Value,
+    logger: Arc<dyn ILoggerV2>,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let params: InitializeParams = serde_json::from_value(params).unwrap();
 
     //TODO implem multithreading
-    let logger : Arc<dyn ILoggerV2>= Arc::new(StdErrLogger::new("[Gold Lang LSP]"));
+    
     let threadpool = ThreadPool::new(5, logger.clone());
     // TODO use same logger in server and project manager
     let mut proj_manager = match ProjectManager::new(
@@ -148,7 +170,7 @@ fn main_loop(
                     Err(ExtractError::MethodMismatch(req)) => req,
                 };
 
-                let _req = match cast_req::<Completion>(req) {
+                let req = match cast_req::<Completion>(req) {
                     Ok((id, params)) => {
                         // heavy call to analyze doc, move to separate thread
                         let sender = connection.sender.clone();
@@ -156,6 +178,23 @@ fn main_loop(
                         let logger = logger.clone();
                         threadpool.execute(move ||{
                             match handle_completion_request(&mut proj_manager, id.clone(), params, &logger){
+                                Ok(resp) => {let _ = sender.send(resp);},
+                                Err(e) => {let _  = send_error(&sender, id, e.0, e.1);}
+                            };
+                        });
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+
+                let _req = match cast_req::<TypeHierarchyPrepare>(req) {
+                    Ok((id, params)) => {
+                        let sender = connection.sender.clone();
+                        let mut proj_manager = proj_manager.clone();
+                        let logger = logger.clone();
+                        threadpool.execute(move ||{
+                            match handle_prepare_type_hierarchy_request(&mut proj_manager, id.clone(), params, &logger){
                                 Ok(resp) => {let _ = sender.send(resp);},
                                 Err(e) => {let _  = send_error(&sender, id, e.0, e.1);}
                             };
@@ -337,7 +376,7 @@ fn handle_did_save_notification(
 {
     logger.log_info(format!("handling Did Save notification").as_str());
     // get full file content
-    let _ = match proj_manager.notify_document_saved(&params.text_document.uri){
+    let _ = match proj_manager.doc_service.notify_document_saved(&params.text_document.uri){
         Ok(d) => d,
         Err(e) =>{
             return Err((e.error_code as i32, e.msg));
@@ -410,6 +449,26 @@ fn handle_completion_request(
         },
         _=> None
     };
+    let resp = Response { id, result, error: None };
+    return Ok(Message::Response(resp));
+}
+
+fn handle_prepare_type_hierarchy_request(
+    proj_manager: &mut ProjectManager, 
+    id: RequestId, 
+    params: TypeHierarchyPrepareParams,
+    logger: &Arc<dyn ILoggerV2>,
+)
+    -> Result<Message, (i32, String)>
+{
+    logger.log_info(format!("Handling Type Hierarchy Prepare request #{id}").as_str());
+    let type_hierarchy_item = proj_manager.prepare_type_hierarchy(
+        &params.text_document_position_params.text_document.uri,
+        &params.text_document_position_params.position.into()
+    );
+
+
+    let result = Some(Value::default());
     let resp = Response { id, result, error: None };
     return Ok(Message::Response(resp));
 }

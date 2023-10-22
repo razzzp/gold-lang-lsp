@@ -1,12 +1,12 @@
 use std::{rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, str::FromStr};
 
 use lsp_server::ErrorCode;
-use lsp_types::{DocumentSymbol, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink, CompletionItem};
+use lsp_types::{DocumentSymbol, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink, CompletionItem, TypeHierarchyItem};
 
 use crate::{parser::ast::{IAstNode}, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
 use data_structs::*;
 
-use self::{semantic_analysis_service::{SemanticAnalysisService}, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, class_tree_service::ClassModuleTreeService};
+use self::{semantic_analysis_service::{SemanticAnalysisService}, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, entity_tree_service::EntityTreeService, type_hierarchy_service::TypeHierarchyService};
 use crate::manager::doc_symbol_generator::DocumentSymbolGenerator;
 
 pub mod data_structs;
@@ -20,18 +20,19 @@ pub mod ast_annotator;
 pub mod doc_symbol_generator;
 pub mod utils;
 pub mod completion_service;
-pub mod class_tree_service;
+pub mod entity_tree_service;
+pub mod type_hierarchy_service;
 
 #[derive(Debug, Clone)]
 pub struct ProjectManager{
     pub doc_service: DocumentService,
-    pub class_module_tree_service: ClassModuleTreeService,
+    pub class_module_tree_service: EntityTreeService,
     logger: Arc<dyn ILoggerV2>,
 }
 impl ProjectManager{
     pub fn new(root_uri : Option<Url>, logger: Arc<dyn ILoggerV2>) -> Result<ProjectManager, ProjectManagerError>{
         let doc_service = DocumentService::new(root_uri.clone(), logger.clone())?;
-        let class_module_tree_service = ClassModuleTreeService::new(logger.clone());
+        let class_module_tree_service = EntityTreeService::new(logger.clone());
         Ok(ProjectManager{
             doc_service,
             logger,
@@ -61,26 +62,6 @@ impl ProjectManager{
         }
     }
 
-    pub fn generate_definitions(&mut self){
-        return self.doc_service.index_files();
-    }
-
-    pub fn get_document_info(&mut self, uri: &Url) -> Result<Arc<RwLock<DocumentInfo>>, ProjectManagerError>{
-        return self.doc_service.get_document_info(uri);
-    }
-
-    pub fn get_parsed_document_for_class(&mut self, class: &String, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        return self.doc_service.get_parsed_document_for_class(class, wait_on_lock);
-    }
-
-    pub fn get_parsed_document(&mut self, uri: &Url, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        return self.doc_service.get_parsed_document(uri, wait_on_lock);
-    }
-
-    pub fn notify_document_saved(&mut self, uri: &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        return self.doc_service.notify_document_saved(uri);
-    }
-
     pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String, threadpool: &ThreadPool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let doc_info = self.doc_service.get_document_info(uri)?;
         // discard old doc, and analyze new content
@@ -105,10 +86,6 @@ impl ProjectManager{
             let _ = sem_service.analyze(doc, false);
         });
         return Ok(doc_2);
-    }
-
-    pub fn get_uri_for_class(& self, class_name: &String)-> Result<Url, ProjectManagerError>{
-        return self.doc_service.get_uri_for_class(class_name);
     }
 
     fn create_sem_service(&self) -> SemanticAnalysisService{
@@ -199,7 +176,7 @@ impl ProjectManager{
 
     pub fn generate_document_diagnostic_report(&mut self, uri : &Url)
     -> Result<Arc<RelatedFullDocumentDiagnosticReport>, ProjectManagerError>{
-        let doc = self.get_parsed_document(uri, true)?;
+        let doc = self.doc_service.get_parsed_document(uri, true)?;
         let diagnostics = self.get_diagnostics(doc)?;
         return Ok(Arc::new(RelatedFullDocumentDiagnosticReport{
             related_documents: None,
@@ -239,6 +216,19 @@ impl ProjectManager{
             uri.clone(),
             self.logger.clone());
         return completion_service.generate_completion_proposals(pos);
+    }
+
+    pub fn prepare_type_hierarchy(
+        &mut self,
+        uri : &Url, 
+        pos : &Position,
+    ) -> Result<Option<Vec<TypeHierarchyItem>>, ProjectManagerError>
+    {   
+        let type_hierarchy_service = TypeHierarchyService::new(
+            self.create_sem_service(),
+            EntityTreeService::new(self.logger.clone()),
+            self.logger.clone());
+        return type_hierarchy_service.prepare_type_hierarchy(uri, pos);
     }
 }
 
@@ -550,7 +540,7 @@ pub mod test{
         };
         let mut proj_manager= create_test_project_manager("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
         proj_manager.index_files();
-        let input_uri = proj_manager.get_uri_for_class(&"aOcsUSIMV20ICCardImage".to_string()).unwrap();
+        let input_uri = proj_manager.doc_service.get_uri_for_class(&"aOcsUSIMV20ICCardImage".to_string()).unwrap();
         // let _result = proj_manager.generate_document_diagnostic_report(&input_uri).unwrap();
         let result = proj_manager.analyze_doc(&input_uri, false).unwrap();
         assert!(result.lock().unwrap().annotated_ast.is_some());

@@ -26,13 +26,13 @@ impl EntityInfo{
 }
 
 #[derive(Debug, Clone)]
-pub struct ClassModuleTreeService{
+pub struct EntityTreeService{
     class_module_map : Arc<RwLock<HashMap<String, Arc<Mutex<EntityInfo>>>>>,
     logger : Arc<dyn ILoggerV2>
 }
-impl ClassModuleTreeService{
-    pub fn new(logger: Arc<dyn ILoggerV2>) -> ClassModuleTreeService{
-        return ClassModuleTreeService { 
+impl EntityTreeService{
+    pub fn new(logger: Arc<dyn ILoggerV2>) -> EntityTreeService{
+        return EntityTreeService { 
             class_module_map: Arc::new(RwLock::new(HashMap::new())),
             logger
         }
@@ -114,11 +114,11 @@ impl ClassModuleTreeService{
                             }
                         };
 
-                        let entity = ClassModuleTreeService::get_or_create_entity(class_name, &mut map_lock);
+                        let entity = EntityTreeService::get_or_create_entity(class_name, &mut map_lock);
                         
                         if let Some(parent_class) = class_match.get(2).map(|m|{m.as_str()}){
                             // if parent doesn't exist
-                            let parent_entity  = ClassModuleTreeService::get_or_create_entity(parent_class, &mut map_lock);
+                            let parent_entity  = EntityTreeService::get_or_create_entity(parent_class, &mut map_lock);
                             // set parent
                             entity.lock().unwrap().parent = Some(Arc::downgrade(&parent_entity));
                             // add as child
@@ -162,11 +162,11 @@ impl ClassModuleTreeService{
 mod test{
     use crate::manager::test::{create_test_doc_service, create_test_logger, create_uri_from_path};
 
-    use super::ClassModuleTreeService;
+    use super::EntityTreeService;
 
 
-    pub fn create_test_class_tree_service() -> ClassModuleTreeService{
-        return ClassModuleTreeService::new(create_test_logger())
+    pub fn create_test_class_tree_service() -> EntityTreeService{
+        return EntityTreeService::new(create_test_logger())
     }
 
     #[test]
