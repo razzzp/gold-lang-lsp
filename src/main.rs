@@ -12,7 +12,7 @@ use std::error::Error;
 
 use crossbeam_channel::Sender;
 use lsp_types::notification::{DidChangeTextDocument, DidSaveTextDocument, DidOpenTextDocument};
-use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams, CompletionParams, CompletionResponse, CompletionOptions, TypeHierarchyRegistrationOptions, TypeHierarchyOptions, TypeHierarchyPrepareParams};
+use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams, CompletionParams, CompletionResponse, CompletionOptions, TypeHierarchyRegistrationOptions, TypeHierarchyOptions, TypeHierarchyPrepareParams, TypeHierarchySubtypesParams, TypeHierarchySupertypesParams};
 use lsp_types::request::{
     DocumentSymbolRequest, 
     DocumentDiagnosticRequest, 
@@ -115,7 +115,7 @@ fn main_loop(
     proj_manager.index_files();
 
     // builds class tree, and tracks modules
-    let class_tree_service = proj_manager.class_module_tree_service.clone();
+    let class_tree_service = proj_manager.entity_tree_service.clone();
     let doc_service = proj_manager.doc_service.clone();
     threadpool.execute(move ||{
         class_tree_service.build_tree(&doc_service);
@@ -188,16 +188,50 @@ fn main_loop(
                     Err(ExtractError::MethodMismatch(req)) => req,
                 };
 
-                let _req = match cast_req::<TypeHierarchyPrepare>(req) {
+                let req = match cast_req::<TypeHierarchyPrepare>(req) {
                     Ok((id, params)) => {
                         let sender = connection.sender.clone();
                         let mut proj_manager = proj_manager.clone();
                         let logger = logger.clone();
                         threadpool.execute(move ||{
-                            match handle_prepare_type_hierarchy_request(&mut proj_manager, id.clone(), params, &logger){
+                            match handle_type_hierarchy_prepare_request(&mut proj_manager, id.clone(), params, &logger){
                                 Ok(resp) => {let _ = sender.send(resp);},
                                 Err(e) => {let _  = send_error(&sender, id, e.0, e.1);}
                             };
+                        });
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+
+                let req = match cast_req::<TypeHierarchySubtypes>(req) {
+                    Ok((id, params)) => {
+                        let sender = connection.sender.clone();
+                        let mut proj_manager = proj_manager.clone();
+                        let logger = logger.clone();
+                        threadpool.execute(move ||{
+                            let _ = handle_result(
+                                handle_type_hierarchy_subtypes_request(&mut proj_manager, id.clone(), params, &logger), 
+                                id, 
+                                &sender);
+                        });
+                        continue;
+                    }
+                    Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
+                    Err(ExtractError::MethodMismatch(req)) => req,
+                };
+
+                let _req = match cast_req::<TypeHierarchySupertypes>(req) {
+                    Ok((id, params)) => {
+                        let sender = connection.sender.clone();
+                        let mut proj_manager = proj_manager.clone();
+                        let logger = logger.clone();
+                        threadpool.execute(move ||{
+                            let _ = handle_result(
+                                handle_type_hierarchy_supertypes_request(&mut proj_manager, id.clone(), params, &logger), 
+                                id, 
+                                &sender);
                         });
                         continue;
                     }
@@ -453,7 +487,7 @@ fn handle_completion_request(
     return Ok(Message::Response(resp));
 }
 
-fn handle_prepare_type_hierarchy_request(
+fn handle_type_hierarchy_prepare_request(
     proj_manager: &mut ProjectManager, 
     id: RequestId, 
     params: TypeHierarchyPrepareParams,
@@ -467,6 +501,43 @@ fn handle_prepare_type_hierarchy_request(
         &params.text_document_position_params.position.into()
     ).map_err(|e|{return (e.error_code as i32, e.msg);})?;
 
+
+    let result = type_hierarchy_items.map(|items|{serde_json::to_value(items).unwrap()});
+    let resp = Response { id, result, error: None };
+    return Ok(Message::Response(resp));
+}
+
+fn handle_type_hierarchy_subtypes_request(
+    proj_manager: &mut ProjectManager, 
+    id: RequestId, 
+    params: TypeHierarchySubtypesParams,
+    logger: &Arc<dyn ILoggerV2>,
+)
+    -> Result<Message, (i32, String)>
+{
+    logger.log_info(format!("Handling Type Hierarchy Subtypes request #{id}").as_str());
+    let type_hierarchy_items = proj_manager.type_hierarchy_subtypes(
+        &params.item
+    ).map_err(|e|{return (e.error_code as i32, e.msg);})?;
+
+
+    let result = type_hierarchy_items.map(|items|{serde_json::to_value(items).unwrap()});
+    let resp = Response { id, result, error: None };
+    return Ok(Message::Response(resp));
+}
+
+fn handle_type_hierarchy_supertypes_request(
+    proj_manager: &mut ProjectManager, 
+    id: RequestId, 
+    params: TypeHierarchySupertypesParams,
+    logger: &Arc<dyn ILoggerV2>,
+)
+    -> Result<Message, (i32, String)>
+{
+    logger.log_info(format!("Handling Type Hierarchy Supertypes request #{id}").as_str());
+    let type_hierarchy_items = proj_manager.type_hierarchy_supertypes(
+        &params.item
+    ).map_err(|e|{return (e.error_code as i32, e.msg);})?;
 
     let result = type_hierarchy_items.map(|items|{serde_json::to_value(items).unwrap()});
     let resp = Response { id, result, error: None };
@@ -499,6 +570,15 @@ fn send_error(sender: &Sender<Message>, id: RequestId, code: i32, message: Strin
     });
     let resp = Response { id, result: None, error: error };
     Ok(sender.send(Message::Response(resp))?)
+}
+
+fn handle_result(result : Result<Message, (i32, String)>, id: RequestId, sender: &Sender<Message>)
+-> Result<(), Box<dyn Error + Sync + Send>>{
+    match  result {
+        Ok(resp) => sender.send(resp)?,
+        Err(e) => send_error(sender, id, e.0, e.1)?
+    };
+    Ok(())
 }
 
 

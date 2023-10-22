@@ -156,6 +156,10 @@ impl EntityTreeService{
         }).clone();
         return result.map(|v| {v.clone()})
     }
+
+    pub fn get_entity(&self, id: &str) -> Option<Arc<Mutex<EntityInfo>>>{
+        return self.class_module_map.read().unwrap().get(&id.to_uppercase()).cloned();
+    }
 }
 
 #[cfg(test)]

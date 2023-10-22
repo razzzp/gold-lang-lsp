@@ -26,7 +26,7 @@ pub mod type_hierarchy_service;
 #[derive(Debug, Clone)]
 pub struct ProjectManager{
     pub doc_service: DocumentService,
-    pub class_module_tree_service: EntityTreeService,
+    pub entity_tree_service: EntityTreeService,
     logger: Arc<dyn ILoggerV2>,
 }
 impl ProjectManager{
@@ -36,7 +36,7 @@ impl ProjectManager{
         Ok(ProjectManager{
             doc_service,
             logger,
-            class_module_tree_service,
+            entity_tree_service: class_module_tree_service,
         })
     }
 
@@ -229,6 +229,30 @@ impl ProjectManager{
             EntityTreeService::new(self.logger.clone()),
             self.logger.clone());
         return type_hierarchy_service.prepare_type_hierarchy(uri, pos);
+    }
+
+    pub fn type_hierarchy_subtypes(
+        &mut self,
+        item : &TypeHierarchyItem
+    ) -> Result<Option<Vec<TypeHierarchyItem>>, ProjectManagerError>
+    {   
+        let type_hierarchy_service = TypeHierarchyService::new(
+            self.create_sem_service(),
+            self.entity_tree_service.clone(),
+            self.logger.clone());
+        return type_hierarchy_service.type_hierarchy_subtypes(item);
+    }
+
+    pub fn type_hierarchy_supertypes(
+        &mut self,
+        item: &TypeHierarchyItem
+    ) -> Result<Option<Vec<TypeHierarchyItem>>, ProjectManagerError>
+    {   
+        let type_hierarchy_service = TypeHierarchyService::new(
+            self.create_sem_service(),
+            self.entity_tree_service.clone(),
+            self.logger.clone());
+        return type_hierarchy_service.type_hierarchy_supertypes(item);
     }
 }
 
