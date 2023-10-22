@@ -3,9 +3,9 @@ use std::sync::{Arc, Mutex};
 use lsp_server::ErrorCode;
 use lsp_types::{Url, TypeHierarchyItem, SymbolKind};
 
-use crate::{utils::{ILoggerV2, Position}, parser::ast::AstClass};
+use crate::utils::{ILoggerV2, Position};
 
-use super::{semantic_analysis_service::SemanticAnalysisService, entity_tree_service::{EntityTreeService, EntityInfo}, data_structs::ProjectManagerError, utils::{search_encasing_node, search_sym_info_for_node}, annotated_node::EvalType};
+use super::{semantic_analysis_service::SemanticAnalysisService, entity_tree_service::{EntityTreeService, EntityInfo}, data_structs::ProjectManagerError, utils::{search_encasing_node, search_sym_info_for_node}, symbol_table::SymbolType};
 
 
 
@@ -37,21 +37,30 @@ impl TypeHierarchyService{
             .ok_or(ProjectManagerError::new("Annotated Root AST is None", lsp_server::ErrorCode::InternalError))?
             .clone();
         let enc_node = search_encasing_node(&root_ast, pos);
-        let (_class, sym_info) = match search_sym_info_for_node(&enc_node, &self.sem_service){
+        let (class, sym_info) = match search_sym_info_for_node(&enc_node, &self.sem_service){
             Some(r) => r,
             _=> return Ok(None)
         };
-        let eval_type = match &sym_info.eval_type{
-            Some(e) => e,
-            _=> return Ok(None)
-        };
-        match eval_type{
-            EvalType::Class(s) => {
+        match &sym_info.sym_type{
+            SymbolType::Class => {
                 let type_h_item= TypeHierarchyItem{
-                    name: s.to_string(),
+                    name: sym_info.id.to_string(),
                     kind: lsp_types::SymbolKind::CLASS,
                     tags: None,
                     detail: None,
+                    uri: uri.clone(),
+                    range: sym_info.range.as_lsp_type_range(),
+                    selection_range: sym_info.selection_range.as_lsp_type_range(),
+                    data:None
+                };
+                return Ok(Some(vec![type_h_item]));
+            }
+            SymbolType::Func|SymbolType::Proc => {
+                let type_h_item= TypeHierarchyItem{
+                    name: sym_info.id.to_string(),
+                    kind: lsp_types::SymbolKind::FUNCTION,
+                    tags: None,
+                    detail: Some(class),
                     uri: uri.clone(),
                     range: sym_info.range.as_lsp_type_range(),
                     selection_range: sym_info.selection_range.as_lsp_type_range(),
@@ -66,7 +75,7 @@ impl TypeHierarchyService{
 
     fn generate_entity_type_hierarchy_item(&self, entity_info: &Arc<Mutex<EntityInfo>>) -> Option<TypeHierarchyItem>{
         let lock = entity_info.lock().unwrap();
-        let sym_table = self.sem_service.get_symbol_table_class_def_only(&lock.id).ok()?;
+        let sym_table = self.sem_service.get_symbol_table_for_class_def_only(&lock.id).ok()?;
         let uri = self.sem_service.doc_service.get_uri_for_class(&lock.id).ok()?;
         let entity_sym_info = sym_table.lock().unwrap().get_symbol_info(&lock.id)?;
         return Some(TypeHierarchyItem { 
@@ -79,6 +88,53 @@ impl TypeHierarchyService{
             selection_range: entity_sym_info.selection_range.as_lsp_type_range(), 
             data: None 
         });
+    }
+
+    fn generate_method_subtypes_(&self, entity_info: &Arc<Mutex<EntityInfo>>, id: &String)
+    -> Option<Vec<TypeHierarchyItem>>{
+        let sym_table = self.sem_service.get_symbol_table_for_class_def_only(&entity_info.lock().unwrap().id).ok()?;
+        let mut result = Vec::new();
+        // search symbol only at one level
+        if let Some((class, found_sym)) = sym_table.lock().unwrap().search_symbol_info(id) {
+            // if found push to result
+            let uri = self.sem_service.doc_service.get_uri_for_class(&class).ok()?;
+            result.push(TypeHierarchyItem{
+                name: found_sym.id.to_string(),
+                uri,
+                detail: Some(class.clone()),
+                kind: SymbolKind::FUNCTION,
+                range: found_sym.range.as_lsp_type_range(),
+                selection_range: found_sym.selection_range.as_lsp_type_range(),
+                tags: None,
+                data: None,
+            });
+        } else {
+            // if not found in current level check children
+            for child in &entity_info.lock().unwrap().children{
+                match self.generate_method_subtypes_(&child, id) {
+                    Some(items) => {result.extend(items);},
+                    _=> ()
+                }
+            }
+        }
+        return Some(result);
+    }
+
+    fn generate_method_subtypes(&self, uri : &Url, id: &String)
+    -> Result<Option<Vec<TypeHierarchyItem>>, ProjectManagerError>{
+        let sym_table = self.sem_service.get_symbol_table_for_uri_def_only(uri)?;
+        let class_id = sym_table.lock().unwrap().get_class()
+            .ok_or(ProjectManagerError::new(format!("Cannot find class for uri {}", uri).as_str(), ErrorCode::InvalidRequest))?;
+        let entity_info = self.entity_tree_service.get_entity(&class_id)
+            .ok_or(ProjectManagerError::new(format!("Cannot find class {}", class_id).as_str(), ErrorCode::InvalidRequest))?;
+        let mut result = Vec::new();
+        for child in &entity_info.lock().unwrap().children{
+            match self.generate_method_subtypes_(&child, id){
+                Some(items) => {result.extend(items);},
+                _=> ()
+            }
+        }
+        return Ok(Some(result))
     }
 
     pub fn type_hierarchy_subtypes(&self, item : &TypeHierarchyItem)
@@ -94,9 +150,62 @@ impl TypeHierarchyService{
                 }
             }
             return Ok(Some(result));
+        } else if item.kind == SymbolKind::FUNCTION{
+            return self.generate_method_subtypes(&item.uri, &item.name);
         } else {
             return Ok(None);
         }
+    }
+
+
+    fn generate_method_supertypes_(&self, entity_info: &Arc<Mutex<EntityInfo>>, id: &String)
+    -> Option<TypeHierarchyItem>{
+        let sym_table = self.sem_service.get_symbol_table_for_class_def_only(&entity_info.lock().unwrap().id).ok()?;
+        let sym_lock = sym_table.lock().unwrap();
+        // search symbol only at one level
+        if let Some((class, found_sym)) = sym_lock.search_symbol_info(id) {
+            // if found push to result
+            let uri = self.sem_service.doc_service.get_uri_for_class(&class).ok()?;
+            return Some(TypeHierarchyItem{
+                name: found_sym.id.to_string(),
+                uri,
+                detail: Some(class.clone()),
+                kind: SymbolKind::FUNCTION,
+                range: found_sym.range.as_lsp_type_range(),
+                selection_range: found_sym.selection_range.as_lsp_type_range(),
+                tags: None,
+                data: None,
+            });
+        } else {
+            // if not found in current level check parent
+            let parent = match &entity_info.lock().unwrap().parent {
+                Some(p) => p.upgrade()?,
+                _=> return None
+            };
+            return self.generate_method_supertypes_(&parent, id);
+        }
+    }
+
+
+    fn generate_method_supertypes(&self, uri : &Url, id: &String)
+    -> Result<Option<Vec<TypeHierarchyItem>>, ProjectManagerError>{
+        let sym_table = self.sem_service.get_symbol_table_for_uri_def_only(uri)?;
+        let class_id = sym_table.lock().unwrap().get_class()
+            .ok_or(ProjectManagerError::new(format!("Cannot find class for uri {}", uri).as_str(), ErrorCode::InvalidRequest))?;
+        let entity_info = self.entity_tree_service.get_entity(&class_id)
+            .ok_or(ProjectManagerError::new(format!("Cannot find class {}", class_id).as_str(), ErrorCode::InvalidRequest))?;
+        let mut result = Vec::new();
+        let parent = match &entity_info.lock().unwrap().parent {
+            Some(p) => p.upgrade()
+                .ok_or(ProjectManagerError::new(format!("Cannot upgrade parent for {}", class_id).as_str(), ErrorCode::InternalError))?,
+            _=> return Ok(None)
+        };
+        match self.generate_method_supertypes_(&parent, id){
+            Some(item) => {result.push(item)},
+            _=> ()
+        }
+        
+        return Ok(Some(result))
     }
 
     pub fn type_hierarchy_supertypes(&self, item : &TypeHierarchyItem)
@@ -115,6 +224,8 @@ impl TypeHierarchyService{
                 }
             }
             return Ok(Some(result));
+        } else if item.kind == SymbolKind::FUNCTION{
+            return self.generate_method_supertypes(&item.uri, &item.name);
         } else {
             return Ok(None);
         }
@@ -150,6 +261,7 @@ mod test{
         let doc_service = create_test_doc_service(Some(uri));
         let tree_service = create_test_entity_tree_service();
         doc_service.index_files();
+        tree_service.build_tree(&doc_service);
         let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
 
         let test_uri = create_uri_from_path("./test/workspace/aFifthClass.god");
@@ -209,5 +321,74 @@ mod test{
         let result = th_service.type_hierarchy_supertypes(&test_item).unwrap().unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name.as_str(), "aFourthClass");
+    }
+
+
+    #[test]
+    fn test_method_type_hierarchy_prepare(){
+        let uri = create_uri_from_path("./test/workspace");
+        let doc_service = create_test_doc_service(Some(uri));
+        let tree_service = create_test_entity_tree_service();
+        doc_service.index_files();
+        tree_service.build_tree(&doc_service);
+        let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
+
+        let test_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aFirstLevelClass1.god");
+        let test_pos = Position::new(2, 18);
+        let result = th_service.prepare_type_hierarchy(&test_uri, &test_pos).unwrap().unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name.as_str(), "aFirstLevelClass1Proc");
+    }
+
+    #[test]
+    fn test_method_type_hierarchy_subtypes(){
+        let uri = create_uri_from_path("./test/workspace");
+        let doc_service = create_test_doc_service(Some(uri));
+        let tree_service = create_test_entity_tree_service();
+        doc_service.index_files();
+        tree_service.build_tree(&doc_service);
+        let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
+
+        let test_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aFirstLevelClass1.god");
+        let test_item = TypeHierarchyItem{
+            name:"aFirstLevelClass1Proc".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri: test_uri,
+            range: lsp_types::Range::default(),
+            selection_range: lsp_types::Range::default(),
+            tags: None,
+            detail: None,
+            data: None,
+        };
+
+        let result = th_service.type_hierarchy_subtypes(&test_item).unwrap().unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].name.as_str(), "aFirstLevelClass1Proc");
+    }
+
+    #[test]
+    fn test_method_type_hierarchy_supertypes(){
+        let uri = create_uri_from_path("./test/workspace");
+        let doc_service = create_test_doc_service(Some(uri));
+        let tree_service = create_test_entity_tree_service();
+        doc_service.index_files();
+        tree_service.build_tree(&doc_service);
+        let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
+
+        let test_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aSecondLevelClass1.god");
+        let test_item = TypeHierarchyItem{
+            name:"aFirstLevelClass1Proc".to_string(),
+            kind: SymbolKind::FUNCTION,
+            uri: test_uri,
+            range: lsp_types::Range::default(),
+            selection_range: lsp_types::Range::default(),
+            tags: None,
+            detail: None,
+            data: None,
+        };
+
+        let result = th_service.type_hierarchy_supertypes(&test_item).unwrap().unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name.as_str(), "aFirstLevelClass1Proc");
     }
 }

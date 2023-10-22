@@ -64,7 +64,7 @@ pub fn get_nearest_symbol_table(node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>)
 /// also returns the class the symbol is in
 pub fn search_sym_info_w_class(id: &str, sym_table: &Arc<Mutex<dyn ISymbolTable>>, sem_service: &SemanticAnalysisService, search_uses: bool) -> Option<(String,Arc<SymbolInfo>)>{
     // already searches parent
-    let mut result = sym_table.lock().unwrap().search_symbol_info(id);
+    let mut result = sym_table.lock().unwrap().search_symbol_info_wparent(id);
     if search_uses && result.is_none() {
         // need to copy uses to local, otherwise symtable will
         // be lock, and since calls here are recursive it may cause deadlock
@@ -72,11 +72,11 @@ pub fn search_sym_info_w_class(id: &str, sym_table: &Arc<Mutex<dyn ISymbolTable>
         let uses_list = sym_table.lock().unwrap().get_list_of_uses();
 
         for uses in uses_list.iter(){
-            let uses_sym_table = match sem_service.get_symbol_table_class_def_only(uses){
+            let uses_sym_table = match sem_service.get_symbol_table_for_class_def_only(uses){
                 Ok(r) => r,
                 _=> continue
             };
-            result=uses_sym_table.lock().unwrap().search_symbol_info(id);
+            result=uses_sym_table.lock().unwrap().search_symbol_info_wparent(id);
             if result.is_some(){
                 break;
             }
@@ -119,7 +119,7 @@ pub fn search_sym_info_for_node(
                 sym_table
             } else { 
                 // otherwise get sym table
-                sem_service.get_symbol_table_class_def_only(left_node_id.deref()).ok()?
+                sem_service.get_symbol_table_for_class_def_only(left_node_id.deref()).ok()?
             };
             return search_sym_info_w_class(&node_id, &sym_table, &sem_service, false);
         }

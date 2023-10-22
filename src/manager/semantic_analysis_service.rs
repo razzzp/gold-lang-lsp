@@ -41,13 +41,17 @@ impl SemanticAnalysisService {
     }
 
 
-    pub fn get_symbol_table_class_def_only(&self, class: &str) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+    pub fn get_symbol_table_for_class_def_only(&self, class: &str) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         let uri = self.doc_service.get_uri_for_class(class)?;
+        return self.get_symbol_table_for_uri_def_only(&uri);
+    }
+
+    pub fn get_symbol_table_for_uri_def_only(&self, uri: &Url) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
         let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri, true)?;
         let st_option = doc.lock().unwrap().get_symbol_table().clone();
         match st_option{
             Some(st) => return Ok(st.clone()),
-            _=> return Err(ProjectManagerError::new(format!("Unable to get Symbol table for {}",class).as_str(), ErrorCode::InternalError))
+            _=> return Err(ProjectManagerError::new(format!("Unable to get Symbol table for {}",uri).as_str(), ErrorCode::InternalError))
         }
     }
 
@@ -124,7 +128,7 @@ mod test{
         doc_service.index_files();
         let sem_service = create_test_sem_service(doc_service);
 
-        let result = sem_service.get_symbol_table_class_def_only(&"aRootClass".to_string()).unwrap();
+        let result = sem_service.get_symbol_table_for_class_def_only(&"aRootClass".to_string()).unwrap();
         let result = result.lock().unwrap();
         assert_eq!(result.iter_symbols().count(), 9);
     }

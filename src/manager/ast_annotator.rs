@@ -203,7 +203,7 @@ impl AstAnnotator{
                 );
             }
             sym_info.parent = Some(parent_class_name.to_string());
-            let parent_symbol_table = self.semantic_analysis_service.get_symbol_table_class_def_only(&parent_class_name.to_string());
+            let parent_symbol_table = self.semantic_analysis_service.get_symbol_table_for_class_def_only(&parent_class_name.to_string());
             match parent_symbol_table{
                 Ok(st) => {
                     // set parent symbol table
@@ -403,7 +403,7 @@ impl AstAnnotator{
         let class_sym_table = if left_entity_name.to_string() == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class_or_module.unwrap_clone_or_empty_string() {
             self.get_cur_sym_table()
         } else {
-            match self.semantic_analysis_service.get_symbol_table_class_def_only(&left_entity_name){
+            match self.semantic_analysis_service.get_symbol_table_for_class_def_only(&left_entity_name){
                 Ok(st) => st,
                 _=> return EvalType::default()
             }
@@ -507,7 +507,7 @@ impl AstAnnotator{
                         let class_sym_table = if class_name.to_string() == self.root_symbol_table.as_ref().unwrap().lock().unwrap().for_class_or_module.unwrap_clone_or_empty_string() {
                             self.get_cur_sym_table()
                         } else {
-                            match self.semantic_analysis_service.get_symbol_table_class_def_only(&class_name){
+                            match self.semantic_analysis_service.get_symbol_table_for_class_def_only(&class_name){
                                 Ok(st) => st,
                                 _=> return EvalType::default()
                             }

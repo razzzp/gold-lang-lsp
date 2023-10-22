@@ -26,7 +26,7 @@ impl TypeResolver {
             let uses_list = sym_table.lock().unwrap().get_list_of_uses();
 
             for uses in uses_list.iter(){
-                let uses_sym_table = match self.semantic_analysis_service.get_symbol_table_class_def_only(uses){
+                let uses_sym_table = match self.semantic_analysis_service.get_symbol_table_for_class_def_only(uses){
                     Ok(r) => r,
                     _=> continue
                 };
@@ -42,7 +42,7 @@ impl TypeResolver {
     /// also returns the class the symbol is in
     pub fn search_sym_info_w_class(&self, id: &str, sym_table: &Arc<Mutex<dyn ISymbolTable>>, search_uses: bool) -> Option<(String,Arc<SymbolInfo>)>{
         // already searches parent
-        let mut result = sym_table.lock().unwrap().search_symbol_info(id);
+        let mut result = sym_table.lock().unwrap().search_symbol_info_wparent(id);
         if search_uses && result.is_none() {
             // need to copy uses to local, otherwise symtable will
             // be lock, and since calls here are recursive it may cause deadlock
@@ -50,11 +50,11 @@ impl TypeResolver {
             let uses_list = sym_table.lock().unwrap().get_list_of_uses();
 
             for uses in uses_list.iter(){
-                let uses_sym_table = match self.semantic_analysis_service.get_symbol_table_class_def_only(uses){
+                let uses_sym_table = match self.semantic_analysis_service.get_symbol_table_for_class_def_only(uses){
                     Ok(r) => r,
                     _=> continue
                 };
-                result=uses_sym_table.lock().unwrap().search_symbol_info(id);
+                result=uses_sym_table.lock().unwrap().search_symbol_info_wparent(id);
                 if result.is_some(){
                     break;
                 }
@@ -152,7 +152,7 @@ impl TypeResolver {
             _=> ()
         }
         // see if class or module
-        match self.semantic_analysis_service.get_symbol_table_class_def_only(&id){
+        match self.semantic_analysis_service.get_symbol_table_for_class_def_only(&id){
             Ok(st) => {
                 match st.lock().unwrap().get_symbol_info(&id){
                     Some(s) => return Some(s.eval_type.clone().unwrap_or_default()),
@@ -176,7 +176,7 @@ impl TypeResolver {
                 todo!()
             },
             EvalType::Class(id)=> {
-                let c_sym_table = match self.semantic_analysis_service.get_symbol_table_class_def_only(&id){
+                let c_sym_table = match self.semantic_analysis_service.get_symbol_table_for_class_def_only(&id){
                     Ok(s) => s,
                     _=> return None,
                 };

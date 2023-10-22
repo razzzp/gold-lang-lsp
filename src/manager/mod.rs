@@ -1,12 +1,12 @@
-use std::{rc::Rc, sync::{Arc, Mutex, RwLock}, cell::RefCell, str::FromStr};
+use std::{rc::Rc, sync::{Arc, Mutex}, cell::RefCell, str::FromStr};
 
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink, CompletionItem, TypeHierarchyItem};
 
-use crate::{parser::ast::{IAstNode}, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
+use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
 use data_structs::*;
 
-use self::{semantic_analysis_service::{SemanticAnalysisService}, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, entity_tree_service::EntityTreeService, type_hierarchy_service::TypeHierarchyService};
+use self::{semantic_analysis_service::SemanticAnalysisService, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, entity_tree_service::EntityTreeService, type_hierarchy_service::TypeHierarchyService};
 use crate::manager::doc_symbol_generator::DocumentSymbolGenerator;
 
 pub mod data_structs;

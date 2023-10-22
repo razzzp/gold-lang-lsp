@@ -1,6 +1,6 @@
 use std::net::ToSocketAddrs;
 use std::ops::Deref;
-use std::sync::{Arc};
+use std::sync::Arc;
 
 
 
@@ -12,7 +12,7 @@ use std::error::Error;
 
 use crossbeam_channel::Sender;
 use lsp_types::notification::{DidChangeTextDocument, DidSaveTextDocument, DidOpenTextDocument};
-use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams, CompletionParams, CompletionResponse, CompletionOptions, TypeHierarchyRegistrationOptions, TypeHierarchyOptions, TypeHierarchyPrepareParams, TypeHierarchySubtypesParams, TypeHierarchySupertypesParams};
+use lsp_types::{OneOf, DocumentSymbolResponse, DocumentSymbolParams, DiagnosticOptions, DiagnosticServerCapabilities, DocumentDiagnosticParams, DocumentDiagnosticReport, TextDocumentSyncKind, TextDocumentSyncCapability, DidChangeTextDocumentParams, PublishDiagnosticsParams, DidSaveTextDocumentParams, GotoDefinitionParams, GotoDefinitionResponse, DidOpenTextDocumentParams, CompletionParams, CompletionResponse, CompletionOptions, TypeHierarchyOptions, TypeHierarchyPrepareParams, TypeHierarchySubtypesParams, TypeHierarchySupertypesParams};
 use lsp_types::request::{
     DocumentSymbolRequest, 
     DocumentDiagnosticRequest, 
@@ -28,7 +28,6 @@ use lsp_types::{
 };
 
 use lsp_server::{Connection, ExtractError, Message, Request, RequestId, Response, ResponseError, ErrorCode, Notification,};
-use serde_json::Value;
 use utils::{StdErrLogger, ILoggerV2};
 
 

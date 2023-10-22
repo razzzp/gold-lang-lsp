@@ -56,6 +56,7 @@ pub trait ISymbolTableGenerator {
 
 pub trait ISymbolTable: Debug + Send {
     fn get_symbol_info(&mut self, id: &str) -> Option<Arc<SymbolInfo>>;
+    fn search_symbol_info_wparent(&self, id: &str) -> Option<(String, Arc<SymbolInfo>)>;
     fn search_symbol_info(&self, id: &str) -> Option<(String, Arc<SymbolInfo>)>;
     fn insert_symbol_info(&mut self, id: &str, info: SymbolInfo) -> &SymbolInfo;
     fn iter_symbols<'a>(&'a self) -> Box<dyn Iterator<Item = &'a Arc<SymbolInfo>> + 'a>;
@@ -122,7 +123,7 @@ impl ISymbolTable for SymbolTable {
         return result;
     }
 
-    fn search_symbol_info(&self, id: &str) -> Option<(String, Arc<SymbolInfo>)> {
+    fn search_symbol_info_wparent(&self, id: &str) -> Option<(String, Arc<SymbolInfo>)> {
         // search cur st first
         let mut result = match self.hash_map.get(&id.to_uppercase()) {
             Some(i) => {
@@ -137,7 +138,7 @@ impl ISymbolTable for SymbolTable {
         if result.is_none() && self.parent_symbol_table.is_some() {
             let parent_st = self.parent_symbol_table.unwrap_ref();
             // don't need to search uses of parent
-            result = parent_st.lock().unwrap().search_symbol_info(id);
+            result = parent_st.lock().unwrap().search_symbol_info_wparent(id);
         }
         return result;
     }
@@ -234,5 +235,18 @@ impl ISymbolTable for SymbolTable {
             _=> ()
         }
         return result;
+    }
+
+    fn search_symbol_info(&self, id: &str) -> Option<(String, Arc<SymbolInfo>)> {
+        // search cur st first
+        match self.hash_map.get(&id.to_uppercase()) {
+            Some(i) => {
+                return Some((
+                    self.for_class_or_module.unwrap_clone_or_empty_string(),
+                    self.symbols_list.get(*i).cloned().unwrap(),
+                ))
+            }
+            _ => return None,
+        }
     }
 }

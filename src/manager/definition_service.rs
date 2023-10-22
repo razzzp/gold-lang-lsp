@@ -180,7 +180,7 @@ impl DefinitionService{
         let class_sym_table = if uri == self.source_uri{
             st.clone()
         } else {
-            match self.semantic_analysis_service.get_symbol_table_class_def_only(&entity){
+            match self.semantic_analysis_service.get_symbol_table_for_class_def_only(&entity){
                 Ok(st) => st,
                 _=> return None
             }
