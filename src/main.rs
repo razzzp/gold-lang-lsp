@@ -462,13 +462,13 @@ fn handle_prepare_type_hierarchy_request(
     -> Result<Message, (i32, String)>
 {
     logger.log_info(format!("Handling Type Hierarchy Prepare request #{id}").as_str());
-    let type_hierarchy_item = proj_manager.prepare_type_hierarchy(
+    let type_hierarchy_items = proj_manager.prepare_type_hierarchy(
         &params.text_document_position_params.text_document.uri,
         &params.text_document_position_params.position.into()
-    );
+    ).map_err(|e|{return (e.error_code as i32, e.msg);})?;
 
 
-    let result = Some(Value::default());
+    let result = type_hierarchy_items.map(|items|{serde_json::to_value(items).unwrap()});
     let resp = Response { id, result, error: None };
     return Ok(Message::Response(resp));
 }
