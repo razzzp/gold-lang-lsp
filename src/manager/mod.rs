@@ -165,7 +165,7 @@ impl ProjectManager{
         let mut ast_walker: AstWalker<dyn IAnalyzer> = AstWalker::new(true);
         let analyzers: Vec<Rc<RefCell<dyn IAnalyzer>>> = vec![
             Rc::new(RefCell::new(UnusedVarAnalyzer::new())),
-            Rc::new(RefCell::new(InoutParamChecker::new())),
+            // Rc::new(RefCell::new(InoutParamChecker::new())),
             Rc::new(RefCell::new(FunctionReturnTypeChecker::new()))
         ];
         ast_walker.register_visitors(&analyzers);
@@ -261,11 +261,11 @@ impl ProjectManager{
 #[cfg(test)]
 /// tests at this module level are more towards integration testing
 pub mod test{
-    use std::{fs::{File, self}, io::Read, path::{PathBuf}, rc::Rc, cell::RefCell, sync::{Mutex, Arc}, str::FromStr};
+    use std::{fs::{File, self}, io::Read, path::PathBuf, rc::Rc, cell::RefCell, sync::{Mutex, Arc}, str::FromStr};
 
     use lsp_types::Url;
 
-    use crate::{lexer::{GoldLexer}, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, threadpool::ThreadPool};
+    use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, threadpool::ThreadPool};
 
     use super::{ProjectManager, document_service::DocumentService, type_resolver::TypeResolver, semantic_analysis_service::SemanticAnalysisService, definition_service::DefinitionService};
 
