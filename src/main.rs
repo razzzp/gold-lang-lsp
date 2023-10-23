@@ -120,6 +120,12 @@ fn main_loop(
         class_tree_service.build_tree(&doc_service);
     });
 
+    // analyze core files (WAM, WF)
+    let mut proj_manager_clone = proj_manager.clone();
+    threadpool.execute(move ||{
+        proj_manager_clone.analyze_core_files();
+    });
+
     for msg in &connection.receiver {
         // eprintln!("got msg: {msg:?}");
         match msg {

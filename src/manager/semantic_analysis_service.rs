@@ -63,7 +63,7 @@ impl SemanticAnalysisService {
         //  **should be solved by setting result to doc, before processing
         // self.check_already_seen(uri)?;
 
-        self.logger.log_info(format!("[Req Analyze Uri:{}]{}", if !only_definitions {"Full"}else{"Light"},uri).as_str());
+        // self.logger.log_info(format!("[Req Analyze Uri:{}]{}", if !only_definitions {"Full"}else{"Light"},uri).as_str());
 
         let doc: Arc<Mutex<Document>> = self.doc_service.get_parsed_document(uri, true)?;
         // is exist and only defs needed return existing,

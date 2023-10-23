@@ -314,6 +314,10 @@ impl DocumentService {
     pub fn for_each_uri_docinfo(&self, process_func : impl FnMut((&String, &Arc<RwLock<DocumentInfo>>))){
         self.uri_docinfo_map.read().unwrap().iter().for_each(process_func);
     }
+
+    pub fn get_doc_info_mapping(&self) -> Arc<RwLock<HashMap<String, Arc<RwLock<DocumentInfo>>>>>{
+        return self.uri_docinfo_map.clone();
+    }
 }
 
 #[cfg(test)]

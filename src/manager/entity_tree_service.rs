@@ -65,7 +65,7 @@ impl EntityTreeService{
         let mut count : usize = 0;
         doc_service.for_each_uri_docinfo( |pair: (&String, &Arc<RwLock<DocumentInfo>>)| {
             
-            let (uri, doc_info) = pair;
+            let (_uri, doc_info) = pair;
             count += 1;
             // self.logger.log_info(format!("Processing no.{} {}", count, uri).as_str());
             if let Some(doc) = doc_info.read().unwrap().get_document(){

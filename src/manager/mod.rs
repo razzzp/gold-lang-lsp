@@ -2,8 +2,9 @@ use std::{rc::Rc, sync::{Arc, Mutex}, cell::RefCell, str::FromStr};
 
 use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink, CompletionItem, TypeHierarchyItem};
+use regex::Regex;
 
-use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
+use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
 use data_structs::*;
 
 use self::{semantic_analysis_service::SemanticAnalysisService, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, entity_tree_service::EntityTreeService, type_hierarchy_service::TypeHierarchyService};
@@ -60,6 +61,34 @@ impl ProjectManager{
                 }
             });
         }
+    }
+
+    pub fn analyze_core_files(&mut self){
+
+        let map = self.doc_service.get_doc_info_mapping();
+        let sem_service = self.create_sem_service();
+        // collect WAM and WF files
+        let regx= Regex::new(r"/(WAM|WF)\w*?/").unwrap();
+        let map_lock = map.read().unwrap();
+        let files_to_process : Vec<Url> = map_lock
+            .values()
+            .filter_map(|v|{
+                let lock = v.read().unwrap();
+                if regx.is_match(&lock.uri)
+                {return Url::from_str(&lock.uri).ok()} else {return None};
+            })
+            .collect();
+        drop(map_lock);
+
+        let timer  = std::time::SystemTime::now();
+        self.logger.log_info(format!("Analyzing core files; {} files", &files_to_process.len()).as_str());
+        for uri in &files_to_process{
+            let _ = sem_service.analyze_uri(uri, true);
+        }
+        self.logger.log_info(
+            format!("Finished analyzing core files in {:#?}; {} files", 
+            timer.elapsed(), 
+            files_to_process.len()).as_str());
     }
 
     pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String, threadpool: &ThreadPool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
@@ -568,5 +597,19 @@ pub mod test{
         // let _result = proj_manager.generate_document_diagnostic_report(&input_uri).unwrap();
         let result = proj_manager.analyze_doc(&input_uri, false).unwrap();
         assert!(result.lock().unwrap().annotated_ast.is_some());
+    }
+
+
+    #[ignore = "need repo to test"]
+    #[test]
+    fn test_analyze_core_files(){
+        let path = PathBuf::from("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        let _ =  match fs::metadata(&path){
+            Ok(_) => (),
+            _=> return
+        };
+        let mut proj_manager= create_test_project_manager("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        proj_manager.index_files();
+        proj_manager.analyze_core_files();
     }
 }
