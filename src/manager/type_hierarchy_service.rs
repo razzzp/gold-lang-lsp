@@ -108,13 +108,13 @@ impl TypeHierarchyService{
                 tags: None,
                 data: None,
             });
-        } else {
-            // if not found in current level check children
-            for child in &entity_info.lock().unwrap().children{
-                match self.generate_method_subtypes_(&child, id) {
-                    Some(items) => {result.extend(items);},
-                    _=> ()
-                }
+            return Some(result);
+        }
+        // if not found in current level check children
+        for child in &entity_info.lock().unwrap().children{
+            match self.generate_method_subtypes_(&child, id) {
+                Some(items) => {result.extend(items);},
+                _=> ()
             }
         }
         return Some(result);
@@ -128,7 +128,8 @@ impl TypeHierarchyService{
         let entity_info = self.entity_tree_service.get_entity(&class_id)
             .ok_or(ProjectManagerError::new(format!("Cannot find class {}", class_id).as_str(), ErrorCode::InvalidRequest))?;
         let mut result = Vec::new();
-        for child in &entity_info.lock().unwrap().children{
+        let children = entity_info.lock().unwrap().children.clone();
+        for child in &children {
             match self.generate_method_subtypes_(&child, id){
                 Some(items) => {result.extend(items);},
                 _=> ()
@@ -143,7 +144,8 @@ impl TypeHierarchyService{
             let entity_info = self.entity_tree_service.get_entity(&item.name)
                 .ok_or(ProjectManagerError::new(format!("Cannot find class {}", &item.name).as_str(), ErrorCode::InvalidRequest))?;
             let mut result = Vec::new();
-            for child in &entity_info.lock().unwrap().children{
+            let children = entity_info.lock().unwrap().children.clone();
+            for child in &children{
                 match self.generate_entity_type_hierarchy_item(child){
                     Some(item) => result.push(item),
                     _=> ()
@@ -161,9 +163,8 @@ impl TypeHierarchyService{
     fn generate_method_supertypes_(&self, entity_info: &Arc<Mutex<EntityInfoNode>>, id: &String)
     -> Option<TypeHierarchyItem>{
         let sym_table = self.sem_service.get_symbol_table_for_class_def_only(&entity_info.lock().unwrap().id).ok()?;
-        let sym_lock = sym_table.lock().unwrap();
         // search symbol only at one level
-        if let Some((class, found_sym)) = sym_lock.search_symbol_info(id) {
+        if let Some((class, found_sym)) = sym_table.lock().unwrap().search_symbol_info(id) {
             // if found push to result
             let uri = self.sem_service.doc_service.get_uri_for_class(&class).ok()?;
             return Some(TypeHierarchyItem{
@@ -176,14 +177,14 @@ impl TypeHierarchyService{
                 tags: None,
                 data: None,
             });
-        } else {
-            // if not found in current level check parent
-            let parent = match &entity_info.lock().unwrap().parent {
-                Some(p) => p.upgrade()?,
-                _=> return None
-            };
-            return self.generate_method_supertypes_(&parent, id);
-        }
+        } 
+
+        // if not found in current level check parent
+        let parent = match &entity_info.lock().unwrap().parent {
+            Some(p) => p.upgrade()?,
+            _=> return None
+        };
+        return self.generate_method_supertypes_(&parent, id);
     }
 
 
@@ -214,7 +215,8 @@ impl TypeHierarchyService{
             let entity_info = self.entity_tree_service.get_entity(&item.name)
                 .ok_or(ProjectManagerError::new(format!("Cannot find class {}", &item.name).as_str(), ErrorCode::InvalidRequest))?;
             let mut result = Vec::new();
-            if let Some(parent) = entity_info.lock().unwrap().parent.clone(){
+            let parent = entity_info.lock().unwrap().parent.clone();
+            if let Some(parent) = parent {
                 let parent = parent.upgrade()
                 .ok_or(ProjectManagerError::new(format!("Failed to get parent {}", &item.name).as_str(), ErrorCode::InternalError))?;
             
