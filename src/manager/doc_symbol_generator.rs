@@ -3,7 +3,7 @@ use std::{sync::{Arc, Mutex}, ops::Deref};
 
 use lsp_types::{DocumentSymbol, SymbolKind};
 
-use crate::{utils::{OptionString, IRange}, parser::ast::{IAstNode, AstConstantDeclaration, AstTypeDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstFunction, AstClass}};
+use crate::{utils::{OptionString, IRange}, parser::ast::{IAstNode, AstConstantDeclaration, AstTypeDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstFunction, AstClass, AstModule}};
 
 use super::symbol_table::{ISymbolTable, SymbolType, SymbolInfo};
 
@@ -127,6 +127,19 @@ impl DocumentSymbolGenerator{
                         name: symbol.id.clone(), 
                         detail,
                         kind: SymbolKind::CLASS, 
+                        range: symbol.range.as_lsp_type_range(), 
+                        selection_range: symbol.selection_range.as_lsp_type_range(), 
+                        tags: None,
+                        deprecated: None,
+                        children: Some(Vec::new())
+                    });
+                    break;
+                },
+                SymbolType::Module=> {
+                    result = Some(DocumentSymbol { 
+                        name: symbol.id.clone(), 
+                        detail: None,
+                        kind: SymbolKind::MODULE, 
                         range: symbol.range.as_lsp_type_range(), 
                         selection_range: symbol.selection_range.as_lsp_type_range(), 
                         tags: None,
@@ -293,7 +306,23 @@ impl DocumentSymbolGeneratorFromAst{
                     });
                     break;
                 }
-                None => continue
+                None => ()
+            }
+            match ast_node.as_any().downcast_ref::<AstModule>(){
+                Some(n) => {
+                    result = Some(DocumentSymbol { 
+                        name: n.get_identifier().to_string(), 
+                        detail: None, 
+                        kind: SymbolKind::MODULE, 
+                        range: n.get_range().as_lsp_type_range(), 
+                        selection_range: n.get_range().as_lsp_type_range(), 
+                        tags: None,
+                        deprecated: None,
+                        children: Some(Vec::new())
+                    });
+                    break;
+                }
+                None => ()
             }
         }
         return result;
