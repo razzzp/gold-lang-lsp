@@ -79,13 +79,15 @@ impl EntityTreeService{
                         return
                     }
                 };
+
                 let mut reader = BufReader::new(file);
-                let mut buf = String::new();
+                let mut buf = vec![];
                 
                 loop {
                     buf.clear();
                     // read line and try to match with class/module regex
-                    let _read_size = match reader.read_line(&mut buf){
+                    let _read_size = reader.read_until(b'\n', &mut buf);
+                    let _read_size = match reader.read_until(b'\n', &mut buf){
                         Ok(size) => {
                             // EOF
                             if size == 0 {return;}
@@ -95,13 +97,15 @@ impl EntityTreeService{
                             return;
                         }
                     };
+                    // handle invalid utf-8 chars
+                    let line = String::from_utf8_lossy(&buf).to_string();
                     // regex in rust does not support lookaround...
                     // take left side of comments if any
-                    let str_to_match = match buf.split_once(';'){
+                    let str_to_match = match line.split_once(';'){
                         // take left side
                         Some(r)=> r.0,
-                        // else use buf
-                        _=> &buf
+                        // else use entire line
+                        _=> &line
                     };
 
                     // try match class
