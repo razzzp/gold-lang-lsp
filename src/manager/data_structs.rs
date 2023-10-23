@@ -6,7 +6,7 @@ use lsp_server::ErrorCode;
 
 use crate::parser::{ast::IAstNode, ParserDiagnostic};
 
-use super::annotated_node::AnnotatedNode;
+use super::{annotated_node::AnnotatedNode, document_service::EntityInfo};
 use crate::manager::symbol_table::ISymbolTable;
 
 #[derive(Debug)]
@@ -15,16 +15,22 @@ pub struct Document{
     pub parser_diagnostics: Vec<ParserDiagnostic>,
     pub analyzer_diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>,
     pub annotated_ast: Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>,
-    pub only_definitions : bool
+    pub only_definitions : bool,
+    pub entity_info: Option<EntityInfo>
 }
 impl Document{
-    pub fn new(ast: Arc<dyn IAstNode>, parser_diagnostics: Vec<ParserDiagnostic>) -> Document {
+    pub fn new(
+        ast: Arc<dyn IAstNode>, 
+        parser_diagnostics: Vec<ParserDiagnostic>,
+        entity_info: Option<EntityInfo>
+    ) -> Document {
         return Document{
             ast,
             parser_diagnostics,
             analyzer_diagnostics:None,
             annotated_ast: None,
-            only_definitions: false
+            only_definitions: false,
+            entity_info
         };
     }
     pub fn get_ast<'a>(&'a self) -> &'a Arc<dyn IAstNode>{

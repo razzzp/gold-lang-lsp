@@ -5,7 +5,7 @@ use lsp_types::{Url, TypeHierarchyItem, SymbolKind};
 
 use crate::utils::{ILoggerV2, Position};
 
-use super::{semantic_analysis_service::SemanticAnalysisService, entity_tree_service::{EntityTreeService, EntityInfo}, data_structs::ProjectManagerError, utils::{search_encasing_node, search_sym_info_for_node}, symbol_table::SymbolType};
+use super::{semantic_analysis_service::SemanticAnalysisService, entity_tree_service::{EntityTreeService, EntityInfoNode}, data_structs::ProjectManagerError, utils::{search_encasing_node, search_sym_info_for_node}, symbol_table::SymbolType};
 
 
 
@@ -73,7 +73,7 @@ impl TypeHierarchyService{
     }
 
 
-    fn generate_entity_type_hierarchy_item(&self, entity_info: &Arc<Mutex<EntityInfo>>) -> Option<TypeHierarchyItem>{
+    fn generate_entity_type_hierarchy_item(&self, entity_info: &Arc<Mutex<EntityInfoNode>>) -> Option<TypeHierarchyItem>{
         let lock = entity_info.lock().unwrap();
         let sym_table = self.sem_service.get_symbol_table_for_class_def_only(&lock.id).ok()?;
         let uri = self.sem_service.doc_service.get_uri_for_class(&lock.id).ok()?;
@@ -90,7 +90,7 @@ impl TypeHierarchyService{
         });
     }
 
-    fn generate_method_subtypes_(&self, entity_info: &Arc<Mutex<EntityInfo>>, id: &String)
+    fn generate_method_subtypes_(&self, entity_info: &Arc<Mutex<EntityInfoNode>>, id: &String)
     -> Option<Vec<TypeHierarchyItem>>{
         let sym_table = self.sem_service.get_symbol_table_for_class_def_only(&entity_info.lock().unwrap().id).ok()?;
         let mut result = Vec::new();
@@ -158,7 +158,7 @@ impl TypeHierarchyService{
     }
 
 
-    fn generate_method_supertypes_(&self, entity_info: &Arc<Mutex<EntityInfo>>, id: &String)
+    fn generate_method_supertypes_(&self, entity_info: &Arc<Mutex<EntityInfoNode>>, id: &String)
     -> Option<TypeHierarchyItem>{
         let sym_table = self.sem_service.get_symbol_table_for_class_def_only(&entity_info.lock().unwrap().id).ok()?;
         let sym_lock = sym_table.lock().unwrap();

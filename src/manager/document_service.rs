@@ -4,9 +4,25 @@ use lsp_server::ErrorCode;
 use lsp_types::Url;
 
 
-use crate::{utils::ILoggerV2, lexer::GoldLexer, parser::{ParserDiagnostic, parse_gold}};
+use crate::{utils::ILoggerV2, lexer::GoldLexer, parser::{ParserDiagnostic, parse_gold, ast::{AstClass, AstModule}}};
 
-use super::data_structs::{DocumentInfo, ProjectManagerError, Document};
+use super::{data_structs::{DocumentInfo, ProjectManagerError, Document}, entity_tree_service::EntityType};
+
+#[derive(Debug, Clone)]
+pub struct EntityInfo{
+    pub id: Arc<str>,
+    pub parent: Option<Arc<str>>,
+    pub entity_type: EntityType,
+}
+impl EntityInfo{
+    pub fn new(id: Arc<str>, entity_type : EntityType, parent: Option<Arc<str>>) -> EntityInfo {
+        return EntityInfo { 
+            id, 
+            parent,
+            entity_type 
+        }
+    }
+}
 
 #[derive(Debug,Clone)]
 /// provides caching and parsing of documents in
@@ -148,7 +164,7 @@ impl DocumentService {
         Ok(new_doc_info)
     }
 
-    pub fn get_parsed_document_for_class(&self, class: &String, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn get_parsed_document_for_class(&self, class: &str, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let uri = self.get_uri_for_class(class)?;
         return self.get_parsed_document(&uri, wait_on_lock);
     }
@@ -226,14 +242,44 @@ impl DocumentService {
         let mut lexer = GoldLexer::new();
         let (tokens, lexer_errors) = lexer.lex(&full_file_content);
         // parse
-        let (ast_nodes, mut parser_diagnostics) = parse_gold(&tokens);
+        let ((_remainder ,ast_nodes), mut parser_diagnostics) = parse_gold(&tokens);
         // add lexer errors
         parser_diagnostics.extend(lexer_errors.into_iter().map(|l_error|{
             ParserDiagnostic { range: l_error.range, msg: l_error.msg }
         }));
+        // get entity info (class/module)
+        let mut entity_info = None;
+        if let Some(children) = ast_nodes.get_children_ref(){
+            for child in children{
+                match child.as_any().downcast_ref::<AstClass>(){
+                    Some(n) => {
+                        entity_info = Some(EntityInfo::new(
+                            n.identifier.get_value(), 
+                            EntityType::Class, 
+                            n.parent_class.as_ref().map(|t|{t.get_value()})
+                        ));
+                        break;
+                    }
+                    _=>()
+                }
+                match child.as_any().downcast_ref::<AstModule>(){
+                    Some(n) => {
+                        entity_info = Some(EntityInfo::new(
+                            n.id.get_value(), 
+                            EntityType::Module, 
+                            None
+                        ));
+                        break;
+                    }
+                    _=>()
+                }
+            }
+        }
+
         let new_doc =Document::new( 
-            ast_nodes.1,
+            ast_nodes,
             parser_diagnostics,
+            entity_info,
         );
         return Ok(new_doc)
     }

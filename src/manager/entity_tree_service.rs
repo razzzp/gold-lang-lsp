@@ -13,21 +13,21 @@ pub enum EntityType {
 }
 
 #[derive(Debug, Clone)]
-pub struct EntityInfo{
+pub struct EntityInfoNode{
     pub id: String,
-    pub parent: Option<Weak<Mutex<EntityInfo>>>,
-    pub children: Vec<Arc<Mutex<EntityInfo>>>,
+    pub parent: Option<Weak<Mutex<EntityInfoNode>>>,
+    pub children: Vec<Arc<Mutex<EntityInfoNode>>>,
     pub entity_type: EntityType,
 }
-impl EntityInfo{
-    pub fn new(id: &str, entity_type : EntityType) -> EntityInfo {
-        return EntityInfo { id: id.to_string(), parent: None, children: Vec::new(), entity_type }
+impl EntityInfoNode{
+    pub fn new(id: &str, entity_type : EntityType) -> EntityInfoNode {
+        return EntityInfoNode { id: id.to_string(), parent: None, children: Vec::new(), entity_type }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct EntityTreeService{
-    class_module_map : Arc<RwLock<HashMap<String, Arc<Mutex<EntityInfo>>>>>,
+    class_module_map : Arc<RwLock<HashMap<String, Arc<Mutex<EntityInfoNode>>>>>,
     logger : Arc<dyn ILoggerV2>
 }
 impl EntityTreeService{
@@ -40,13 +40,13 @@ impl EntityTreeService{
 
     fn get_or_create_entity(
         id: &str, 
-        map_lock: &mut RwLockWriteGuard<'_, HashMap<String, Arc<Mutex<EntityInfo>>>>
-    ) ->  Arc<Mutex<EntityInfo>> {
+        map_lock: &mut RwLockWriteGuard<'_, HashMap<String, Arc<Mutex<EntityInfoNode>>>>
+    ) ->  Arc<Mutex<EntityInfoNode>> {
         let id_upper = id.to_uppercase();
         if let Some(entity) = map_lock.get(&id_upper){
             return entity.clone()
         } else {
-            let new_entity = Arc::new(Mutex::new(EntityInfo::new(id, EntityType::Class)));
+            let new_entity = Arc::new(Mutex::new(EntityInfoNode::new(id, EntityType::Class)));
             map_lock.insert(id_upper.to_uppercase(), new_entity.clone());
             return new_entity
         };
@@ -66,9 +66,20 @@ impl EntityTreeService{
         doc_service.for_each_uri_docinfo( |pair: (&String, &Arc<RwLock<DocumentInfo>>)| {
             
             let (_uri, doc_info) = pair;
-            if let Some(_doc) = doc_info.read().unwrap().get_document(){
-                // TODO store class and parent in doc
-                todo!()
+            if let Some(doc) = doc_info.read().unwrap().get_document(){
+                // generate from entity info
+                if let Some(e_info) = &doc.lock().unwrap().entity_info {
+                    let entity = EntityTreeService::get_or_create_entity(&e_info.id, &mut map_lock);      
+                    if let Some(parent_class) = &e_info.parent{
+                        // if parent doesn't exist
+                        let parent_entity  = EntityTreeService::get_or_create_entity(parent_class, &mut map_lock);
+                        // set parent
+                        entity.lock().unwrap().parent = Some(Arc::downgrade(&parent_entity));
+                        // add as child
+                        parent_entity.lock().unwrap().children.push(entity.clone());
+                    }
+                    return
+                }
             } else {
                 // parse until class info found
                 let path = &doc_info.read().unwrap().file_path;
@@ -140,7 +151,7 @@ impl EntityTreeService{
                                 return;
                             }
                         };
-                        let new_entity = Arc::new(Mutex::new(EntityInfo::new(module_name, EntityType::Module)));
+                        let new_entity = Arc::new(Mutex::new(EntityInfoNode::new(module_name, EntityType::Module)));
                         // add module info
                         map_lock.insert(module_name.to_uppercase(), new_entity);
                         return
@@ -151,7 +162,7 @@ impl EntityTreeService{
         self.logger.log_info(format!("Class tree built in {:#?}; Found {} entities", timer.elapsed(), map_lock.len()).as_str());
     }
 
-    pub fn get_root_class(&self) -> Option<Arc<Mutex<EntityInfo>>>{
+    pub fn get_root_class(&self) -> Option<Arc<Mutex<EntityInfoNode>>>{
         let map_lock =self.class_module_map.read().unwrap();
         let result = map_lock.values().find(|e|{
             // root class is one without parent
@@ -161,7 +172,7 @@ impl EntityTreeService{
         return result.map(|v| {v.clone()})
     }
 
-    pub fn get_entity(&self, id: &str) -> Option<Arc<Mutex<EntityInfo>>>{
+    pub fn get_entity(&self, id: &str) -> Option<Arc<Mutex<EntityInfoNode>>>{
         return self.class_module_map.read().unwrap().get(&id.to_uppercase()).cloned();
     }
 }
@@ -182,6 +193,22 @@ pub mod test{
         let root_uri = create_uri_from_path("./test/workspace");
         let doc_service = create_test_doc_service(Some(root_uri));
         doc_service.index_files();
+        
+        let class_service = create_test_entity_tree_service();
+
+        class_service.build_tree(&doc_service);
+
+        let root_class = class_service.get_root_class().unwrap();
+        assert_eq!(root_class.lock().unwrap().id.as_str(), "aRootClass");
+        // println!("{:#?}", root_class)
+    }
+
+    #[test]
+    fn test_generate_tree_parsed(){
+        let root_uri = create_uri_from_path("./test/workspace");
+        let doc_service = create_test_doc_service(Some(root_uri));
+        doc_service.index_files();
+        let _ = doc_service.get_parsed_document_for_class("aRootClass", true);
         
         let class_service = create_test_entity_tree_service();
 
