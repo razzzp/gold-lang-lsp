@@ -125,8 +125,10 @@ impl TypeHierarchyService{
         let sym_table = self.sem_service.get_symbol_table_for_uri_def_only(uri)?;
         let class_id = sym_table.lock().unwrap().get_class()
             .ok_or(ProjectManagerError::new(format!("Cannot find class for uri {}", uri).as_str(), ErrorCode::InvalidRequest))?;
-        let entity_info = self.entity_tree_service.get_entity(&class_id)
-            .ok_or(ProjectManagerError::new(format!("Cannot find class {}", class_id).as_str(), ErrorCode::InvalidRequest))?;
+        let entity_info = match self.entity_tree_service.get_entity(&class_id){
+            Some(e) => e,
+            _=> return Ok(None)
+        };
         let mut result = Vec::new();
         let children = entity_info.lock().unwrap().children.clone();
         for child in &children {
@@ -141,8 +143,10 @@ impl TypeHierarchyService{
     pub fn type_hierarchy_subtypes(&self, item : &TypeHierarchyItem)
     -> Result<Option<Vec<TypeHierarchyItem>>, ProjectManagerError>{
         if item.kind == SymbolKind::CLASS{
-            let entity_info = self.entity_tree_service.get_entity(&item.name)
-                .ok_or(ProjectManagerError::new(format!("Cannot find class {}", &item.name).as_str(), ErrorCode::InvalidRequest))?;
+            let entity_info = match self.entity_tree_service.get_entity(&item.name){
+                Some(e) => e,
+                _=> return Ok(None)
+            };
             let mut result = Vec::new();
             let children = entity_info.lock().unwrap().children.clone();
             for child in &children{
@@ -193,8 +197,10 @@ impl TypeHierarchyService{
         let sym_table = self.sem_service.get_symbol_table_for_uri_def_only(uri)?;
         let class_id = sym_table.lock().unwrap().get_class()
             .ok_or(ProjectManagerError::new(format!("Cannot find class for uri {}", uri).as_str(), ErrorCode::InvalidRequest))?;
-        let entity_info = self.entity_tree_service.get_entity(&class_id)
-            .ok_or(ProjectManagerError::new(format!("Cannot find class {}", class_id).as_str(), ErrorCode::InvalidRequest))?;
+        let entity_info = match self.entity_tree_service.get_entity(&class_id){
+            Some(e) => e,
+            _=> return Ok(None)
+        };
         let mut result = Vec::new();
         let parent = match &entity_info.lock().unwrap().parent {
             Some(p) => p.upgrade()
@@ -212,8 +218,10 @@ impl TypeHierarchyService{
     pub fn type_hierarchy_supertypes(&self, item : &TypeHierarchyItem)
     -> Result<Option<Vec<TypeHierarchyItem>>, ProjectManagerError>{
         if item.kind == SymbolKind::CLASS{
-            let entity_info = self.entity_tree_service.get_entity(&item.name)
-                .ok_or(ProjectManagerError::new(format!("Cannot find class {}", &item.name).as_str(), ErrorCode::InvalidRequest))?;
+            let entity_info = match self.entity_tree_service.get_entity(&item.name){
+                Some(e) => e,
+                _=> return Ok(None)
+            };
             let mut result = Vec::new();
             let parent = entity_info.lock().unwrap().parent.clone();
             if let Some(parent) = parent {
