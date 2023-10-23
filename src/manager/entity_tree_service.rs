@@ -59,7 +59,7 @@ impl EntityTreeService{
 
         // precompile regex
         let class_regx= Regex::new(r"(?i)^\s*\bclass\s*\b(\w+)\s*(?:\(\s*(\w+)\s*\))?").unwrap();
-        let module_regx = Regex::new(r"(?i)^\s*\bmodule\s*\b(\w+)").unwrap();
+        // let module_regx = Regex::new(r"(?i)^\s*\bmodule\s*\b(\w+)").unwrap();
         let mut map_lock = self.class_module_map.write().unwrap();
         map_lock.clear();
         let mut count : usize = 0;
@@ -144,20 +144,20 @@ impl EntityTreeService{
                         return
                     }
 
-                    // try match module
-                    if let Some(module_match) = module_regx.captures(&str_to_match){
-                        let module_name = match module_match.get(1){
-                            Some(m) => m.as_str(),
-                            _=> {
-                                self.logger.log_error("Internal error; regex capture none");
-                                return;
-                            }
-                        };
-                        let new_entity = Arc::new(Mutex::new(EntityInfoNode::new(module_name, EntityType::Module)));
-                        // add module info
-                        map_lock.insert(module_name.to_uppercase(), new_entity);
-                        return
-                    }
+                    // // try match module
+                    // if let Some(module_match) = module_regx.captures(&str_to_match){
+                    //     let module_name = match module_match.get(1){
+                    //         Some(m) => m.as_str(),
+                    //         _=> {
+                    //             self.logger.log_error("Internal error; regex capture none");
+                    //             return;
+                    //         }
+                    //     };
+                    //     let new_entity = Arc::new(Mutex::new(EntityInfoNode::new(module_name, EntityType::Module)));
+                    //     // add module info
+                    //     map_lock.insert(module_name.to_uppercase(), new_entity);
+                    //     return
+                    // }
                 }
             }
         });
