@@ -62,10 +62,12 @@ impl EntityTreeService{
         let module_regx = Regex::new(r"(?i)^\s*\bmodule\s*\b(\w+)").unwrap();
         let mut map_lock = self.class_module_map.write().unwrap();
         map_lock.clear();
-
+        let mut count : usize = 0;
         doc_service.for_each_uri_docinfo( |pair: (&String, &Arc<RwLock<DocumentInfo>>)| {
             
-            let (_uri, doc_info) = pair;
+            let (uri, doc_info) = pair;
+            count += 1;
+            // self.logger.log_info(format!("Processing no.{} {}", count, uri).as_str());
             if let Some(doc) = doc_info.read().unwrap().get_document(){
                 // generate from entity info
                 if let Some(e_info) = &doc.lock().unwrap().entity_info {
@@ -216,6 +218,22 @@ pub mod test{
 
         let root_class = class_service.get_root_class().unwrap();
         assert_eq!(root_class.lock().unwrap().id.as_str(), "aRootClass");
+        // println!("{:#?}", root_class)
+    }
+
+    #[ignore = "long running time"]
+    #[test]
+    fn test_generate_tree_large(){
+        let root_uri = create_uri_from_path("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        let doc_service = create_test_doc_service(Some(root_uri));
+        doc_service.index_files();
+        
+        let class_service = create_test_entity_tree_service();
+
+        class_service.build_tree(&doc_service);
+
+        let root_class = class_service.get_root_class().unwrap();
+        // assert_eq!(root_class.lock().unwrap().id.as_str(), "aRootClass");
         // println!("{:#?}", root_class)
     }
 }

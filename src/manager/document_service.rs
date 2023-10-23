@@ -73,6 +73,8 @@ impl DocumentService {
     pub fn index_files(&self){
         if self.root_path.is_none() {return};
 
+        self.logger.log_error("Indexing files");
+        let timer = std::time::Instant::now();
         let root_path = self.root_path.as_ref().unwrap().clone();
         let uri_docinfo_map = self.uri_docinfo_map.clone();
         let class_uri_map = self.class_uri_map.clone();
@@ -121,6 +123,12 @@ impl DocumentService {
                     }
                 }
             }
+
+            self.logger.log_info(
+                format!(
+                    "Indexing files done in {:#?}; {} files found", 
+                    timer.elapsed(), 
+                    class_uri_map.read().unwrap().len()).as_str());
             return
         // });
     }
