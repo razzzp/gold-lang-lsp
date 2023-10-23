@@ -84,7 +84,7 @@ pub enum TokenType {
     Return,
     Step,
     Switch,
-    Throw,
+    // Throw,
     To,
     Try,
     Until,

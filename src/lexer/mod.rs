@@ -332,7 +332,7 @@ impl GoldLexer{
             "RETURN" =>self.create_token(pos, TokenType::Return, word),
             "STEP" =>self.create_token(pos, TokenType::Step, word),
             "SWITCH" =>self.create_token(pos, TokenType::Switch, word),
-            "THROW" =>self.create_token(pos, TokenType::Throw, word),
+            // "THROW" =>self.create_token(pos, TokenType::Throw, word),
             "TO" =>self.create_token(pos, TokenType::To, word),
             "TRY" =>self.create_token(pos, TokenType::Try, word),
             "UNTIL" =>self.create_token(pos, TokenType::Until, word),
