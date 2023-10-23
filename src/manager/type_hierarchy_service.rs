@@ -56,12 +56,13 @@ impl TypeHierarchyService{
                 return Ok(Some(vec![type_h_item]));
             }
             SymbolType::Func|SymbolType::Proc => {
+                let func_def_uri = self.sem_service.doc_service.get_uri_for_class(&class)?;
                 let type_h_item= TypeHierarchyItem{
                     name: sym_info.id.to_string(),
                     kind: lsp_types::SymbolKind::FUNCTION,
                     tags: None,
                     detail: Some(class),
-                    uri: uri.clone(),
+                    uri: func_def_uri,
                     range: sym_info.range.as_lsp_type_range(),
                     selection_range: sym_info.selection_range.as_lsp_type_range(),
                     data:None

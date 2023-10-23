@@ -63,7 +63,11 @@ impl EntityTreeService{
         let mut map_lock = self.class_module_map.write().unwrap();
         map_lock.clear();
         let mut count : usize = 0;
-        doc_service.for_each_uri_docinfo( |pair: (&String, &Arc<RwLock<DocumentInfo>>)| {
+        let files_to_process : Vec<(String, Arc<RwLock<DocumentInfo>>)> = doc_service
+            .get_doc_info_mapping()
+            .read().unwrap()
+            .iter().map(|r| (r.0.clone(),r.1.clone())).collect();
+        files_to_process.iter().for_each( |pair: &(String, Arc<RwLock<DocumentInfo>>)| {
             
             let (_uri, doc_info) = pair;
             count += 1;
@@ -81,7 +85,7 @@ impl EntityTreeService{
                         parent_entity.lock().unwrap().children.push(entity.clone());
                     }
                 } else {
-                    self.logger.log_warning(format!("Can't find entity info for {}", doc_info.read().unwrap().uri).as_str())
+                    // self.logger.log_warning(format!("Can't find entity info for {}", doc_info.read().unwrap().uri).as_str())
                 }
                 return;
             } 
@@ -106,7 +110,7 @@ impl EntityTreeService{
                     Ok(size) => {
                         // EOF
                         if size == 0 {
-                            self.logger.log_warning(format!("Can't find entity info for {}", doc_info.read().unwrap().uri).as_str());
+                            // self.logger.log_warning(format!("Can't find entity info for {}", doc_info.read().unwrap().uri).as_str());
                             return;
                         }
                     },
@@ -149,20 +153,21 @@ impl EntityTreeService{
                     return
                 }
 
+                // too heavy
                 // try match module
-                if let Some(module_match) = module_regx.captures(&str_to_match){
-                    let module_name = match module_match.get(1){
-                        Some(m) => m.as_str(),
-                        _=> {
-                            self.logger.log_error("Internal error; regex capture none");
-                            return;
-                        }
-                    };
-                    let new_entity = Arc::new(Mutex::new(EntityInfoNode::new(module_name, EntityType::Module)));
-                    // add module info
-                    map_lock.insert(module_name.to_uppercase(), new_entity);
-                    return
-                }
+                // if let Some(module_match) = module_regx.captures(&str_to_match){
+                //     let module_name = match module_match.get(1){
+                //         Some(m) => m.as_str(),
+                //         _=> {
+                //             self.logger.log_error("Internal error; regex capture none");
+                //             return;
+                //         }
+                //     };
+                //     let new_entity = Arc::new(Mutex::new(EntityInfoNode::new(module_name, EntityType::Module)));
+                //     // add module info
+                //     map_lock.insert(module_name.to_uppercase(), new_entity);
+                //     return
+                // }
             }
 
         });
