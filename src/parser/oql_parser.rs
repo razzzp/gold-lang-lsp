@@ -6,7 +6,7 @@ use super::{IParserContext, ParserDiagnostic, ast::{IAstNode, AstTerminal, AstOQ
 
 
 
-pub fn parse_oql_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) 
+pub fn parse_oql_expr<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) 
 -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>
 {
     return alt_parse_w_context([
@@ -15,7 +15,7 @@ pub fn parse_oql_expr<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[T
     ].as_ref())(input, context);
 }
 
-fn parse_oql_select<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
+fn parse_oql_select<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     //     OQL Select {Top <n>} {Distinct} <Select variable list> 
     //    from {Conditional} {allVersionsOf} {PhantomsToo} <Alias variable 1> in <Class identifier 1>{++ {RestrictTo <ClassId>}} {<OuterJoins>}
     //    {, <Alias variable 2> in <Class 2 identifier>{++ {RestrictTo <ClassId2>}} {<OuterJoins>}...}
@@ -85,7 +85,7 @@ fn parse_oql_select<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Tok
     ))
 }
 
-fn parse_top_n<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
+fn parse_top_n<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, _top_token) = exp_token(TokenType::Top)(input)?;
     return alt_parse_w_context([
         parse_literal_basic,
@@ -93,7 +93,7 @@ fn parse_top_n<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], 
     ].as_ref())(next, context);
 }
 
-fn parse_select_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
+fn parse_select_item<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     return alt_parse_w_context([
         parse_asterisk,
         parse_oql_method_call,
@@ -101,7 +101,7 @@ fn parse_select_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[To
     ].as_ref())(input, context);
 }
 
-fn parse_oql_method_call<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
+fn parse_oql_method_call<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
     // to handle asterisk in method calls
     //  e.g. OQLCount(*)
     let (next, ident_node) = parse_identifier(input, context)?;
@@ -117,7 +117,7 @@ fn parse_oql_method_call<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'
     })))
 }
 
-fn parse_asterisk<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], _context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
+fn parse_asterisk<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], _context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, top_token) = exp_token(TokenType::Asterisk)(input)?;
     return Ok((
         next,
@@ -127,7 +127,7 @@ fn parse_asterisk<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token
     )) 
 }
 
-fn parse_from_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
+fn parse_from_item<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     // [conditional] {alias} in {source_class}[++]
     // conditional
     let (next, cond_token) = opt_parse(exp_token(TokenType::Conditional))(input)?;
@@ -176,7 +176,7 @@ fn parse_from_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     )) 
 }
 
-fn parse_join_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
+fn parse_join_item<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, join_token) = alt_parse([
         exp_ident_with_value("outerjoinon"),
         exp_ident_with_value("leftouterjoinon"),
@@ -197,18 +197,18 @@ fn parse_join_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     ))
 }
 
-fn parse_where<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
+fn parse_where<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, _where_token) = exp_token(TokenType::Where)(input)?;
     return parse_expr(next, context);
 }
 
-fn parse_order_by<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Vec<Arc<dyn IAstNode>>), ParseError<'a>>{
+fn parse_order_by<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Vec<Arc<dyn IAstNode>>), ParseError<'a>>{
     let (next, _order_token) = exp_token(TokenType::Order)(input)?;
     let (next, _by_token) = exp_token(TokenType::By)(next)?;
     return parse_separated_list_w_context(parse_order_by_item, TokenType::Comma)(next, context);
 }
 
-fn parse_order_by_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
+fn parse_order_by_item<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     
     let (next, field_node) = parse_dot_ops(input, context)?;
     let (next, desc_token) = opt_parse(exp_token(TokenType::Descending))(next)?;
@@ -229,7 +229,7 @@ fn parse_order_by_item<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[
     ))
 }
 
-fn parse_oql_fetch<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
+fn parse_oql_fetch<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let(next, oql_token) = exp_token(TokenType::OQL)(input)?;
     let(next, _fetch_token) = exp_token(TokenType::Fetch)(next)?;
     let(next, _into_token) = exp_token(TokenType::Into)(next)?;
@@ -257,7 +257,7 @@ fn parse_oql_fetch<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Toke
     ))
 }
 
-fn parse_using<'a, C: IParserContext<ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
+fn parse_using<'a, C: IParserContext<'a, ParserDiagnostic> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let (next, _using_token) = exp_token(TokenType::Using)(input)?;
     return parse_identifier(next, context);
 }

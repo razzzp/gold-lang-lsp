@@ -300,7 +300,7 @@ pub fn create_closure<T>(
     move |input: &[Token]| -> Result<(&[Token], T), ParseError> { func(input) }
 }
 
-pub fn create_closure_w_context<'a, 'b, T, C: IParserContext<ParserDiagnostic> + 'a>(
+pub fn create_closure_w_context<'a, 'b, T, C: IParserContext<'a, ParserDiagnostic> + 'a>(
     func: &impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], T), ParseError<'a>>,
 ) -> impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], T), ParseError<'a>> + '_{
     move |input: &'a[Token], context: & mut C| -> Result<(&'a[Token], T), ParseError<'a>> { func(input, context) }
@@ -468,7 +468,7 @@ pub fn parse_repeat<'a>(
     return (next, result, errors);
 }
 
-pub fn alt_parse_w_context<'a, 'b, T, C: IParserContext<ParserDiagnostic>>(
+pub fn alt_parse_w_context<'a, 'b, T, C: IParserContext<'a, ParserDiagnostic>>(
     list_of_parsers: &'b [impl Fn(&'a[Token], &mut C) -> Result<(&'a[Token], T), ParseError<'a>>] ,
 ) -> impl Fn(&'a[Token], &mut C) -> Result<(&'a[Token], T), ParseError<'a>> + 'b {
 
@@ -497,7 +497,7 @@ pub fn alt_parse_w_context<'a, 'b, T, C: IParserContext<ParserDiagnostic>>(
 
 /// this version doesn't fail if one item fails to parse
 ///  collect the errors instead
-pub fn parse_separated_list_w_context<'a, T: ?Sized, C: IParserContext<ParserDiagnostic> + 'a>(
+pub fn parse_separated_list_w_context<'a, T: ?Sized, C: IParserContext<'a, ParserDiagnostic> + 'a>(
     parser: impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], Arc<T>), ParseError<'a>>,
     separator: TokenType,
 ) -> impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], Vec<Arc<T>>), ParseError<'a>> {
@@ -528,7 +528,7 @@ pub fn parse_separated_list_w_context<'a, T: ?Sized, C: IParserContext<ParserDia
     }
 }
 
-fn _parse_seperated_list_recursive_w_context<'a, 'b, T:?Sized, C: IParserContext<ParserDiagnostic> + 'a>(
+fn _parse_seperated_list_recursive_w_context<'a, 'b, T:?Sized, C: IParserContext<'a, ParserDiagnostic> + 'a>(
     input: &'a [Token],
     context: &mut C,
     parser: &'b impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], Arc<T>), ParseError<'a>>,
@@ -575,7 +575,7 @@ fn _parse_seperated_list_recursive_w_context<'a, 'b, T:?Sized, C: IParserContext
 /// parses until the tokens are finished,
 ///  if error found it will be added to context,
 ///  then move iter by 1 until all the tokens are consumed
-pub fn parse_repeat_w_context<'a, T:?Sized, C: IParserContext<ParserDiagnostic> + 'a>(
+pub fn parse_repeat_w_context<'a, T:?Sized, C: IParserContext<'a, ParserDiagnostic> + 'a>(
     input: &'a [Token],
     parser: impl Fn(&'a[Token], &mut C)
         -> Result<(&'a[Token], Arc<T>), ParseError<'a>>,
@@ -617,7 +617,7 @@ pub fn parse_repeat_w_context<'a, T:?Sized, C: IParserContext<ParserDiagnostic> 
 }
 
 /// parses using the parser until the stop parser matches
-pub fn parse_until_w_context<'a, T: ?Sized,  C: IParserContext<ParserDiagnostic> + 'a>(
+pub fn parse_until_w_context<'a, T: ?Sized,  C: IParserContext<'a, ParserDiagnostic> + 'a>(
     input: &'a [Token],
     stop_parser: impl Fn(&'a [Token]) -> Result<(&[Token], Token), ParseError>,
     parser: impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token], Arc<T>), ParseError<'a>>,
@@ -675,7 +675,7 @@ pub fn parse_until_w_context<'a, T: ?Sized,  C: IParserContext<ParserDiagnostic>
 /// parses using the parser until it doesn't match
 ///  difference with parse_repeat is that it returns on the
 ///  first non-match
-pub fn parse_until_no_match_w_context<'a, T, C:IParserContext<ParserDiagnostic>>(
+pub fn parse_until_no_match_w_context<'a, T, C:IParserContext<'a, ParserDiagnostic>>(
     input: &'a [Token],
     parser: impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token], T), ParseError<'a>>,
     context: &mut C
@@ -704,7 +704,7 @@ pub fn parse_until_no_match_w_context<'a, T, C:IParserContext<ParserDiagnostic>>
 }
 
 /// Wraps the parser so that it doesn't throw error
-pub fn opt_parse_w_context<'a, T, C: IParserContext<ParserDiagnostic> + 'a>(
+pub fn opt_parse_w_context<'a, T, C: IParserContext<'a, ParserDiagnostic> + 'a>(
     parser: impl Fn(&'a[Token], &mut C) -> Result<(&'a[Token], T), ParseError<'a>>,
 ) -> impl Fn(&'a[Token], &mut C) -> Result<(&'a[Token], Option<T>), ParseError<'a>>  {
     move |input: &'a[Token], context: &mut C| -> Result<(&'a[Token], Option<T>), ParseError<'a>> {
@@ -717,7 +717,7 @@ pub fn opt_parse_w_context<'a, T, C: IParserContext<ParserDiagnostic> + 'a>(
 }
 
 /// parses using the parser until the stop parser matches
-pub fn parse_until_strict_w_context<'a, T: ?Sized, C: IParserContext<ParserDiagnostic> + 'a>(
+pub fn parse_until_strict_w_context<'a, T: ?Sized, C: IParserContext<'a, ParserDiagnostic> + 'a>(
     input: &'a [Token],
     stop_parser: impl Fn(&'a [Token]) -> Result<(&'a [Token], Token), ParseError<'a>>,
     parser: impl Fn(&'a [Token], &mut C) -> Result<(&'a [Token], Arc<T>), ParseError<'a>>,
@@ -753,7 +753,7 @@ pub fn parse_until_strict_w_context<'a, T: ?Sized, C: IParserContext<ParserDiagn
 /// parses using the parser until it doesn't match
 ///  difference with parse_repeat is that it returns on the
 ///  first non-match
-pub fn parse_collect_until_no_match_w_context<'a, I, T: IntoIterator<Item = I>, C:IParserContext<ParserDiagnostic>>(
+pub fn parse_collect_until_no_match_w_context<'a, I, T: IntoIterator<Item = I>, C:IParserContext<'a, ParserDiagnostic>>(
     input: &'a [Token],
     parser: impl Fn(&'a [Token], &mut C) -> Result<(&'a[Token], T), ParseError<'a>>,
     context: &mut C
@@ -782,7 +782,7 @@ pub fn parse_collect_until_no_match_w_context<'a, I, T: IntoIterator<Item = I>, 
 }
 
 /// Returns parser which parses with the given sequence of parsers.
-pub fn seq_parse_w_context<'a, T, C: IParserContext<ParserDiagnostic> + 'a>(
+pub fn seq_parse_w_context<'a, T, C: IParserContext<'a, ParserDiagnostic> + 'a>(
     list_of_parsers: &[impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], T), ParseError<'a>>],
 ) -> impl Fn(&'a[Token], & mut C) -> Result<(&'a[Token], Vec<T>), ParseError<'a>> + '_ {
     move |input: &'a[Token], context: & mut C| -> Result<(&'a[Token], Vec<T>), ParseError<'a>> {
