@@ -96,11 +96,8 @@ fn main_loop(
     logger: Arc<dyn ILoggerV2>,
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let params: InitializeParams = serde_json::from_value(params).unwrap();
-
-    //TODO implem multithreading
     
-    let threadpool = ThreadPool::new(5, logger.clone());
-    // TODO use same logger in server and project manager
+    let threadpool = ThreadPool::new(7, logger.clone());
     let mut proj_manager = match ProjectManager::new(
         params.root_uri,
         logger.clone()
@@ -114,11 +111,10 @@ fn main_loop(
     proj_manager.index_files();
 
     // builds class tree, and tracks modules
-    let class_tree_service = proj_manager.entity_tree_service.clone();
+    let entity_tree_service = proj_manager.entity_tree_service.clone();
     let doc_service = proj_manager.doc_service.clone();
-    threadpool.execute(move ||{
-        class_tree_service.build_tree(&doc_service);
-    });
+    entity_tree_service.build_tree_parallel(&doc_service, &threadpool);
+
 
     // analyze core files (WAM, WF)
     let mut proj_manager_clone = proj_manager.clone();

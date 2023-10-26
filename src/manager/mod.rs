@@ -33,7 +33,7 @@ pub struct ProjectManager{
 impl ProjectManager{
     pub fn new(root_uri : Option<Url>, logger: Arc<dyn ILoggerV2>) -> Result<ProjectManager, ProjectManagerError>{
         let doc_service = DocumentService::new(root_uri.clone(), logger.clone())?;
-        let class_module_tree_service = EntityTreeService::new(logger.clone());
+        let class_module_tree_service = EntityTreeService::new(15_000, logger.clone());
         Ok(ProjectManager{
             doc_service,
             logger,
@@ -255,7 +255,7 @@ impl ProjectManager{
     {   
         let type_hierarchy_service = TypeHierarchyService::new(
             self.create_sem_service(),
-            EntityTreeService::new(self.logger.clone()),
+            self.entity_tree_service.clone(),
             self.logger.clone());
         return type_hierarchy_service.prepare_type_hierarchy(uri, pos);
     }

@@ -3,7 +3,7 @@ use std::{collections::HashMap, sync::{Mutex, Weak, Arc, RwLock, RwLockWriteGuar
 use lsp_types::Url;
 use regex::Regex;
 
-use crate::utils::ILoggerV2;
+use crate::{utils::ILoggerV2, threadpool::ThreadPool};
 
 use super::{document_service::DocumentService, data_structs::DocumentInfo};
 
@@ -29,13 +29,15 @@ impl EntityInfoNode{
 #[derive(Debug, Clone)]
 pub struct EntityTreeService{
     class_module_map : Arc<RwLock<HashMap<String, Arc<Mutex<EntityInfoNode>>>>>,
-    logger : Arc<dyn ILoggerV2>
+    logger : Arc<dyn ILoggerV2>,
+    chunk_size: usize
 }
 impl EntityTreeService{
-    pub fn new(logger: Arc<dyn ILoggerV2>) -> EntityTreeService{
+    pub fn new(chunk_size: usize, logger: Arc<dyn ILoggerV2>) -> EntityTreeService{
         return EntityTreeService { 
             class_module_map: Arc::new(RwLock::new(HashMap::new())),
-            logger
+            logger,
+            chunk_size
         }
     }
 
@@ -51,6 +53,70 @@ impl EntityTreeService{
             map_lock.insert(id_upper.to_uppercase(), new_entity.clone());
             return new_entity
         };
+    }
+
+    fn get_or_create_entity_2(
+        id: &str, 
+        map: &Arc<RwLock<HashMap<String, Arc<Mutex<EntityInfoNode>>>>>
+    ) ->  Arc<Mutex<EntityInfoNode>> {
+        let id_upper = id.to_uppercase();
+        if let Some(entity) = map.read().unwrap().get(&id_upper){
+            return entity.clone()
+        } 
+
+        let new_entity = Arc::new(Mutex::new(EntityInfoNode::new(id, EntityType::Class)));
+        map.write().unwrap().insert(id_upper.to_uppercase(), new_entity.clone());
+        return new_entity
+    }
+
+    pub fn build_tree_parallel(&self, doc_service: &DocumentService, threadpool: &ThreadPool){
+        
+        let timer = std::time::Instant::now();
+        self.logger.log_info("Building Class tree");
+
+        self.class_module_map.write().unwrap().clear();
+
+        let files_to_process : Vec<(String, Arc<RwLock<DocumentInfo>>)> = doc_service
+            .get_doc_info_mapping()
+            .read().unwrap()
+            .iter().map(|r| (r.0.clone(),r.1.clone())).collect();
+
+        let chunks: Vec<Vec<_>> = files_to_process.chunks(self.chunk_size).map(|s| s.into()).collect();
+
+        for chunk in chunks {
+            let map= self.class_module_map.clone();
+            let logger = self.logger.clone();
+            let doc_service = doc_service.clone();
+            threadpool.execute(move ||{
+                chunk.iter().for_each( |pair: &(String, Arc<RwLock<DocumentInfo>>)| {
+                    let (uri, _doc_info) = pair;
+    
+                    let uri = match Url::from_str(uri.as_str()){
+                        Ok(uri) => uri,
+                        _=> return
+                    };
+                    // self.logger.log_info(format!("Processing no.{} {}", count, uri).as_str());
+                    if let Ok(doc) = doc_service.get_parsed_document(&uri, true){
+                        // generate from entity info
+                        if let Some(e_info) = &doc.lock().unwrap().entity_info {
+                            let entity = EntityTreeService::get_or_create_entity_2(&e_info.id, &map);      
+                            if let Some(parent_class) = &e_info.parent{
+                                // if parent doesn't exist
+                                let parent_entity  = EntityTreeService::get_or_create_entity_2(parent_class, &map);
+                                // set parent
+                                entity.lock().unwrap().parent = Some(Arc::downgrade(&parent_entity));
+                                // add as child
+                                parent_entity.lock().unwrap().children.push(entity.clone());
+                            }
+                        } else {
+                            // self.logger.log_warning(format!("Can't find entity info for {}", doc_info.read().unwrap().uri).as_str())
+                        }
+                        return;
+                    } 
+                });
+                logger.log_info(format!("Class tree processed in {:#?}; Found {} entities", timer.elapsed(), map.read().unwrap().len()).as_str());
+            });
+        }
     }
 
     pub fn build_tree(&self, doc_service: &DocumentService){
@@ -94,87 +160,6 @@ impl EntityTreeService{
                 }
                 return;
             } 
-
-            // // parse until class info found
-            // let path = &doc_info.read().unwrap().file_path;
-            // let file = match File::open(path){
-            //     Ok(f) => f,
-            //     Err(e) =>{
-            //         self.logger.log_error(format!("Failed to open file; {}", e).as_str());
-            //         return
-            //     }
-            // };
-
-            // let mut reader = BufReader::new(file);
-            // let mut buf = vec![];
-            
-            // loop {
-            //     buf.clear();
-            //     // read line and try to match with class/module regex
-            //     let _read_size = match reader.read_until(b'\n', &mut buf){
-            //         Ok(size) => {
-            //             // EOF
-            //             if size == 0 {
-            //                 // self.logger.log_warning(format!("Can't find entity info for {}", doc_info.read().unwrap().uri).as_str());
-            //                 return;
-            //             }
-            //         },
-            //         Err(e) => {
-            //             self.logger.log_error(format!("Error reading line; {}", e).as_str());
-            //             return;
-            //         }
-            //     };
-            //     // handle invalid utf-8 chars
-            //     let line = String::from_utf8_lossy(&buf).to_string();
-            //     // regex in rust does not support lookaround...
-            //     // take left side of comments if any
-            //     let str_to_match = match line.split_once(';'){
-            //         // take left side
-            //         Some(r)=> r.0,
-            //         // else use entire line
-            //         _=> &line
-            //     };
-
-            //     // try match class
-            //     if let Some(class_match)= class_regx.captures(&str_to_match){
-            //         let class_name = match class_match.get(1){
-            //             Some(m) => m.as_str(),
-            //             _=> {
-            //                 self.logger.log_error("Internal error; regex capture none");
-            //                 return;
-            //             }
-            //         };
-
-            //         let entity = EntityTreeService::get_or_create_entity(class_name, &mut map_lock);
-                    
-            //         if let Some(parent_class) = class_match.get(2).map(|m|{m.as_str()}){
-            //             // if parent doesn't exist
-            //             let parent_entity  = EntityTreeService::get_or_create_entity(parent_class, &mut map_lock);
-            //             // set parent
-            //             entity.lock().unwrap().parent = Some(Arc::downgrade(&parent_entity));
-            //             // add as child
-            //             parent_entity.lock().unwrap().children.push(entity.clone());
-            //         }
-            //         return
-            //     }
-
-                // too heavy
-                // try match module
-                // if let Some(module_match) = module_regx.captures(&str_to_match){
-                //     let module_name = match module_match.get(1){
-                //         Some(m) => m.as_str(),
-                //         _=> {
-                //             self.logger.log_error("Internal error; regex capture none");
-                //             return;
-                //         }
-                //     };
-                //     let new_entity = Arc::new(Mutex::new(EntityInfoNode::new(module_name, EntityType::Module)));
-                //     // add module info
-                //     map_lock.insert(module_name.to_uppercase(), new_entity);
-                //     return
-                // }
-            // }
-
         });
         self.logger.log_info(format!("Class tree built in {:#?}; Found {} entities", timer.elapsed(), map_lock.len()).as_str());
     }
@@ -196,13 +181,13 @@ impl EntityTreeService{
 
 #[cfg(test)]
 pub mod test{
-    use crate::manager::test::{create_test_doc_service, create_test_logger, create_uri_from_path};
+    use crate::{manager::test::{create_test_doc_service, create_test_logger, create_uri_from_path}, threadpool::ThreadPool};
 
     use super::EntityTreeService;
 
 
     pub fn create_test_entity_tree_service() -> EntityTreeService{
-        return EntityTreeService::new(create_test_logger())
+        return EntityTreeService::new(15_000, create_test_logger())
     }
 
     #[test]
@@ -247,6 +232,24 @@ pub mod test{
 
         class_service.build_tree(&doc_service);
 
+        let root_class = class_service.get_root_class().unwrap();
+        // assert_eq!(root_class.lock().unwrap().id.as_str(), "aRootClass");
+        // println!("{:#?}", root_class)
+    }
+
+    #[ignore = "long running time"]
+    #[test]
+    fn test_generate_tree_large_parallel(){
+        let root_uri = create_uri_from_path("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        let doc_service = create_test_doc_service(Some(root_uri));
+        doc_service.index_files();
+        
+        let threads = ThreadPool::new(4, create_test_logger());
+        let class_service = create_test_entity_tree_service();
+
+        class_service.build_tree_parallel(&doc_service, &threads);
+
+        drop(threads);
         let root_class = class_service.get_root_class().unwrap();
         // assert_eq!(root_class.lock().unwrap().id.as_str(), "aRootClass");
         // println!("{:#?}", root_class)
