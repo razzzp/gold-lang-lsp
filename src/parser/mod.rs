@@ -173,8 +173,6 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Arc<dyn IAstNode>)
    }
    let mut next = input;
    while next.len() > 0 {
-      // have to clear, but i don't know why...
-      context.clear_cache();
 
       let mut most_matched: Option<ParseError> = None;
       match alt_parse_w_context(&block_parsers)(next, &mut context){
@@ -1262,6 +1260,9 @@ fn parse_method_body<'a, C: IParserContext<'a> + 'a>(input : &'a [Token], contex
    if input.len() == 0 {
       return Ok((input, None))
    }
+
+   // have to clear cache, because input is different from original
+   context.clear_cache();
 
    let (next, statements) = parse_repeat_w_context(input, parse_statement_v2, context);
    
