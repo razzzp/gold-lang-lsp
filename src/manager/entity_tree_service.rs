@@ -111,6 +111,8 @@ impl EntityTreeService{
                         } else {
                             // self.logger.log_warning(format!("Can't find entity info for {}", doc_info.read().unwrap().uri).as_str())
                         }
+                        // free memory
+                        drop(doc);
                         return;
                     } 
                 });
