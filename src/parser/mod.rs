@@ -34,16 +34,25 @@ pub trait IParserContext<'a> {
    fn add_diagnostic(&mut self, diagnostic: ParserDiagnostic);
    fn extend_diagnostics<U : IntoIterator<Item = ParserDiagnostic>>(&mut self, diagnostics: U);
    fn get_diagnostics(self)->Vec<ParserDiagnostic>;
-   fn get_cache(&self, cache_num: usize,len: usize) -> Option<Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>>{
-      todo!()
-   }
-   fn set_cache(&mut self, cache_num: usize, len: usize, result: Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>){
-      todo!()
-   }
+   fn get_cache(&self, cache_num: usize,len: usize) -> Option<Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>>;
+   fn set_cache(&mut self, cache_num: usize, len: usize, result: Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>);
 }
 
 pub const CACHE_PARSE_PRIMARY : usize = 0;
-pub const CACHE_PARSE_EXPR : usize = 0;
+pub const CACHE_PARSE_EXPR : usize = 1;
+
+#[derive(Debug,Clone,Copy,PartialEq)]
+pub enum ParseCache{
+   ParsePrimary = 0,
+   ParseExpr,
+   ParseMethodCall,
+}
+
+impl ParseCache {
+   pub fn into_usize(self) -> usize{
+      return self as usize
+   }
+}
 
 
 #[derive(Default)]
@@ -68,6 +77,12 @@ impl<'a> IParserContext<'a> for ParserContext{
     fn get_diagnostics(self)-> Vec<ParserDiagnostic>{
         return self.diagnostics;
     }
+    fn get_cache(&self, cache_num: usize,len: usize) -> Option<Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>>{
+      todo!()
+   }
+   fn set_cache(&mut self, cache_num: usize, len: usize, result: Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>){
+      todo!()
+   }
 }
 
 #[derive(Default)]
@@ -78,6 +93,7 @@ pub struct ParserContext2<'a>{
 impl<'a> ParserContext2<'a>{
    pub fn new()->ParserContext2<'a>{
       let mut cache = Vec::new();
+      cache.push(HashMap::new());
       cache.push(HashMap::new());
       cache.push(HashMap::new());
       return ParserContext2{

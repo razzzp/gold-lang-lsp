@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::{lexer::tokens::{Token, TokenType}, parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstCast, AstUnaryOp, AstMethodCall, AstIfBlock, AstConditionalBlock, AstEmpty, AstForBlock, AstForEachBlock, AstWhileBlock, AstLoopBlock, AstLocalVariableDeclaration, AstReturnNode, AstSetLiteral, AstWhenBlock, AstSwitchBlock}, utils::{create_new_range_from_irange, IRange, create_new_range, Range}};
 
-use super::{ParseError, exp_token, utils::{parse_separated_list_w_context, alt_parse_w_context, parse_until_w_context, parse_until_no_match_w_context, opt_parse_w_context}, alt_parse, parse_type_basic, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::{AstArrayAccess, AstRepeatBlock}, IParserContext, ParserContext, oql_parser::parse_oql_expr, CACHE_PARSE_PRIMARY, CACHE_PARSE_EXPR};
+use super::{ParseError, exp_token, utils::{parse_separated_list_w_context, alt_parse_w_context, parse_until_w_context, parse_until_no_match_w_context, opt_parse_w_context}, alt_parse, parse_type_basic, ParserDiagnostic, parse_comment, opt_parse, parse_type, parse_constant_declaration, parse_uses, parse_type_declaration, ast::{AstArrayAccess, AstRepeatBlock}, IParserContext, ParserContext, oql_parser::parse_oql_expr, CACHE_PARSE_PRIMARY, CACHE_PARSE_EXPR, ParseCache};
 
 /// expr = ident
 ///     | bin_op
@@ -92,17 +92,23 @@ fn parse_literals<'a, C: IParserContext<'a> + 'a >(input: &'a[Token], context : 
 }
 
 fn parse_method_call<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
+    if let Some(cached_result) = context.get_cache(ParseCache::ParseMethodCall.into_usize(),input.len()) {
+        return  cached_result;
+    }
     let (next, ident_node) = parse_identifier(input, context)?;
     let (next, _) = exp_token(TokenType::OBracket)(next)?;
     let (next, parameter_list) = parse_separated_list_w_context(parse_expr, TokenType::Comma)(next, context)?;
     let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
-    return Ok((next, Arc::new(AstMethodCall{
+    let result : Result<(_, Arc<dyn IAstNode>), _> = Ok((next, Arc::new(AstMethodCall{
         raw_pos: ident_node.get_raw_pos(),
         pos: ident_node.get_pos(),
         range: create_new_range_from_irange(ident_node.as_range(), cbracket_token.as_range()),
         identifier: ident_node,
         parameter_list,
-    })))
+    })));
+    context.set_cache(ParseCache::ParseMethodCall.into_usize(),input.len(), result);
+    return context.get_cache(ParseCache::ParseMethodCall.into_usize(), input.len()).unwrap();
+    // return result;
 }
 
 fn _test_parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
@@ -209,7 +215,7 @@ fn parse_unary_op<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context : &
 }
 
 pub fn parse_primary<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
-    if let Some(cached_result) = context.get_cache(CACHE_PARSE_PRIMARY,input.len()) {
+    if let Some(cached_result) = context.get_cache(ParseCache::ParsePrimary.into_usize(),input.len()) {
         return  cached_result;
     }
 
@@ -222,8 +228,8 @@ pub fn parse_primary<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context 
         
     ];
     let result = alt_parse_w_context(&parsers)(input,context);
-    context.set_cache(CACHE_PARSE_PRIMARY,input.len(), result);
-    return context.get_cache(CACHE_PARSE_PRIMARY, input.len()).unwrap();
+    context.set_cache(ParseCache::ParsePrimary.into_usize(),input.len(), result);
+    return context.get_cache(ParseCache::ParsePrimary.into_usize(), input.len()).unwrap();
 }
 
 fn parse_factors<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
@@ -308,15 +314,15 @@ fn parse_logical_or<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context :
 pub fn parse_expr<'a, C: IParserContext<'a> + 'a>(input : &'a [Token], context : &mut C) 
 -> Result<(&'a [Token],  Arc<dyn IAstNode>), ParseError<'a>> 
 {
-    if let Some(cached_result) = context.get_cache(CACHE_PARSE_EXPR,input.len()) {
+    if let Some(cached_result) = context.get_cache(ParseCache::ParseExpr.into_usize(),input.len()) {
         return  cached_result;
     }
     let parser = [
         parse_logical_or,
     ];
     let result =  alt_parse_w_context(&parser)(input, context);
-    context.set_cache(CACHE_PARSE_EXPR, input.len(), result);
-    return context.get_cache(CACHE_PARSE_EXPR, input.len()).unwrap();
+    context.set_cache(ParseCache::ParseExpr.into_usize(), input.len(), result);
+    return context.get_cache(ParseCache::ParseExpr.into_usize(), input.len()).unwrap();
 }
 
 
