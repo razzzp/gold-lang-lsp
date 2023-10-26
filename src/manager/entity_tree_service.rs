@@ -169,7 +169,7 @@ impl EntityTreeService{
         let result = map_lock.values().find(|e|{
             // root class is one without parent
             let lock = e.lock().unwrap();
-            return (lock.entity_type == EntityType::Class) && lock.parent.is_none();
+            return (lock.entity_type == EntityType::Class) && lock.parent.is_none() && lock.children.len()>0;
         }).clone();
         return result.map(|v| {v.clone()})
     }

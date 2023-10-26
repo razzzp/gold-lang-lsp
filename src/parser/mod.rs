@@ -36,6 +36,7 @@ pub trait IParserContext<'a> {
    fn get_diagnostics(self)->Vec<ParserDiagnostic>;
    fn get_cache(&self, cache_num: usize,len: usize) -> Option<Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>>;
    fn set_cache(&mut self, cache_num: usize, len: usize, result: Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>);
+   fn clear_cache(&mut self);
 }
 
 pub const CACHE_PARSE_PRIMARY : usize = 0;
@@ -83,6 +84,10 @@ impl<'a> IParserContext<'a> for ParserContext{
    fn set_cache(&mut self, cache_num: usize, len: usize, result: Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>){
       todo!()
    }
+
+fn clear_cache(&mut self) {
+        todo!()
+    }
 }
 
 #[derive(Default)]
@@ -118,6 +123,10 @@ impl<'a> IParserContext<'a> for ParserContext2<'a>{
     }
     fn set_cache(&mut self, cache_num: usize, len: usize, result: Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>){
       self.cache[cache_num].insert(len, result);
+   }
+
+   fn clear_cache(&mut self) {
+      self.cache.iter_mut().for_each(|m|{m.clear()});
    }
 }
 
@@ -164,6 +173,9 @@ pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Arc<dyn IAstNode>)
    }
    let mut next = input;
    while next.len() > 0 {
+      // have to clear, but i don't know why...
+      context.clear_cache();
+
       let mut most_matched: Option<ParseError> = None;
       match alt_parse_w_context(&block_parsers)(next, &mut context){
          Ok((r,node))=> {
@@ -1276,10 +1288,10 @@ mod test {
 
 use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant, AstModule, AstTypeSized, AstParameterDeclarationList, AstMethodModifiers}, IParserContext, parse_module, parse_gold}, utils::ast_to_string_brief_recursive};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
-   use super::{parse_class, parse_type, ParserContext};
+   use super::{parse_class, parse_type, ParserContext, ParserContext2};
 
-   pub fn create_context()-> ParserContext{
-      return ParserContext::new();
+   pub fn create_context<'a>()-> ParserContext2<'a>{
+      return ParserContext2::new();
   }
 
    pub fn gen_list_of_tokens(list : &[(TokenType, Option<String>)]) -> Vec<Token> {

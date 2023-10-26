@@ -111,11 +111,6 @@ fn parse_method_call<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context 
     // return result;
 }
 
-fn _test_parse_method_call<'a>(input: &'a[Token]) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
-    let mut collector = ParserContext::new();
-    return alt_parse_w_context([parse_method_call].as_ref())(input, &mut collector);
-}
-
 fn parse_array_access<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
     let (next, ident_node) = parse_identifier(input, context)?;
     let (next, _) = exp_token(TokenType::OSqrBracket)(next)?;
@@ -158,19 +153,6 @@ fn parse_bracket_closure<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], cont
     return Ok((next,expr_node))
 }
 
-fn parse_cast<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
-    let (next, type_node) = parse_type_basic(input, context)?;
-    let (next, _) = exp_token(TokenType::OBracket)(next)?;
-    let (next, expr_node) = parse_expr(next, context)?;
-    let (next, cbracket_token) = exp_token(TokenType::CBracket)(next)?;
-    return Ok((next, Arc::new(AstCast{
-        raw_pos: type_node.get_raw_pos(),
-        pos: type_node.get_pos(),
-        range: create_new_range_from_irange(type_node.as_range(), cbracket_token.as_range()),
-        type_node,
-        expr_node
-    })));
-}
 
 fn parse_unary_op_pre<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_parsers = [
@@ -224,12 +206,11 @@ pub fn parse_primary<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context 
         parse_unary_op,
         parse_dot_ops,
         parse_literals,
-        parse_cast,
-        
     ];
     let result = alt_parse_w_context(&parsers)(input,context);
     context.set_cache(ParseCache::ParsePrimary.into_usize(),input.len(), result);
     return context.get_cache(ParseCache::ParsePrimary.into_usize(), input.len()).unwrap();
+    // return result;
 }
 
 fn parse_factors<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
@@ -323,6 +304,7 @@ pub fn parse_expr<'a, C: IParserContext<'a> + 'a>(input : &'a [Token], context :
     let result =  alt_parse_w_context(&parser)(input, context);
     context.set_cache(ParseCache::ParseExpr.into_usize(), input.len(), result);
     return context.get_cache(ParseCache::ParseExpr.into_usize(), input.len()).unwrap();
+    // return result;
 }
 
 
@@ -994,7 +976,7 @@ mod test{
     use crate::parser::test::{check_node_pos_and_range, create_context};
     use crate::utils::{ast_to_string_brief_recursive, ast_to_string_brief, dfs, bfs};
     use crate::{parser::test::gen_list_of_tokens, lexer::tokens::TokenType};
-    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_cast, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block, parse_loop_block, parse_local_var_decl, parse_literal_set, parse_switch_block, parse_repeat_block};
+    use crate::parser::body_parser::{parse_terms, parse_factors, parse_dot_ops, parse_bracket_closure, parse_bit_ops_2, parse_shifts, parse_compare, parse_logical_or, parse_unary_op, parse_method_call, parse_assignment, parse_if_block_v3, parse_for_block, parse_foreach_block, parse_while_block, parse_loop_block, parse_local_var_decl, parse_literal_set, parse_switch_block, parse_repeat_block};
 
     
 
@@ -1018,24 +1000,7 @@ mod test{
         assert_eq!(node.op_token.get_value().deref(), "+");
         assert_eq!(node.right_node.get_identifier(), "Second");
     }
-
-    #[test]
-    fn test_parse_cast(){
-        let input = gen_list_of_tokens(&[
-            (TokenType::Identifier, Some("CastType".to_string())),
-            (TokenType::OBracket, Some("(".to_string())),
-            (TokenType::Identifier, Some("Expression".to_string())),
-            (TokenType::CBracket, Some(")".to_string())),
-        ]);
-        let mut context = create_context();
-        let (next, node) = parse_cast(&input, &mut context).unwrap();
-        assert_eq!(next.len(), 0);
-        check_node_pos_and_range(node.as_ast_node(), &input);
-        let node = node.as_any().downcast_ref::<AstCast>().unwrap();
-        assert_eq!(node.type_node.get_identifier(), "CastType");
-        assert_eq!(node.expr_node.get_identifier(), "Expression");
-    }
-
+    
     #[test]
     fn test_parse_dot_ops(){
         let input = gen_list_of_tokens(&[
