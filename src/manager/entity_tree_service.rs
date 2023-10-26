@@ -114,7 +114,7 @@ impl EntityTreeService{
                         return;
                     } 
                 });
-                logger.log_info(format!("Class tree processed in {:#?}; Found {} entities", timer.elapsed(), map.read().unwrap().len()).as_str());
+                logger.log_info(format!("Building class tree {:#?}; Processed {} entities", timer.elapsed(), map.read().unwrap().len()).as_str());
             });
         }
     }
