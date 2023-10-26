@@ -96,7 +96,7 @@ impl EntityTreeService{
                         _=> return
                     };
                     // self.logger.log_info(format!("Processing no.{} {}", count, uri).as_str());
-                    if let Ok(doc) = doc_service.get_parsed_document(&uri, true){
+                    if let Ok(doc) = doc_service.get_parsed_document_without_caching(&uri, true){
                         // generate from entity info
                         if let Some(e_info) = &doc.lock().unwrap().entity_info {
                             let entity = EntityTreeService::get_or_create_entity_2(&e_info.id, &map);      

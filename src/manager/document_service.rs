@@ -211,6 +211,29 @@ impl DocumentService {
         
     }
 
+    pub fn get_parsed_document_without_caching(&self, uri: &Url, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+        let doc_info = self.get_document_info(uri)?;
+        let read_doc_info = match doc_info.try_read(){
+            Ok(rw_lock) => rw_lock,
+            Err(_) => {
+                if wait_on_lock {doc_info.read().unwrap()}
+                else {return Err(ProjectManagerError::new(format!("doc info locked,{}", uri).as_str(), ErrorCode::RequestFailed))}
+            }
+        };
+        // check opened document
+        if read_doc_info.get_opened_document().is_some() {
+            return Ok(read_doc_info.get_opened_document().unwrap());
+        }
+        // check last saved doc
+        if read_doc_info.get_saved_document().is_some() {
+            return Ok(read_doc_info.get_saved_document().unwrap());
+        } 
+        // if none, read from file
+        let new_doc = self.parse_document(read_doc_info.file_path.as_str())?;
+        return Ok(Arc::new(Mutex::new(new_doc)));
+        
+    }
+
     pub fn notify_document_saved(&self, uri: &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let doc_info = self.get_document_info(uri)?;
         let new_doc = self.parse_document(doc_info.write().unwrap().file_path.as_str())?;
