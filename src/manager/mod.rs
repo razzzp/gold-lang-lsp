@@ -135,27 +135,28 @@ impl ProjectManager{
     pub fn generate_document_symbols(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
         // use lighter sym generator if doc not analyzed yet
         let doc = self.doc_service.get_parsed_document(uri, true)?;
-        if doc.lock().unwrap().annotated_ast.is_none(){
-            let sym_gen = DocumentSymbolGeneratorFromAst::new();
-            let ast = doc.lock().unwrap().ast.clone();
-            return Ok(sym_gen.generate_symbols(ast.as_ast_node()))
-        }
-        // otherwise use symbol table to generate
-        let sym_table = match doc.lock().unwrap().get_symbol_table(){
-            Some(st) => st.clone(),
-            _=> return Err(ProjectManagerError::new("Unable to generate symbol table", ErrorCode::InternalError))
-        };
-        if sym_table.try_lock().is_err() || sym_table.lock().unwrap().iter_symbols().count() == 0{
-            // TODO improve
-            // st locked by analysis so fallback to ast
-            let sym_gen = DocumentSymbolGeneratorFromAst::new();
-            let ast = doc.lock().unwrap().ast.clone();
-            return Ok(sym_gen.generate_symbols(ast.as_ast_node()))
-        }
+        
+        let sym_gen = DocumentSymbolGeneratorFromAst::new();
+        let ast = doc.lock().unwrap().ast.clone();
+        return Ok(sym_gen.generate_symbols(ast.as_ast_node()))
 
-        // can generate using st
-        let sym_gen = DocumentSymbolGenerator {};
-        return Ok(sym_gen.generate_symbols(sym_table))
+        // annotated node may be present but not complete, so just generate from ast
+        // // otherwise use symbol table to generate
+        // let sym_table = match doc.lock().unwrap().get_symbol_table(){
+        //     Some(st) => st.clone(),
+        //     _=> return Err(ProjectManagerError::new("Unable to generate symbol table", ErrorCode::InternalError))
+        // };
+        // if sym_table.try_lock().is_err() || sym_table.lock().unwrap().iter_symbols().count() == 0{
+        //     // TODO improve
+        //     // st locked by analysis so fallback to ast
+        //     let sym_gen = DocumentSymbolGeneratorFromAst::new();
+        //     let ast = doc.lock().unwrap().ast.clone();
+        //     return Ok(sym_gen.generate_symbols(ast.as_ast_node()))
+        // }
+
+        // // can generate using st
+        // let sym_gen = DocumentSymbolGenerator {};
+        // return Ok(sym_gen.generate_symbols(sym_table))
     }
 
     pub fn generate_goto_definitions(&mut self, uri : &Url, pos: &Position) -> Result<Vec<LocationLink>, ProjectManagerError>{
