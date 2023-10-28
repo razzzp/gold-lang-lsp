@@ -54,7 +54,7 @@ impl TypeHierarchyService{
                     data:None
                 };
                 return Ok(vec![type_h_item]);
-            }
+            },
             SymbolType::Func|SymbolType::Proc => {
                 let func_def_uri = self.sem_service.doc_service.get_uri_for_class(&class)?;
                 let type_h_item= TypeHierarchyItem{
@@ -68,7 +68,36 @@ impl TypeHierarchyService{
                     data:None
                 };
                 return Ok(vec![type_h_item]);
-            }
+            },
+            SymbolType::Field => {
+                let field_def_uri = self.sem_service.doc_service.get_uri_for_class(&class)?;
+                let type_h_item= TypeHierarchyItem{
+                    name: sym_info.id.to_string(),
+                    kind: lsp_types::SymbolKind::FIELD,
+                    tags: None,
+                    detail: Some(class),
+                    uri: field_def_uri,
+                    range: sym_info.range.as_lsp_type_range(),
+                    selection_range: sym_info.selection_range.as_lsp_type_range(),
+                    data:None
+                };
+                return Ok(vec![type_h_item]);
+            },
+            // TODO since type subtypes may not have the same name 
+            // SymbolType::Type => {
+            //     let type_uri = self.sem_service.doc_service.get_uri_for_class(&class)?;
+            //     let type_h_item= TypeHierarchyItem{
+            //         name: sym_info.id.to_string(),
+            //         kind: lsp_types::SymbolKind::PROPERTY,
+            //         tags: None,
+            //         detail: Some(class),
+            //         uri: type_uri,
+            //         range: sym_info.range.as_lsp_type_range(),
+            //         selection_range: sym_info.selection_range.as_lsp_type_range(),
+            //         data:None
+            //     };
+            //     return Ok(vec![type_h_item]);
+            // }
             _=> return Ok(Vec::new())
         }
     }
@@ -91,8 +120,12 @@ impl TypeHierarchyService{
         });
     }
 
-    fn generate_method_subtypes_for_entity(&self, entity_info: &Arc<Mutex<EntityInfoNode>>, id: &String)
-    -> Option<Vec<TypeHierarchyItem>>{
+    fn generate_class_member_subtypes_for_entity(
+        &self, 
+        entity_info: &Arc<Mutex<EntityInfoNode>>, 
+        id: &String,
+        for_item: &TypeHierarchyItem
+    )-> Option<Vec<TypeHierarchyItem>>{
         let sym_table = self.sem_service.get_symbol_table_for_class_def_only(&entity_info.lock().unwrap().id).ok()?;
         let mut result = Vec::new();
         // search symbol only at one level
@@ -103,7 +136,7 @@ impl TypeHierarchyService{
                 name: found_sym.id.to_string(),
                 uri,
                 detail: Some(class.clone()),
-                kind: SymbolKind::FUNCTION,
+                kind: for_item.kind,
                 range: found_sym.range.as_lsp_type_range(),
                 selection_range: found_sym.selection_range.as_lsp_type_range(),
                 tags: None,
@@ -113,7 +146,7 @@ impl TypeHierarchyService{
         }
         // if not found in current level check children
         for child in &entity_info.lock().unwrap().children{
-            match self.generate_method_subtypes_for_entity(&child, id) {
+            match self.generate_class_member_subtypes_for_entity(&child, id, for_item) {
                 Some(items) => {result.extend(items);},
                 _=> ()
             }
@@ -121,8 +154,12 @@ impl TypeHierarchyService{
         return Some(result);
     }
 
-    fn generate_method_subtypes(&self, uri : &Url, id: &String)
-    -> Result<Vec<TypeHierarchyItem>, ProjectManagerError>{
+    fn generate_class_member_subtypes(
+        &self, 
+        uri : &Url, 
+        id: &String, 
+        for_item: &TypeHierarchyItem
+    ) -> Result<Vec<TypeHierarchyItem>, ProjectManagerError>{
         let sym_table = self.sem_service.get_symbol_table_for_uri_def_only(uri)?;
         let class_id = sym_table.lock().unwrap().get_class()
             .ok_or(ProjectManagerError::new(format!("Cannot find class for uri {}", uri).as_str(), ErrorCode::InvalidRequest))?;
@@ -133,7 +170,7 @@ impl TypeHierarchyService{
         let mut result = Vec::new();
         let children = entity_info.lock().unwrap().children.clone();
         for child in &children {
-            match self.generate_method_subtypes_for_entity(&child, id){
+            match self.generate_class_member_subtypes_for_entity(&child, id, for_item){
                 Some(items) => {result.extend(items);},
                 _=> ()
             }
@@ -157,16 +194,20 @@ impl TypeHierarchyService{
                 }
             }
             return Ok(result);
-        } else if item.kind == SymbolKind::FUNCTION{
-            return self.generate_method_subtypes(&item.uri, &item.name);
+        } else if item.kind == SymbolKind::FUNCTION || item.kind == SymbolKind::FIELD{
+            return self.generate_class_member_subtypes(&item.uri, &item.name, item);
         } else {
             return Ok(Vec::new());
         }
     }
 
 
-    fn generate_method_supertypes_for_entity(&self, entity_info: &Arc<Mutex<EntityInfoNode>>, id: &String)
-    -> Option<TypeHierarchyItem>{
+    fn generate_method_supertypes_for_entity(
+        &self,
+        entity_info: &Arc<Mutex<EntityInfoNode>>, 
+        id: &String,
+        for_item: &TypeHierarchyItem
+    ) -> Option<TypeHierarchyItem>{
         let sym_table = self.sem_service.get_symbol_table_for_class_def_only(&entity_info.lock().unwrap().id).ok()?;
         // search symbol only at one level
         if let Some((class, found_sym)) = sym_table.lock().unwrap().search_symbol_info(id) {
@@ -176,7 +217,7 @@ impl TypeHierarchyService{
                 name: found_sym.id.to_string(),
                 uri,
                 detail: Some(class.clone()),
-                kind: SymbolKind::FUNCTION,
+                kind: for_item.kind,
                 range: found_sym.range.as_lsp_type_range(),
                 selection_range: found_sym.selection_range.as_lsp_type_range(),
                 tags: None,
@@ -189,12 +230,16 @@ impl TypeHierarchyService{
             Some(p) => p.upgrade()?,
             _=> return None
         };
-        return self.generate_method_supertypes_for_entity(&parent, id);
+        return self.generate_method_supertypes_for_entity(&parent, id, for_item);
     }
 
 
-    fn generate_method_supertypes(&self, uri : &Url, id: &String)
-    -> Result<Vec<TypeHierarchyItem>, ProjectManagerError>{
+    fn generate_method_supertypes(
+        &self, 
+        uri : &Url, 
+        id: &String,
+        for_item: &TypeHierarchyItem
+    ) -> Result<Vec<TypeHierarchyItem>, ProjectManagerError>{
         let sym_table = self.sem_service.get_symbol_table_for_uri_def_only(uri)?;
         let class_id = sym_table.lock().unwrap().get_class()
             .ok_or(ProjectManagerError::new(format!("Cannot find class for uri {}", uri).as_str(), ErrorCode::InvalidRequest))?;
@@ -208,11 +253,10 @@ impl TypeHierarchyService{
                 .ok_or(ProjectManagerError::new(format!("Cannot upgrade parent for {}", class_id).as_str(), ErrorCode::InternalError))?,
             _=> return Ok(Vec::new())
         };
-        match self.generate_method_supertypes_for_entity(&parent, id){
+        match self.generate_method_supertypes_for_entity(&parent, id, for_item){
             Some(item) => {result.push(item)},
             _=> ()
         }
-        
         return Ok(result)
     }
 
@@ -235,8 +279,8 @@ impl TypeHierarchyService{
                 }
             }
             return Ok(result);
-        } else if item.kind == SymbolKind::FUNCTION{
-            return self.generate_method_supertypes(&item.uri, &item.name);
+        } else if item.kind == SymbolKind::FUNCTION || item.kind == SymbolKind::FIELD{
+            return self.generate_method_supertypes(&item.uri, &item.name, item);
         } else {
             return Ok(Vec::new());
         }
@@ -401,5 +445,78 @@ mod test{
         let result = th_service.type_hierarchy_supertypes(&test_item).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name.as_str(), "aFirstLevelClass1Proc");
+    }
+
+    #[test]
+    fn test_field_type_hierarchy_prepare(){
+        let uri = create_uri_from_path("./test/workspace");
+        let doc_service = create_test_doc_service(Some(uri));
+        let tree_service = create_test_entity_tree_service();
+        doc_service.index_files();
+        tree_service.build_tree(&doc_service);
+        let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
+
+        let test_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aFieldTestSecondLevel.god");
+        let test_pos = Position::new(2, 11);
+        let result = th_service.prepare_type_hierarchy(&test_uri, &test_pos).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name.as_str(), "TypeHierarchyField");
+        assert_eq!(result[0].uri, test_uri);
+    }
+
+    #[test]
+    fn test_field_type_hierarchy_subtypes(){
+        let uri = create_uri_from_path("./test/workspace");
+        let doc_service = create_test_doc_service(Some(uri));
+        let tree_service = create_test_entity_tree_service();
+        doc_service.index_files();
+        tree_service.build_tree(&doc_service);
+        let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
+
+        let test_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aFieldTestSecondLevel.god");
+        let expected_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aFieldTestThirdLevel.god");
+        let test_item = TypeHierarchyItem{
+            name:"TypeHierarchyField".to_string(),
+            kind: SymbolKind::FIELD,
+            uri: test_uri,
+            range: lsp_types::Range::default(),
+            selection_range: lsp_types::Range::default(),
+            tags: None,
+            detail: None,
+            data: None,
+        };
+
+        let result = th_service.type_hierarchy_subtypes(&test_item).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name.as_str(), "TypeHierarchyField");
+        assert_eq!(result[0].uri, expected_uri);
+    }
+
+    #[test]
+    fn test_field_type_hierarchy_supertypes(){
+        let uri = create_uri_from_path("./test/workspace");
+        let doc_service = create_test_doc_service(Some(uri));
+        let tree_service = create_test_entity_tree_service();
+        doc_service.index_files();
+        tree_service.build_tree(&doc_service);
+        let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
+
+        let test_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aFieldTestSecondLevel.god");
+        let expected_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aFieldTestFirstLevel.god");
+        let test_item = TypeHierarchyItem{
+            name:"TypeHierarchyField".to_string(),
+            kind: SymbolKind::FIELD,
+            uri: test_uri,
+            range: lsp_types::Range::default(),
+            selection_range: lsp_types::Range::default(),
+            tags: None,
+            detail: None,
+            data: None,
+        };
+
+        let result = th_service.type_hierarchy_supertypes(&test_item).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name.as_str(), "TypeHierarchyField");
+        assert_eq!(result[0].uri, expected_uri);
     }
 }

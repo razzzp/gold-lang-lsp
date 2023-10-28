@@ -12,16 +12,16 @@ pub trait IAnnotatedNodeVisitor: {
 }
 
 
-pub struct AnnotatedAstWalker<V>
+pub struct AnnotatedAstWalkerPreOrder<V>
 where V: IAnnotatedNodeVisitor + ?Sized
 {
     visitors: Vec<Box<V>>,
 }
-impl<V> AnnotatedAstWalker<V>
+impl<V> AnnotatedAstWalkerPreOrder<V>
 where V: IAnnotatedNodeVisitor + ?Sized
 {
-    pub fn new() -> AnnotatedAstWalker<V>{
-        return AnnotatedAstWalker{
+    pub fn new() -> AnnotatedAstWalkerPreOrder<V>{
+        return AnnotatedAstWalkerPreOrder{
             visitors: Vec::new()
         };
     }
@@ -29,24 +29,10 @@ where V: IAnnotatedNodeVisitor + ?Sized
     fn walk_tree(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
         self.visit(node);
         for child in &node.read().unwrap().children {
-            // first level are definitions, so visit first (preorder)
-            self.visit(child);
-
-            // everything under, travel postorder
-            // (process children first)
-            for inner_child in &child.read().unwrap().children{
-                self.walk_tree_postorder(inner_child)
-            }
+            self.walk_tree(child);
         }
     }
 
-    fn walk_tree_postorder(&mut self, node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
-        for child in &node.read().unwrap().children {
-                self.walk_tree_postorder(child)
-        }
-        self.visit(node);
-    }
-    
     fn visit(&mut self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
         for visitor in self.visitors.iter_mut(){
             visitor.visit(node)
