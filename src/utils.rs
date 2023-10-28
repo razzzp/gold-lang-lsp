@@ -175,6 +175,9 @@ impl Range{
         if *pos >= self.start && *pos <= self.end {return true} 
         return false
     }
+    pub fn to_string_brief(&self) -> String{
+        format!("[s{}:e{}]", self.start.to_string_brief(), self.end.to_string_brief())
+    }
 }
 impl From<lsp_types::Range> for Range {
     fn from(value: lsp_types::Range) -> Self {

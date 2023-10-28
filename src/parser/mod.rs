@@ -886,15 +886,15 @@ fn parse_procedure_declaration<'a, C: IParserContext<'a> + 'a>(input : &'a [Toke
       let body_tokens; 
       (next, body_tokens, end_method_token) = take_until([TokenType::EndProc, TokenType::End].as_ref())(next)?;
       match parse_method_body(body_tokens, context){
-         Ok((_, mut node)) => {
-            if node.is_none() {
-               node = Some(AstMethodBody{
+         Ok((_, node)) => {
+            let node = if node.is_none() {
+               AstMethodBody{
                   raw_pos: end.get_raw_pos(),
                   range: end.get_range(),
                   statements: Vec::new()
-               });
-            }
-            method_body = node;
+               }
+            } else {node.unwrap()};
+            method_body = Some(node);
          },
          Err(e) => return Err(e)
       }
@@ -1266,9 +1266,19 @@ fn parse_method_body<'a, C: IParserContext<'a> + 'a>(input : &'a [Token], contex
 
    let (next, statements) = parse_repeat_w_context(input, parse_statement_v2, context);
    
-   let raw_pos = input.first().unwrap().get_raw_pos();
-   let start_range = input.first().unwrap().get_range();
-   let end_range = input.last().unwrap().get_range();
+   let raw_pos; let start_range; let end_range;
+   if let Some(first_statement) = statements.first(){
+      // if first present last will also be present
+
+      let last_statement =statements.last().unwrap();
+      raw_pos = first_statement.get_raw_pos();
+      start_range = first_statement.get_range();
+      end_range = last_statement.get_range();
+   } else{
+      raw_pos = input.first().unwrap().get_raw_pos();
+      start_range = input.first().unwrap().get_range();
+      end_range = input.last().unwrap().get_range();
+   }
    // range is until the endProc
    let range = create_new_range(start_range, end_range);
    return Ok((

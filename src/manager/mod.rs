@@ -6,7 +6,7 @@ use regex::Regex;
 use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2, IDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
 use data_structs::*;
 
-use self::{semantic_analysis_service::SemanticAnalysisService, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, entity_tree_service::EntityTreeService, type_hierarchy_service::TypeHierarchyService, unpurged_varbytearray_checker::UnpurgedVarByteArrayChecker, annotated_ast_walker::{AnnotatedAstWalkerPreOrder, IAnnotatedNodeVisitor}};
+use self::{semantic_analysis_service::SemanticAnalysisService, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, entity_tree_service::EntityTreeService, type_hierarchy_service::TypeHierarchyService, unpurged_varbytearray_checker::UnpurgedVarByteArrayChecker, annotated_ast_walker::{AnnotatedAstWalkerPreOrder, IAnnotatedNodeVisitor}, naming_convention_checker::NamingConventionChecker};
 
 pub mod data_structs;
 pub mod semantic_analysis_service;
@@ -23,6 +23,7 @@ pub mod entity_tree_service;
 pub mod type_hierarchy_service;
 pub mod annotated_ast_walker;
 pub mod unpurged_varbytearray_checker;
+pub mod naming_convention_checker;
 
 #[derive(Debug, Clone)]
 pub struct ProjectManager{
@@ -223,17 +224,21 @@ impl ProjectManager{
         let sem_service  = self.create_sem_service();
         let doc = sem_service.analyze(doc, false).ok()?;
         let annotated_ast = doc.lock().unwrap().annotated_ast.as_ref()?.clone();
+        // wait for annonation to finish if locked
         let annotation_done_flag = doc.lock().unwrap().annotation_done.clone();
         drop(annotation_done_flag.lock().unwrap());
 
         // prepare analyzers
         let diag_collector = Arc::new(Mutex::new(GenericDiagnosticCollector::<Diagnostic>::new()));
         let unpurged_checker: Box<dyn IAnnotatedNodeVisitor> = 
-        Box::new(UnpurgedVarByteArrayChecker::new(diag_collector.clone()));
+            Box::new(UnpurgedVarByteArrayChecker::new(diag_collector.clone()));
+        let name_checker: Box<dyn IAnnotatedNodeVisitor> = 
+            Box::new(NamingConventionChecker::new(diag_collector.clone()));
 
         // analyze
         let mut walker = AnnotatedAstWalkerPreOrder::new();
         walker.register_visitor(unpurged_checker);
+        walker.register_visitor(name_checker);
         walker.walk(&annotated_ast);
 
         let diags = diag_collector.lock().unwrap().take_diagnostics();

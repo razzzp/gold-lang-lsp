@@ -7,12 +7,13 @@ use crate::{utils::{IDiagnosticCollector, Range, IRange}, parser::ast::{IAstNode
 use super::{annotated_ast_walker::IAnnotatedNodeVisitor, annotated_node::AnnotatedNode, utils::DIAGNOSTIC_SOURCE_GOLD};
 
 
-
+#[derive(Debug)]
 pub struct UnpurgedVarByteArrayChecker{
     diag_collector: Arc<Mutex<dyn IDiagnosticCollector<lsp_types::Diagnostic>>>,
     byte_array_seen: HashMap<String, Info>,
 }
 
+#[derive(Debug)]
 pub struct Info{
     range: Range,
     is_purged: bool,
@@ -44,7 +45,7 @@ impl UnpurgedVarByteArrayChecker{
     fn handle_method_decl(&mut self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
         // clear context if entering a new method
         match node.read().unwrap().data.as_any().downcast_ref::<AstProcedure>(){
-            Some(node) => {
+            Some(_) => {
                 // add diags for unpurged
                 self.generate_diags_for_unpurged();
                 self.byte_array_seen.clear()
@@ -52,7 +53,7 @@ impl UnpurgedVarByteArrayChecker{
             _=>()
         }
         match node.read().unwrap().data.as_any().downcast_ref::<AstFunction>(){
-            Some(node) => {
+            Some(_) => {
                 // add diags for unpurged
                 self.generate_diags_for_unpurged();
                 self.byte_array_seen.clear()

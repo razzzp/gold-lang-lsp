@@ -77,6 +77,10 @@ pub trait IAstNode: std::fmt::Debug + IRange + Send + Sync{
         format!("{}:{}", self.get_identifier(), self.get_pos().to_string_brief())
 
     }
+    fn to_string_type_range(&self) -> String {
+        format!("{}:{}", self.to_string_type(), self.get_range().to_string_brief())
+
+    }
     fn to_string_type(&self) -> String {
         todo!()
     }

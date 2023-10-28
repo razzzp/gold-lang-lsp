@@ -41,4 +41,5 @@ endProc
 
 proc ThirdProc
    var type_var: tRootRecordType
+
 endProc
