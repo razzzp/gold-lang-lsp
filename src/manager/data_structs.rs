@@ -16,7 +16,8 @@ pub struct Document{
     pub analyzer_diagnostics: Option<Arc<Vec<lsp_types::Diagnostic>>>,
     pub annotated_ast: Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>,
     pub only_definitions : bool,
-    pub entity_info: Option<EntityInfo>
+    pub entity_info: Option<EntityInfo>,
+    pub annotation_done: Arc<Mutex<()>>
 }
 impl Document{
     pub fn new(
@@ -30,7 +31,8 @@ impl Document{
             analyzer_diagnostics:None,
             annotated_ast: None,
             only_definitions: false,
-            entity_info
+            entity_info,
+            annotation_done: Arc::new(Mutex::new(()))
         };
     }
     pub fn get_ast<'a>(&'a self) -> &'a Arc<dyn IAstNode>{

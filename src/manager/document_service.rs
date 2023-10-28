@@ -363,14 +363,14 @@ mod test{
 
     #[test]
     fn test_index_file(){
-        let path = PathBuf::from("./test/workspace");
+        let path = PathBuf::from("./test/workspace/TestIndexFiles");
         let path =  fs::canonicalize(&path).unwrap().to_str().unwrap().to_string();
         let uri = Url::from_file_path(path.clone()).unwrap();
 
         let doc_manager = DocumentService::new(Some(uri), create_test_logger()).unwrap();
         doc_manager.index_files();
         
-        assert_eq!(doc_manager.uri_docinfo_map.read().unwrap().len(), 17);
+        assert_eq!(doc_manager.uri_docinfo_map.read().unwrap().len(), 2);
         // ensure not locked
         drop(doc_manager.uri_docinfo_map.try_write().unwrap());
         drop(doc_manager.class_uri_map.try_write().unwrap());

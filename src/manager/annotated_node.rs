@@ -76,4 +76,10 @@ impl<T: IAstNode+ ?Sized> AnnotatedNode<T>{
     pub fn as_annotated_node(&self)->&AnnotatedNode<T>{
         self
     }
+    pub fn get_identifier(&self) -> &str{
+        self.data.get_identifier()
+    }
+    pub fn get_parent(&self) -> Option<Arc<RwLock<AnnotatedNode<T>>>>{
+        return self.parent.as_ref()?.upgrade()
+    }
 }

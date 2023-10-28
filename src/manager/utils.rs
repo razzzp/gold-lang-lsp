@@ -4,6 +4,7 @@ use crate::{parser::ast::{IAstNode, AstBinaryOp}, utils::Position, lexer::tokens
 
 use super::{annotated_node::{AnnotatedNode, EvalType}, symbol_table::{SymbolInfo, ISymbolTable}, semantic_analysis_service::SemanticAnalysisService};
 
+pub const DIAGNOSTIC_SOURCE_GOLD: &'static str = "gold";
 
 /// searches for the smallest annotated node encasing the given position
 pub fn search_encasing_node(node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, pos : &Position)

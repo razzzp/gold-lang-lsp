@@ -1,7 +1,6 @@
-use std::{collections::HashMap, sync::{Mutex, Weak, Arc, RwLock, RwLockWriteGuard}, fs::File, io::{BufReader, BufRead}, str::FromStr};
+use std::{collections::HashMap, sync::{Mutex, Weak, Arc, RwLock, RwLockWriteGuard}, str::FromStr};
 
 use lsp_types::Url;
-use regex::Regex;
 
 use crate::{utils::ILoggerV2, threadpool::ThreadPool};
 
@@ -127,8 +126,8 @@ impl EntityTreeService{
         self.logger.log_info("Building Class tree");
 
         // precompile regex
-        let class_regx= Regex::new(r"(?i)^\s*\bclass\s*\b(\w+)\s*(?:\(\s*(\w+)\s*\))?").unwrap();
-        let module_regx = Regex::new(r"(?i)^\s*\bmodule\s*\b(\w+)").unwrap();
+        // let class_regx= Regex::new(r"(?i)^\s*\bclass\s*\b(\w+)\s*(?:\(\s*(\w+)\s*\))?").unwrap();
+        // let module_regx = Regex::new(r"(?i)^\s*\bmodule\s*\b(\w+)").unwrap();
         let mut map_lock = self.class_module_map.write().unwrap();
         map_lock.clear();
         let mut count : usize = 0;
@@ -138,7 +137,7 @@ impl EntityTreeService{
             .iter().map(|r| (r.0.clone(),r.1.clone())).collect();
         files_to_process.iter().for_each( |pair: &(String, Arc<RwLock<DocumentInfo>>)| {
             
-            let (uri, doc_info) = pair;
+            let (uri, _doc_info) = pair;
             count += 1;
             let uri = match Url::from_str(uri.as_str()){
                 Ok(uri) => uri,
@@ -234,7 +233,7 @@ pub mod test{
 
         class_service.build_tree(&doc_service);
 
-        let root_class = class_service.get_root_class().unwrap();
+        let _root_class = class_service.get_root_class().unwrap();
         // assert_eq!(root_class.lock().unwrap().id.as_str(), "aRootClass");
         // println!("{:#?}", root_class)
     }
@@ -252,7 +251,7 @@ pub mod test{
         class_service.build_tree_parallel(&doc_service, &threads);
 
         drop(threads);
-        let root_class = class_service.get_root_class().unwrap();
+        let _root_class = class_service.get_root_class().unwrap();
         // assert_eq!(root_class.lock().unwrap().id.as_str(), "aRootClass");
         // println!("{:#?}", root_class)
     }

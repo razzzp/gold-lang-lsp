@@ -1,14 +1,12 @@
 use std::{rc::Rc, sync::{Arc, Mutex}, cell::RefCell, str::FromStr};
 
-use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink, CompletionItem, TypeHierarchyItem};
 use regex::Regex;
 
-use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
+use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2, IDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
 use data_structs::*;
 
-use self::{semantic_analysis_service::SemanticAnalysisService, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, entity_tree_service::EntityTreeService, type_hierarchy_service::TypeHierarchyService};
-use crate::manager::doc_symbol_generator::DocumentSymbolGenerator;
+use self::{semantic_analysis_service::SemanticAnalysisService, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, entity_tree_service::EntityTreeService, type_hierarchy_service::TypeHierarchyService, unpurged_varbytearray_checker::UnpurgedVarByteArrayChecker, annotated_ast_walker::{AnnotatedAstWalkerPreOrder, IAnnotatedNodeVisitor}};
 
 pub mod data_structs;
 pub mod semantic_analysis_service;
@@ -24,6 +22,7 @@ pub mod completion_service;
 pub mod entity_tree_service;
 pub mod type_hierarchy_service;
 pub mod annotated_ast_walker;
+pub mod unpurged_varbytearray_checker;
 
 #[derive(Debug, Clone)]
 pub struct ProjectManager{
@@ -208,7 +207,7 @@ impl ProjectManager{
     pub fn generate_document_diagnostic_report(&mut self, uri : &Url)
     -> Result<Arc<RelatedFullDocumentDiagnosticReport>, ProjectManagerError>{
         let doc = self.doc_service.get_parsed_document(uri, true)?;
-        let diagnostics = self.get_diagnostics(doc)?;
+        let diagnostics = self.generate_diagnostics(doc)?;
         return Ok(Arc::new(RelatedFullDocumentDiagnosticReport{
             related_documents: None,
             full_document_diagnostic_report: FullDocumentDiagnosticReport{
@@ -218,7 +217,30 @@ impl ProjectManager{
         }))
     }
 
-    fn get_diagnostics(&self, doc: Arc<Mutex<Document>>) -> Result<Vec<Diagnostic>, ProjectManagerError>{
+    /// analyzes doc and generates diags
+    fn generate_diags_on_annotated_ast(&self, doc: Arc<Mutex<Document>>) -> Option<Vec<Diagnostic>>{
+
+        let sem_service  = self.create_sem_service();
+        let doc = sem_service.analyze(doc, false).ok()?;
+        let annotated_ast = doc.lock().unwrap().annotated_ast.as_ref()?.clone();
+        let annotation_done_flag = doc.lock().unwrap().annotation_done.clone();
+        drop(annotation_done_flag.lock().unwrap());
+
+        // prepare analyzers
+        let diag_collector = Arc::new(Mutex::new(GenericDiagnosticCollector::<Diagnostic>::new()));
+        let unpurged_checker: Box<dyn IAnnotatedNodeVisitor> = 
+        Box::new(UnpurgedVarByteArrayChecker::new(diag_collector.clone()));
+
+        // analyze
+        let mut walker = AnnotatedAstWalkerPreOrder::new();
+        walker.register_visitor(unpurged_checker);
+        walker.walk(&annotated_ast);
+
+        let diags = diag_collector.lock().unwrap().take_diagnostics();
+        return Some(diags)
+    }
+
+    fn generate_diagnostics(&self, doc: Arc<Mutex<Document>>) -> Result<Vec<Diagnostic>, ProjectManagerError>{
         let mut result: Vec<Diagnostic> = doc.lock().unwrap().get_parser_diagnostics().iter()
             .map(|gold_error| {
                 Diagnostic::new(
@@ -230,8 +252,10 @@ impl ProjectManager{
                     None, 
                     None)
             }).collect();
-        let analyzer_diags = self.get_analyzer_diagnostics(doc)?;
+        let analyzer_diags = self.get_analyzer_diagnostics(doc.clone())?;
         analyzer_diags.iter().for_each(|d|{result.push(d.clone())});
+        result.extend(self.generate_diags_on_annotated_ast(doc.clone()).unwrap_or_default());
+
         return Ok(result);
     }
 

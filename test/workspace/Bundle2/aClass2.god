@@ -1,3 +1,2 @@
-class aClass2 (aRootClass)
+class aClass6 (aRootClass)
 
-uses aClass5

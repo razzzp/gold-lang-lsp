@@ -52,6 +52,10 @@ impl AstAnnotator{
     pub fn annotate_doc(&mut self, doc: Arc<Mutex<Document>>) -> 
     Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let root_node = doc.lock().unwrap().get_ast().clone();
+        // lock flag to let other services know, annotation is still in progress
+        let annotation_done_flag = doc.lock().unwrap().annotation_done.clone();
+        let _flag_lock = annotation_done_flag.lock().unwrap();
+
         let annotated_tree = self.generate_annotated_tree(&root_node);
 
         // assign root st to root node
