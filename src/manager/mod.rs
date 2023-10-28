@@ -23,6 +23,7 @@ pub mod utils;
 pub mod completion_service;
 pub mod entity_tree_service;
 pub mod type_hierarchy_service;
+pub mod annotated_ast_walker;
 
 #[derive(Debug, Clone)]
 pub struct ProjectManager{
