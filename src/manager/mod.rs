@@ -239,7 +239,7 @@ impl ProjectManager{
         &mut self,
         uri : &Url, 
         pos : &Position,
-    ) -> Result<Option<Vec<CompletionItem>>, ProjectManagerError>
+    ) -> Result<Vec<CompletionItem>, ProjectManagerError>
     {   
         let completion_service = CompletionService::new(
             self.doc_service.clone(), 
@@ -253,7 +253,7 @@ impl ProjectManager{
         &mut self,
         uri : &Url, 
         pos : &Position,
-    ) -> Result<Option<Vec<TypeHierarchyItem>>, ProjectManagerError>
+    ) -> Result<Vec<TypeHierarchyItem>, ProjectManagerError>
     {   
         let type_hierarchy_service = TypeHierarchyService::new(
             self.create_sem_service(),
@@ -265,7 +265,7 @@ impl ProjectManager{
     pub fn type_hierarchy_subtypes(
         &mut self,
         item : &TypeHierarchyItem
-    ) -> Result<Option<Vec<TypeHierarchyItem>>, ProjectManagerError>
+    ) -> Result<Vec<TypeHierarchyItem>, ProjectManagerError>
     {   
         let type_hierarchy_service = TypeHierarchyService::new(
             self.create_sem_service(),
@@ -277,7 +277,7 @@ impl ProjectManager{
     pub fn type_hierarchy_supertypes(
         &mut self,
         item: &TypeHierarchyItem
-    ) -> Result<Option<Vec<TypeHierarchyItem>>, ProjectManagerError>
+    ) -> Result<Vec<TypeHierarchyItem>, ProjectManagerError>
     {   
         let type_hierarchy_service = TypeHierarchyService::new(
             self.create_sem_service(),

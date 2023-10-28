@@ -476,15 +476,11 @@ fn handle_completion_request(
         Ok(items) => items,
         Err(e) => return Err((e.error_code as i32, e.msg))
     };
-    let result = match completion_items{
-        Some(items) => {
-            let result = CompletionResponse::Array(items);
-            let result = serde_json::to_value(&result).unwrap();
-            Some(result)
-        },
-        _=> None
-    };
-    let resp = Response { id, result, error: None };
+    
+    let result = CompletionResponse::Array(completion_items);
+    let result = serde_json::to_value(&result).unwrap();
+           
+    let resp = Response { id, result: Some(result), error: None };
     return Ok(Message::Response(resp));
 }
 
@@ -503,8 +499,8 @@ fn handle_type_hierarchy_prepare_request(
     ).map_err(|e|{return (e.error_code as i32, e.msg);})?;
 
 
-    let result = type_hierarchy_items.map(|items|{serde_json::to_value(items).unwrap()});
-    let resp = Response { id, result, error: None };
+    let result = serde_json::to_value(type_hierarchy_items).unwrap();
+    let resp = Response { id, result: Some(result), error: None };
     return Ok(Message::Response(resp));
 }
 
@@ -522,8 +518,8 @@ fn handle_type_hierarchy_subtypes_request(
     ).map_err(|e|{return (e.error_code as i32, e.msg);})?;
 
 
-    let result = type_hierarchy_items.map(|items|{serde_json::to_value(items).unwrap()});
-    let resp = Response { id, result, error: None };
+    let result = serde_json::to_value(type_hierarchy_items).unwrap();
+    let resp = Response { id, result: Some(result), error: None };
     return Ok(Message::Response(resp));
 }
 
@@ -540,8 +536,8 @@ fn handle_type_hierarchy_supertypes_request(
         &params.item
     ).map_err(|e|{return (e.error_code as i32, e.msg);})?;
 
-    let result = type_hierarchy_items.map(|items|{serde_json::to_value(items).unwrap()});
-    let resp = Response { id, result, error: None };
+    let result = serde_json::to_value(type_hierarchy_items).unwrap();
+    let resp = Response { id, result: Some(result), error: None };
     return Ok(Message::Response(resp));
 }
 

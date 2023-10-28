@@ -99,12 +99,12 @@ impl CompletionService{
         &self,
         entity: &str,
         st: &Arc<Mutex<dyn ISymbolTable>>,
-    ) -> Result<Option<Vec<CompletionItem>>, ProjectManagerError>
+    ) -> Result<Vec<CompletionItem>, ProjectManagerError>
     {
         // search right node in class
         let uri = match self.doc_service.get_uri_for_class(&entity){
             Ok(u) => u,
-            _=> return Ok(None),
+            _=> return Ok(Vec::new()),
         };
         // if class is self don't call sem service, because it will fail
         let class_sym_table = if uri == self.source_uri{
@@ -112,11 +112,11 @@ impl CompletionService{
         } else {
             match self.semantic_analysis_service.get_symbol_table_for_class_def_only(&entity){
                 Ok(st) => st,
-                _=> return Ok(None)
+                _=> return Ok(Vec::new())
             }
         };
         // don't search uses because the member should be in the st itself
-        return Ok(Some(self.generate_completion_items_rhs(&class_sym_table)))
+        return Ok(self.generate_completion_items_rhs(&class_sym_table))
     }
 
     fn generate_for_node(
@@ -124,7 +124,7 @@ impl CompletionService{
         node: &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>,
         st: &Arc<Mutex<dyn ISymbolTable>>,
         pos: &Position
-    ) -> Result<Option<Vec<CompletionItem>>, ProjectManagerError> {
+    ) -> Result<Vec<CompletionItem>, ProjectManagerError> {
         if let Some(dot_op) = check_dot_ops(node){
             let lock = dot_op.read().unwrap();
             let dot_op_node = lock.data.as_any().downcast_ref::<AstBinaryOp>().unwrap(); 
@@ -141,11 +141,11 @@ impl CompletionService{
                         // search right node in class
                         return self.generate_rhs_of_entity(&module_name, st);
                     },
-                    _=> return Ok(None),
+                    _=> return Ok(Vec::new()),
                 }
             } else {
                 // if left node, just search sym table
-                return Ok(Some(self.generate_completion_items_lhs(st)))
+                return Ok(self.generate_completion_items_lhs(st))
             }
         } else if let Some(dot_op_parent) = check_parent_dot_ops(node){
             let parent_lock = dot_op_parent.read().unwrap();
@@ -154,7 +154,7 @@ impl CompletionService{
             let left_node = &bin_op_node.left_node;
             if Arc::ptr_eq(left_node, &node.read().unwrap().data){
                 // if left node, just search sym table
-                return Ok(Some(self.generate_completion_items_lhs(st)))
+                return Ok(self.generate_completion_items_lhs(st))
             } else {
                 // if right node, check left node type first
                 let left_node_type = parent_lock.children[0].read().unwrap().eval_type.clone().unwrap_or_default();
@@ -167,19 +167,19 @@ impl CompletionService{
                         // search right node in class
                         return self.generate_rhs_of_entity(&module_name, st);
                     },
-                    _=> return Ok(None),
+                    _=> return Ok(Vec::new()),
                 }
             }
         } else {
             // enough to check symbol table in current doc
-            return Ok(Some(self.generate_completion_items_lhs(st)))
+            return Ok(self.generate_completion_items_lhs(st))
         }
     }
 
     pub fn generate_completion_proposals(
         &self,
         pos: &Position,
-    ) -> Result<Option<Vec<CompletionItem>>, ProjectManagerError>
+    ) -> Result<Vec<CompletionItem>, ProjectManagerError>
     {
         let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri, false)?;
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
@@ -225,7 +225,7 @@ mod test {
         let completion_service = create_test_completion_service(
             proj_manager.doc_service.clone(), test_input.clone());
 
-        let mut result = completion_service.generate_completion_proposals(&pos_input).unwrap().unwrap();
+        let mut result = completion_service.generate_completion_proposals(&pos_input).unwrap();
 
         assert_eq!(result.len(), 10);
         let prop = result.pop().unwrap();
@@ -243,7 +243,7 @@ mod test {
         let completion_service = create_test_completion_service(
             proj_manager.doc_service.clone(), test_input.clone());
 
-        let mut result = completion_service.generate_completion_proposals(&pos_input).unwrap().unwrap();
+        let mut result = completion_service.generate_completion_proposals(&pos_input).unwrap();
 
         assert_eq!(result.len(), 10);
         let prop = result.pop().unwrap();
@@ -261,7 +261,7 @@ mod test {
         let completion_service = create_test_completion_service(
             proj_manager.doc_service.clone(), test_input.clone());
 
-        let mut result = completion_service.generate_completion_proposals(&pos_input).unwrap().unwrap();
+        let mut result = completion_service.generate_completion_proposals(&pos_input).unwrap();
 
         assert_eq!(result.len(), 9);
         let prop = result.pop().unwrap();
@@ -279,7 +279,7 @@ mod test {
         let completion_service = create_test_completion_service(
             proj_manager.doc_service.clone(), test_input.clone());
 
-        let mut result = completion_service.generate_completion_proposals(&pos_input).unwrap().unwrap();
+        let mut result = completion_service.generate_completion_proposals(&pos_input).unwrap();
 
         assert_eq!(result.len(), 2);
         let prop = result.pop().unwrap();
