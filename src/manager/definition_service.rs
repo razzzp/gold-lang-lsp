@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock, Mutex, RwLockReadGuard};
 use lsp_server::ErrorCode;
 use lsp_types::{LocationLink, Url};
 
-use crate::{parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstTypeBasic, AstClass, AstTypeReference, AstMethodCall}, utils::{Position, IRange, ILoggerV2}, lexer::tokens::TokenType};
+use crate::{parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstTypeBasic, AstClass, AstTypeReference, AstMethodCall, AstProcedure, AstFunction, AstGlobalVariableDeclaration}, utils::{Position, IRange, ILoggerV2}, lexer::tokens::TokenType};
 
 use super::{data_structs::ProjectManagerError, annotated_node::{AnnotatedNode, EvalType}, semantic_analysis_service::SemanticAnalysisService, type_resolver::TypeResolver, document_service::DocumentService, utils::search_encasing_node};
 use crate::manager::symbol_table::ISymbolTable;
@@ -49,6 +49,29 @@ impl DefinitionService{
         }
     }
 
+    fn check_parent_method_decl(&self, node : &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>)
+    ->Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>
+    {
+        let parent_node = node.parent.as_ref()?.upgrade()?;
+        let lock = parent_node.read().unwrap();
+        if let Some(_) = lock.data.as_any().downcast_ref::<AstProcedure>(){
+            return Some(parent_node.clone());
+        } else  if let Some(_) = lock.data.as_any().downcast_ref::<AstFunction>(){
+            return Some(parent_node.clone());
+        } else{
+            return None
+        }
+    }
+
+    fn check_is_gvar_decl(&self, node : &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>) -> bool
+    {
+        if let Some(_) = node.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
+            return true
+        } else{
+            return false
+        }
+    }
+
     fn get_origin_selection_range(&self, node: &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, pos: &Position) -> Option<lsp_types::Range>{
         if let Some(node) = node.data.as_any().downcast_ref::<AstTerminal>(){
             return Some(node.get_range().as_lsp_type_range());
@@ -66,6 +89,11 @@ impl DefinitionService{
         }
         if let Some(node) = node.data.as_any().downcast_ref::<AstMethodCall>(){
             return Some(node.identifier.get_range().as_lsp_type_range());
+        }
+        if let Some(node) = node.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
+            if node.identifier.get_range().contains_pos(pos){
+                return Some(node.identifier.get_range().as_lsp_type_range());
+            }
         }
         return None
     }
@@ -88,10 +116,15 @@ impl DefinitionService{
         if let Some(node) = node.data.as_any().downcast_ref::<AstMethodCall>(){
             return Some(node.get_identifier());
         }
+        if let Some(node) = node.data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
+            if node.identifier.get_range().contains_pos(pos){
+                return Some(node.identifier.get_value_as_str());
+            }
+        }
         return None
     }
 
-    fn generate_loc_link(
+    fn generate_loc_link_single(
         &self, 
         node:  &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
         st: &Arc<Mutex<dyn ISymbolTable>>,
@@ -131,7 +164,7 @@ impl DefinitionService{
     }
 
 
-    fn generate_loc_link_rhs(
+    fn generate_loc_link_all(
         &self, 
         node:  &RwLockReadGuard<'_, AnnotatedNode<dyn IAstNode>>, 
         st: &Arc<Mutex<dyn ISymbolTable>>,
@@ -186,7 +219,7 @@ impl DefinitionService{
             }
         };
         // don't search uses because the member should be in the st itself
-        return Some(self.generate_loc_link_rhs(node, &class_sym_table, pos))
+        return Some(self.generate_loc_link_all(node, &class_sym_table, pos))
     }
 
     fn handle_generic(
@@ -204,8 +237,9 @@ impl DefinitionService{
             let left_node = &bin_op_node.left_node;
             if Arc::ptr_eq(left_node, &node.data){
                 // if left node, just search sym table
-                return Some(self.generate_loc_link(node, st, pos, true))
-            } else {
+                return Some(self.generate_loc_link_single(node, st, pos, true))
+            } 
+            else {
                 // if right node, check left node type first
                 let left_node_type = parent_lock.children[0].read().unwrap().eval_type.clone().unwrap_or_default();
                 match left_node_type{
@@ -220,9 +254,17 @@ impl DefinitionService{
                     _=> return None,
                 }
             }
-        } else {
+        } 
+        else if let Some(_) = self.check_parent_method_decl(node){
+            // handle like rhs, i.e. search through parent symbol tables
+            return Some(self.generate_loc_link_all(node, st, pos));
+        } 
+        else if self.check_is_gvar_decl(node){
+            return Some(self.generate_loc_link_all(node, st, pos));
+        }
+        else {
             // enough to check symbol table in current doc
-            return Some(self.generate_loc_link(node, st, pos, true))
+            return Some(self.generate_loc_link_single(node, st, pos, true))
         }
     }
 
@@ -249,8 +291,9 @@ impl DefinitionService{
     {
         let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri, false)?;
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
-        
-        let enc_node = search_encasing_node(&ast, &pos);
+
+        self.logger.log_info(format!("[Req Definition] Searching encasing node").as_str());
+        let enc_node = search_encasing_node(&ast, &pos, &self.logger);
         self.logger.log_info(format!("[Req Definition] Node: {}", enc_node.read().unwrap().data.get_identifier()).as_str());
         let st = match TypeResolver::get_nearest_symbol_table(&enc_node.read().unwrap()){
             Some(st) => st,
@@ -484,6 +527,59 @@ mod test{
         let loc = result.pop().unwrap();
         let target_uri = create_uri_from_path("./test/workspace/aFourthClass.god");
         assert_eq!(loc.target_uri, target_uri);
+        let loc = result.pop().unwrap();
+        let target_uri = create_uri_from_path("./test/workspace/aFifthClass.god");
+        assert_eq!(loc.target_uri, target_uri);
+    }
+
+    #[test]
+    fn test_proc_decl(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = create_uri_from_path("./test/workspace/aFifthClass.god");
+        // pos input to test, local var
+        let pos_input = Position::new(7, 18);
+
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let mut result = def_service.get_definition(&pos_input).unwrap();
+        assert_eq!(result.len(), 1);
+        let loc = result.pop().unwrap();
+        let target_uri = create_uri_from_path("./test/workspace/aFifthClass.god");
+        assert_eq!(loc.target_uri, target_uri);
+    }
+
+    #[test]
+    fn test_proc_decl_override(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = create_uri_from_path("./test/workspace/aFifthClass.god");
+        // pos input to test, local var
+        let pos_input = Position::new(14, 19);
+
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let mut result = def_service.get_definition(&pos_input).unwrap();
+        assert_eq!(result.len(), 2);
+        let loc = result.pop().unwrap();
+        let target_uri = create_uri_from_path("./test/workspace/aFourthClass.god");
+        assert_eq!(loc.target_uri, target_uri);
+        let loc = result.pop().unwrap();
+        let target_uri = create_uri_from_path("./test/workspace/aFifthClass.god");
+        assert_eq!(loc.target_uri, target_uri);
+    }
+
+    #[test]
+    fn test_other_calls(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        
+        let test_input = create_uri_from_path("./test/workspace/aFifthClass.god");
+        let _ = proj_manager.generate_document_diagnostic_report(&test_input);
+        // pos input to test, local var
+        let pos_input = Position::new(7, 18);
+
+        let def_service = create_test_def_service(proj_manager.doc_service.clone(), &test_input);
+        let mut result = def_service.get_definition(&pos_input).unwrap();
+        assert_eq!(result.len(), 1);
         let loc = result.pop().unwrap();
         let target_uri = create_uri_from_path("./test/workspace/aFifthClass.god");
         assert_eq!(loc.target_uri, target_uri);

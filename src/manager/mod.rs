@@ -207,8 +207,7 @@ impl ProjectManager{
 
     pub fn generate_document_diagnostic_report(&mut self, uri : &Url)
     -> Result<Arc<RelatedFullDocumentDiagnosticReport>, ProjectManagerError>{
-        let doc = self.doc_service.get_parsed_document(uri, true)?;
-        let diagnostics = self.generate_diagnostics(doc)?;
+        let diagnostics = self.generate_diagnostics(uri)?;
         return Ok(Arc::new(RelatedFullDocumentDiagnosticReport{
             related_documents: None,
             full_document_diagnostic_report: FullDocumentDiagnosticReport{
@@ -219,10 +218,10 @@ impl ProjectManager{
     }
 
     /// analyzes doc and generates diags
-    fn generate_diags_on_annotated_ast(&self, doc: Arc<Mutex<Document>>) -> Option<Vec<Diagnostic>>{
+    fn generate_diags_on_annotated_ast(&self, uri : &Url) -> Option<Vec<Diagnostic>>{
 
         let sem_service  = self.create_sem_service();
-        let doc = sem_service.analyze(doc, false).ok()?;
+        let doc = sem_service.analyze_uri(uri, false).ok()?;
         let annotated_ast = doc.lock().unwrap().annotated_ast.as_ref()?.clone();
         // wait for annonation to finish if locked
         let annotation_done_flag = doc.lock().unwrap().annotation_done.clone();
@@ -245,7 +244,8 @@ impl ProjectManager{
         return Some(diags)
     }
 
-    fn generate_diagnostics(&self, doc: Arc<Mutex<Document>>) -> Result<Vec<Diagnostic>, ProjectManagerError>{
+    fn generate_diagnostics(&self, uri : &Url) -> Result<Vec<Diagnostic>, ProjectManagerError>{
+        let doc = self.doc_service.get_parsed_document(uri, true)?;
         let mut result: Vec<Diagnostic> = doc.lock().unwrap().get_parser_diagnostics().iter()
             .map(|gold_error| {
                 Diagnostic::new(
@@ -259,7 +259,7 @@ impl ProjectManager{
             }).collect();
         let analyzer_diags = self.get_analyzer_diagnostics(doc.clone())?;
         analyzer_diags.iter().for_each(|d|{result.push(d.clone())});
-        result.extend(self.generate_diags_on_annotated_ast(doc.clone()).unwrap_or_default());
+        result.extend(self.generate_diags_on_annotated_ast(uri).unwrap_or_default());
 
         return Ok(result);
     }

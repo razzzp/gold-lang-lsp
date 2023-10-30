@@ -79,6 +79,7 @@ impl Worker {
                     logger.log_info(format!("Worker {id} got a job; executing.").as_str());
 
                     job();
+                    logger.log_info(format!("Worker {id} finished job.").as_str());
                 },
                 Message::Terminate =>{
                     return;

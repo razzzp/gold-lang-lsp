@@ -287,6 +287,7 @@ fn parse_logical_and<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context 
 fn parse_logical_or<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>{
     let op_token_parsers = [
         exp_token(TokenType::Or),
+        exp_token(TokenType::Xor)
     ];
     let op_parser = alt_parse(&op_token_parsers);
     return parse_binary_ops_w_context(input, &op_parser, &parse_logical_and, context);

@@ -11,3 +11,7 @@ procedure FifthClassProc
    self.secondClassField2
    aModule.
 endProc
+
+procedure FourthClassProc override
+   ; test
+endProc

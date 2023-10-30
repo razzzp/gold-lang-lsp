@@ -36,7 +36,7 @@ impl TypeHierarchyService{
             .annotated_ast.as_ref()
             .ok_or(ProjectManagerError::new("Annotated Root AST is None", lsp_server::ErrorCode::InternalError))?
             .clone();
-        let enc_node = search_encasing_node(&root_ast, pos);
+        let enc_node = search_encasing_node(&root_ast, pos, &self.logger);
         let (class, sym_info) = match search_sym_info_for_node(&enc_node, &self.sem_service){
             Some(r) => r,
             _=> return Ok(Vec::new())

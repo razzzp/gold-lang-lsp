@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, RwLock, LockResult};
 
 use crate::{
     utils::{IDiagnosticCollector, ILoggerV2, Range, OptionString, OptionExt, IRange}, 
@@ -54,7 +54,11 @@ impl AstAnnotator{
         let root_node = doc.lock().unwrap().get_ast().clone();
         // lock flag to let other services know, annotation is still in progress
         let annotation_done_flag = doc.lock().unwrap().annotation_done.clone();
-        let _flag_lock = annotation_done_flag.lock().unwrap();
+        // try lock, if fail, already locked by previous call, then do nothing
+        let flag_lock = match annotation_done_flag.try_lock(){
+            Ok(lock) => Some(lock),
+            _=> None
+        };
 
         let annotated_tree = self.generate_annotated_tree(&root_node);
 
@@ -68,6 +72,11 @@ impl AstAnnotator{
         // walk tree and analyze
         self.walk_tree(&annotated_tree);
         self.notify_end_method();
+
+        // is this needed?
+        if let Some(lock)= flag_lock{
+            drop(lock);
+        }
         
         return Ok(doc);
     }
@@ -551,7 +560,7 @@ impl AstAnnotator{
 mod test{
     use std::sync::{Mutex, Arc};
 
-    use crate::{manager::{test::{create_test_project_manager, create_test_sem_service}, utils::search_encasing_node, annotated_node::{EvalType, NativeType}}, utils::Position};
+    use crate::{manager::{test::{create_test_project_manager, create_test_sem_service, create_test_logger}, utils::search_encasing_node, annotated_node::{EvalType, NativeType}}, utils::Position};
 
     #[test]
     fn test_bin_op(){
@@ -572,16 +581,17 @@ endproc
         let sem_service = create_test_sem_service(proj_manager.doc_service.clone());
         let doc = sem_service.analyze(doc, false).unwrap();
         let root =doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
+        let logger= create_test_logger();
         // check obj
-        let node = search_encasing_node(&root, &Position::new(6, 5));
+        let node = search_encasing_node(&root, &Position::new(6, 5), &logger);
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
         // check first right
-        let node = search_encasing_node(&root, &Position::new(6, 8));
+        let node = search_encasing_node(&root, &Position::new(6, 8), &logger);
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
         // check second right
-        let node = search_encasing_node(&root, &Position::new(6, 13));
+        let node = search_encasing_node(&root, &Position::new(6, 13), &logger);
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
     }
@@ -605,16 +615,17 @@ endproc
         let sem_service = create_test_sem_service(proj_manager.doc_service.clone());
         let doc = sem_service.analyze(doc, false).unwrap();
         let root =doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
+        let logger= create_test_logger();
         // check obj
-        let node = search_encasing_node(&root, &Position::new(6, 15));
+        let node = search_encasing_node(&root, &Position::new(6, 15), &logger);
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
         // check first right
-        let node = search_encasing_node(&root, &Position::new(6, 19));
+        let node = search_encasing_node(&root, &Position::new(6, 19), &logger);
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
         // check second right
-        let node = search_encasing_node(&root, &Position::new(6, 25));
+        let node = search_encasing_node(&root, &Position::new(6, 25), &logger);
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
     }
@@ -649,23 +660,24 @@ endproc
         let sem_service = create_test_sem_service(proj_manager.doc_service.clone());
         let doc = sem_service.analyze(doc, false).unwrap();
         let root =doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
+        let logger= create_test_logger();
         // native proc
-        let node = search_encasing_node(&root, &Position::new(13, 9));
+        let node = search_encasing_node(&root, &Position::new(13, 9), &logger);
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Proc);
 
         // class proc
-        let node = search_encasing_node(&root, &Position::new(14, 15));
+        let node = search_encasing_node(&root, &Position::new(14, 15), &logger);
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Proc);
         
         // class func
-        let node = search_encasing_node(&root, &Position::new(15, 15));
+        let node = search_encasing_node(&root, &Position::new(15, 15), &logger);
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Class(Arc::from("aObject")));
         
         // class func deref
-        let node = search_encasing_node(&root, &Position::new(16, 28));
+        let node = search_encasing_node(&root, &Position::new(16, 28), &logger);
         // println!("{:#?}", node.read().unwrap().as_annotated_node());
         assert_eq!(node.read().unwrap().eval_type.as_ref().clone().unwrap(), &EvalType::Native(NativeType::CString));
     }

@@ -1,20 +1,20 @@
 use std::{sync::{RwLock, Arc, Mutex}, ops::Deref};
 
-use crate::{parser::ast::{IAstNode, AstBinaryOp}, utils::Position, lexer::tokens::TokenType};
+use crate::{parser::ast::{IAstNode, AstBinaryOp}, utils::{Position, ILoggerV2}, lexer::tokens::TokenType};
 
 use super::{annotated_node::{AnnotatedNode, EvalType}, symbol_table::{SymbolInfo, ISymbolTable}, semantic_analysis_service::SemanticAnalysisService};
 
 pub const DIAGNOSTIC_SOURCE_GOLD: &'static str = "gold";
 
 /// searches for the smallest annotated node encasing the given position
-pub fn search_encasing_node(node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, pos : &Position)
+pub fn search_encasing_node(node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, pos : &Position, logger: &Arc<dyn ILoggerV2>)
     -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>
 {
     let r_node = node.read().unwrap();
     for child in &r_node.children{
-        // println!("[Req Definition] Cur Node {}",child.read().unwrap().data.to_string_type_range());
+        // logger.log_info(format!("[Search Encasing Node] Cur Node {}",child.read().unwrap().data.to_string_type_range()).as_str());
         if child.read().unwrap().data.get_range().contains_pos(pos){
-            return search_encasing_node(child, pos)
+            return search_encasing_node(child, pos, logger)
         }
     }
     return node.clone()

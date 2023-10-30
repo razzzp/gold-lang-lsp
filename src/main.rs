@@ -148,8 +148,8 @@ fn main_loop(
                         let logger = logger.clone();
                         threadpool.execute(move ||{
                             match handle_document_diagnostics_request(&mut proj_manager, id.clone(), params, &logger){
-                                Ok(resp) => {sender.send(resp).ok();},
-                                Err(e) => {send_error(&sender, id, e.0, e.1).ok();}
+                                Ok(resp) => {let _ = sender.send(resp);},
+                                Err(e) => {let _ = send_error(&sender, id, e.0, e.1).ok();}
                             };
                         });
                         continue;
@@ -349,7 +349,7 @@ fn handle_goto_definition_request(
 )
     -> Result<Message, (i32, String)>
 {
-    logger.log_info(format!("handling Document Diagnostics request #{id}").as_str());
+    logger.log_info(format!("handling Goto Definition request #{id}").as_str());
     let loc_links = match proj_manager.generate_goto_definitions(
         &params.text_document_position_params.text_document.uri, 
         &params.text_document_position_params.position.into()){

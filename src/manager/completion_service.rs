@@ -184,7 +184,7 @@ impl CompletionService{
         let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri, false)?;
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         
-        let enc_node = search_encasing_node(&ast, &pos);
+        let enc_node = search_encasing_node(&ast, &pos, &self.logger);
         self.logger.log_info(format!("[Req Completion] Node: {}", enc_node.read().unwrap().data.get_identifier()).as_str());
         let st = match TypeResolver::get_nearest_symbol_table(&enc_node.read().unwrap()){
             Some(st) => st,
