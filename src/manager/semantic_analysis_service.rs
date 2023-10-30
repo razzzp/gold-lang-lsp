@@ -3,9 +3,9 @@ use lsp_types::Url;
 
 use crate::{analyzers::AnalyzerDiagnostic, utils::{IDiagnosticCollector, ILoggerV2}};
 use core::fmt::Debug;
-use std::sync::{Mutex, Arc};
+use std::sync::{Mutex, Arc, RwLock};
 
-use super::{data_structs::{Document, ProjectManagerError}, document_service::DocumentService, ast_annotator::AstAnnotator};
+use super::{data_structs::{Document, ProjectManagerError, DocumentInfo}, document_service::DocumentService, ast_annotator::AstAnnotator};
 use crate::manager::symbol_table::ISymbolTable;
 
 #[derive(Debug,Clone,Copy,Default)]
@@ -88,18 +88,14 @@ impl SemanticAnalysisService {
                 }
             }
         }
+        let doc_info = self.doc_service.get_document_info(uri)?;
         // self.logger.log_info(format!("[Analyzing Uri]{}", uri).as_str());
-        let analyzed_doc = self.analyze(doc, options.only_definitions)?;
+        let analyzed_doc = self.analyze(doc, doc_info, options.only_definitions)?;
         // save to symtable to doc_info
-        if let Some(sym_table) = analyzed_doc.lock().unwrap().get_symbol_table(){
-            if let Ok(doc_info) = self.doc_service.get_document_info(uri){
-                doc_info.write().unwrap().set_symbol_table(Some(sym_table))
-            }
-        }
         return Ok(analyzed_doc);
     }
     
-    pub fn analyze(&self, doc: Arc<Mutex<Document>>, only_definitions: bool) -> 
+    pub fn analyze(&self, doc: Arc<Mutex<Document>>, doc_info: Arc<RwLock<DocumentInfo>>, only_definitions: bool) -> 
     Result<Arc<Mutex<Document>>, ProjectManagerError>{
         
         // let mut semantic_analysis_service = SemanticAnalysisService::new(
@@ -114,7 +110,7 @@ impl SemanticAnalysisService {
             self.logger.clone(),
             only_definitions
         );
-        let annotated_doc = annotator.annotate_doc(doc)?;
+        let annotated_doc = annotator.annotate_doc(doc, doc_info)?;
 
         return Ok(annotated_doc);
     }

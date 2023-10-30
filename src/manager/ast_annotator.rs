@@ -9,7 +9,7 @@ use super::{
     symbol_table::*, 
     semantic_analysis_service::SemanticAnalysisService, 
     annotated_node::*, 
-    data_structs::{ProjectManagerError, Document}, 
+    data_structs::{ProjectManagerError, Document, DocumentInfo}, 
     type_resolver::TypeResolver
 };
 
@@ -49,7 +49,7 @@ impl AstAnnotator{
     }
 
 
-    pub fn annotate_doc(&mut self, doc: Arc<Mutex<Document>>) -> 
+    pub fn annotate_doc(&mut self, doc: Arc<Mutex<Document>>, doc_info: Arc<RwLock<DocumentInfo>>) -> 
     Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let root_node = doc.lock().unwrap().get_ast().clone();
         // lock flag to let other services know, annotation is still in progress
@@ -62,13 +62,16 @@ impl AstAnnotator{
 
         let annotated_tree = self.generate_annotated_tree(&root_node);
 
+        let st = self.root_symbol_table.unwrap_ref().clone();
         // assign root st to root node
-        annotated_tree.write().unwrap().symbol_table = Some(self.root_symbol_table.unwrap_ref().clone());
+        annotated_tree.write().unwrap().symbol_table = Some(st.clone());
         // assign to doc, so that in the case of circular
         // dependency, analyzing the same doc again won't regenerate and cause
         // infinite loop
         doc.lock().unwrap().annotated_ast = Some(annotated_tree.clone());
         doc.lock().unwrap().only_definitions = self.only_definitions;
+        // also assign root sym_table to doc_info to prevent, stack overflow
+        doc_info.write().unwrap().set_symbol_table(Some(st));
         // walk tree and analyze
         self.walk_tree(&annotated_tree);
         self.notify_end_method();
@@ -558,9 +561,9 @@ impl AstAnnotator{
 
 #[cfg(test)]
 mod test{
-    use std::sync::{Mutex, Arc};
+    use std::sync::{Mutex, Arc, RwLock};
 
-    use crate::{manager::{test::{create_test_project_manager, create_test_sem_service, create_test_logger}, utils::search_encasing_node, annotated_node::{EvalType, NativeType}}, utils::Position};
+    use crate::{manager::{test::{create_test_project_manager, create_test_sem_service, create_test_logger}, utils::search_encasing_node, annotated_node::{EvalType, NativeType}, data_structs::DocumentInfo}, utils::Position};
 
     #[test]
     fn test_bin_op(){
@@ -579,7 +582,8 @@ endproc
         let doc = proj_manager.doc_service.parse_content(&test_input).unwrap();
         let doc = Arc::new(Mutex::new(doc));
         let sem_service = create_test_sem_service(proj_manager.doc_service.clone());
-        let doc = sem_service.analyze(doc, false).unwrap();
+        let doc_info = Arc::new(RwLock::new(DocumentInfo::new("".to_string(), "".to_string())));
+        let doc = sem_service.analyze(doc, doc_info, false).unwrap();
         let root =doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         let logger= create_test_logger();
         // check obj
@@ -613,7 +617,8 @@ endproc
         let doc = proj_manager.doc_service.parse_content(&test_input).unwrap();
         let doc = Arc::new(Mutex::new(doc));
         let sem_service = create_test_sem_service(proj_manager.doc_service.clone());
-        let doc = sem_service.analyze(doc, false).unwrap();
+        let doc_info = Arc::new(RwLock::new(DocumentInfo::new("".to_string(), "".to_string())));
+        let doc = sem_service.analyze(doc, doc_info, false).unwrap();
         let root =doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         let logger= create_test_logger();
         // check obj
@@ -658,7 +663,8 @@ endproc
         let doc = proj_manager.doc_service.parse_content(&test_input).unwrap();
         let doc = Arc::new(Mutex::new(doc));
         let sem_service = create_test_sem_service(proj_manager.doc_service.clone());
-        let doc = sem_service.analyze(doc, false).unwrap();
+        let doc_info = Arc::new(RwLock::new(DocumentInfo::new("".to_string(), "".to_string())));
+        let doc = sem_service.analyze(doc, doc_info, false).unwrap();
         let root =doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         let logger= create_test_logger();
         // native proc

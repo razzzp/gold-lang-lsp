@@ -86,18 +86,19 @@ impl ProjectManager{
         let sem_service = self.create_sem_service();
         let new_doc_2 = new_doc.clone();
         threadpool.execute(move ||{
-            let _ = sem_service.analyze(new_doc, false);
+            let _ = sem_service.analyze(new_doc, doc_info, false);
         });
         return Ok(new_doc_2);
     }
 
     pub fn notify_document_opened(&mut self, uri: &Url, threadpool: &ThreadPool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+        let doc_info = self.doc_service.get_document_info(uri)?;
         let doc = self.doc_service.get_parsed_document(uri, true)?;
         // discard old doc, and analyze new content
         let doc_2 = doc.clone();
         let sem_service = self.create_sem_service();
         threadpool.execute(move ||{
-            let _ = sem_service.analyze(doc, false);
+            let _ = sem_service.analyze(doc, doc_info, false);
         });
         return Ok(doc_2);
     }
@@ -113,7 +114,7 @@ impl ProjectManager{
         let sem_service = self.create_sem_service();
         let doc_for_thread= new_doc.clone();
         threadpool.execute(move ||{
-            let _analyzed_doc = sem_service.analyze(doc_for_thread, false);
+            let _analyzed_doc = sem_service.analyze(doc_for_thread, doc_info, false);
         });
         return Ok(new_doc);
     }
