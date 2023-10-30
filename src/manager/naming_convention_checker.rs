@@ -145,11 +145,11 @@ impl NamingConventionChecker{
     fn handle_constant_decl(&mut self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>){
         // types should start with t, e.g. tSomeType
         match node.read().unwrap().data.as_any().downcast_ref::<AstConstantDeclaration>(){
-            Some(type_decl) => {
-                if !self.is_first_char(type_decl.get_identifier(), 'c'){
+            Some(const_decl) => {
+                if !self.is_first_char(const_decl.get_identifier(), 'c') && !const_decl.get_identifier().starts_with("ml"){
                     self.diag_collector.lock().unwrap().add_diagnostic(
                         lsp_types::Diagnostic { 
-                            range: type_decl.identifier.get_range().as_lsp_type_range(), 
+                            range: const_decl.identifier.get_range().as_lsp_type_range(), 
                             severity: Some(DiagnosticSeverity::WARNING),
                             source: Some(DIAGNOSTIC_SOURCE_GOLD.to_string()), 
                             message: "Constant names should start with c, e.g. cSomeConstant".to_string(), 
