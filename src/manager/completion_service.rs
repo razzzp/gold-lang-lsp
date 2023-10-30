@@ -9,7 +9,7 @@ use crate::{manager::{
 
 }, utils::{ILoggerV2, Position, IRange}, parser::ast::{IAstNode, AstBinaryOp}};
 
-use super::{data_structs::ProjectManagerError, utils::{search_encasing_node, check_parent_dot_ops, check_dot_ops}, type_resolver::TypeResolver, annotated_node::{AnnotatedNode, EvalType}, symbol_table::{ISymbolTable, SymbolType}};
+use super::{data_structs::ProjectManagerError, utils::{search_encasing_node, check_parent_dot_ops, check_dot_ops}, type_resolver::TypeResolver, annotated_node::{AnnotatedNode, EvalType}, symbol_table::{ISymbolTable, SymbolType}, semantic_analysis_service::AnalyzeRequestOptions};
 
 
 #[derive(Debug, Clone)]
@@ -181,7 +181,7 @@ impl CompletionService{
         pos: &Position,
     ) -> Result<Vec<CompletionItem>, ProjectManagerError>
     {
-        let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri, false)?;
+        let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri, AnalyzeRequestOptions::default().set_cache(true))?;
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         
         let enc_node = search_encasing_node(&ast, &pos, &self.logger);

@@ -272,7 +272,7 @@ impl TypeResolver {
 mod test{
     
 
-    use crate::manager::{test::{create_test_project_manager, create_uri_from_path, create_test_type_resolver}, annotated_node::{EvalType, NativeType}};
+    use crate::manager::{test::{create_test_project_manager, create_uri_from_path, create_test_type_resolver}, annotated_node::{EvalType, NativeType}, semantic_analysis_service::AnalyzeRequestOptions};
 
     
 
@@ -284,7 +284,7 @@ mod test{
         let mut proj_manager = create_test_project_manager("./test/workspace");
         proj_manager.index_files();
         let test_input = create_uri_from_path("./test/workspace/aRootClass.god");
-        let doc = proj_manager.analyze_doc(&test_input, false).unwrap();
+        let doc = proj_manager.analyze_doc(&test_input, AnalyzeRequestOptions::default().set_cache(true)).unwrap();
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
         
         // get node to test

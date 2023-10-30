@@ -6,7 +6,7 @@ use regex::Regex;
 use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2, IDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
 use data_structs::*;
 
-use self::{semantic_analysis_service::SemanticAnalysisService, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, entity_tree_service::EntityTreeService, type_hierarchy_service::TypeHierarchyService, unpurged_varbytearray_checker::UnpurgedVarByteArrayChecker, annotated_ast_walker::{AnnotatedAstWalkerPreOrder, IAnnotatedNodeVisitor}, naming_convention_checker::NamingConventionChecker};
+use self::{semantic_analysis_service::{SemanticAnalysisService, AnalyzeRequestOptions}, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, entity_tree_service::EntityTreeService, type_hierarchy_service::TypeHierarchyService, unpurged_varbytearray_checker::UnpurgedVarByteArrayChecker, annotated_ast_walker::{AnnotatedAstWalkerPreOrder, IAnnotatedNodeVisitor}, naming_convention_checker::NamingConventionChecker};
 
 pub mod data_structs;
 pub mod semantic_analysis_service;
@@ -46,24 +46,6 @@ impl ProjectManager{
         return self.doc_service.index_files();
     }
 
-    pub fn analyze_files(&mut self, thread_pool : &ThreadPool){
-        let partitions = self.doc_service.partition_files(1000);
-        for partition in partitions.into_iter(){
-            let sem_service = self.create_sem_service();
-            thread_pool.execute(move ||{
-                for uri_string in partition{
-                    let uri = match Url::from_str(&uri_string.as_str()){
-                        Ok(uri) => uri,
-                        _=> continue
-                    };
-
-                    // ignore result any errors should be logged inside
-                    let _ = sem_service.analyze_uri(&uri, true);
-                }
-            });
-        }
-    }
-
     pub fn analyze_core_files(&mut self){
 
         let map = self.doc_service.get_doc_info_mapping();
@@ -83,12 +65,14 @@ impl ProjectManager{
 
         let timer  = std::time::SystemTime::now();
         self.logger.log_info(format!("Analyzing core files; {} files", &files_to_process.len()).as_str());
+
         for uri in &files_to_process{
-            let _ = sem_service.analyze_uri(uri, true);
+            // don't need to cache, just generate top level symbol level
+            let _ = sem_service.analyze_uri(uri, AnalyzeRequestOptions::default().set_cache(false).set_only_def(true));
         }
         self.logger.log_info(
             format!("Finished analyzing core files in {:#?}; {} files", 
-            timer.elapsed(), 
+            timer.elapsed().unwrap_or_default(), 
             files_to_process.len()).as_str());
     }
 
@@ -118,18 +102,33 @@ impl ProjectManager{
         return Ok(doc_2);
     }
 
+    pub fn notify_document_saved(&mut self, uri: &Url, threadpool: &ThreadPool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+        let doc_info = self.doc_service.get_document_info(uri)?;
+        // parse from file
+        let new_doc = Arc::new(Mutex::new(self.doc_service.parse_content(&doc_info.read().unwrap().file_path.clone())?));
+        // discard old doc
+        doc_info.write().unwrap().set_saved_document(Some(new_doc.clone()));
+        doc_info.write().unwrap().set_opened_document(None);
+
+        let sem_service = self.create_sem_service();
+        let doc_for_thread= new_doc.clone();
+        threadpool.execute(move ||{
+            let _analyzed_doc = sem_service.analyze(doc_for_thread, false);
+        });
+        return Ok(new_doc);
+    }
+
     fn create_sem_service(&self) -> SemanticAnalysisService{
         return SemanticAnalysisService::new(
             self.doc_service.clone(),
             self.logger.clone(),
-            Arc::new(Mutex::new(GenericDiagnosticCollector::new())),
-            None
+            Arc::new(Mutex::new(GenericDiagnosticCollector::new()))
         );
     }
 
-    pub fn analyze_doc(&mut self, uri : &Url, only_definitions:bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn analyze_doc(&mut self, uri : &Url, options:AnalyzeRequestOptions) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let semantic_analysis_service = self.create_sem_service();
-        let doc = semantic_analysis_service.analyze_uri(uri, only_definitions)?;
+        let doc = semantic_analysis_service.analyze_uri(uri, options)?;
         return Ok(doc);
     }
 
@@ -221,7 +220,7 @@ impl ProjectManager{
     fn generate_diags_on_annotated_ast(&self, uri : &Url) -> Option<Vec<Diagnostic>>{
 
         let sem_service  = self.create_sem_service();
-        let doc = sem_service.analyze_uri(uri, false).ok()?;
+        let doc = sem_service.analyze_uri(uri, AnalyzeRequestOptions::default().set_cache(true)).ok()?;
         let annotated_ast = doc.lock().unwrap().annotated_ast.as_ref()?.clone();
         // wait for annonation to finish if locked
         let annotation_done_flag = doc.lock().unwrap().annotation_done.clone();
@@ -325,7 +324,7 @@ pub mod test{
 
     use lsp_types::Url;
 
-    use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, threadpool::ThreadPool};
+    use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, manager::semantic_analysis_service::AnalyzeRequestOptions};
 
     use super::{ProjectManager, document_service::DocumentService, type_resolver::TypeResolver, semantic_analysis_service::SemanticAnalysisService, definition_service::DefinitionService};
 
@@ -378,8 +377,7 @@ pub mod test{
         return SemanticAnalysisService::new(
             doc_service,
             create_test_logger(),
-            create_test_diag_collector(),
-            None
+            create_test_diag_collector()
         )
     }
 
@@ -543,23 +541,6 @@ pub mod test{
         assert!(proj_manager.doc_service.count_files() > 54000);
     }
 
-    #[ignore="long running time"]
-    #[test]
-    fn test_analyze_files_large(){
-        let path = PathBuf::from("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
-        let _ =  match fs::metadata(&path){
-            Ok(_) => (),
-            _=> return
-        };
-        
-        let mut proj_manager= create_test_project_manager("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
-        let threadpool = ThreadPool::new(5,proj_manager.logger.clone());
-        proj_manager.index_files();
-        proj_manager.analyze_files(&threadpool);
-        drop(threadpool);
-        assert!(proj_manager.doc_service.count_files() > 54000);
-    }
-
     #[test]
     fn test_file_outside_workspace_after_index(){
         // skip if dir doesn't exist
@@ -626,7 +607,7 @@ pub mod test{
         proj_manager.index_files();
         let input_uri = proj_manager.doc_service.get_uri_for_class(&"aOcsUSIMV20ICCardImage".to_string()).unwrap();
         // let _result = proj_manager.generate_document_diagnostic_report(&input_uri).unwrap();
-        let result = proj_manager.analyze_doc(&input_uri, false).unwrap();
+        let result = proj_manager.analyze_doc(&input_uri, AnalyzeRequestOptions::default().set_cache(true)).unwrap();
         assert!(result.lock().unwrap().annotated_ast.is_some());
     }
 

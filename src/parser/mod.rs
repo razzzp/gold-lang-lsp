@@ -1,7 +1,6 @@
 
 
 use std::collections::HashMap;
-use std::hash::Hash;
 use std::sync::Arc;
 
 use crate::lexer::tokens::{Token, TokenType};
@@ -55,59 +54,24 @@ impl ParseCache {
    }
 }
 
-
 #[derive(Default)]
-pub struct ParserContext{
-   diagnostics: Vec<ParserDiagnostic>
-}
-impl ParserContext{
-   pub fn new()->ParserContext{
-      return ParserContext{
-         ..Default::default()
-      };
-   }
-}
-impl<'a> IParserContext<'a> for ParserContext{
-    fn add_diagnostic(&mut self, diagnostic: ParserDiagnostic) {
-        self.diagnostics.push(diagnostic);
-    }
-
-    fn extend_diagnostics<U : IntoIterator<Item = ParserDiagnostic>>(&mut self, diagnostics: U) {
-        self.diagnostics.extend(diagnostics.into_iter());
-    }
-    fn get_diagnostics(self)-> Vec<ParserDiagnostic>{
-        return self.diagnostics;
-    }
-    fn get_cache(&self, cache_num: usize,len: usize) -> Option<Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>>{
-      todo!()
-   }
-   fn set_cache(&mut self, cache_num: usize, len: usize, result: Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>){
-      todo!()
-   }
-
-fn clear_cache(&mut self) {
-        todo!()
-    }
-}
-
-#[derive(Default)]
-pub struct ParserContext2<'a>{
+pub struct ParserContext<'a>{
    diagnostics: Vec<ParserDiagnostic>,
    cache: Vec<HashMap<usize, Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>>>>
 }
-impl<'a> ParserContext2<'a>{
-   pub fn new()->ParserContext2<'a>{
+impl<'a> ParserContext<'a>{
+   pub fn new()->ParserContext<'a>{
       let mut cache = Vec::new();
       cache.push(HashMap::new());
       cache.push(HashMap::new());
       cache.push(HashMap::new());
-      return ParserContext2{
+      return ParserContext{
          cache,
          ..Default::default()
       };
    }
 }
-impl<'a> IParserContext<'a> for ParserContext2<'a>{
+impl<'a> IParserContext<'a> for ParserContext<'a>{
     fn add_diagnostic(&mut self, diagnostic: ParserDiagnostic) {
         self.diagnostics.push(diagnostic);
     }
@@ -149,7 +113,7 @@ impl ParserDiagnostic {
 }
 
 pub fn parse_gold<'a>(input : &'a [Token]) -> ((&'a [Token],  Arc<dyn IAstNode>), Vec<ParserDiagnostic>) {
-   let mut context = ParserContext2::new();
+   let mut context = ParserContext::new();
    let parsers = [
       parse_comment,
       parse_class,
@@ -1299,10 +1263,10 @@ mod test {
 
 use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses, parse_type_enum, parse_type_reference, parse_type_declaration, parse_constant_declaration, parse_global_variable_declaration, parse_procedure_declaration, parse_parameter_declaration_list, parse_method_modifiers, parse_function_declaration, parse_type_basic, parse_type_composed, parse_type_range, ast::{AstTypeProcedure, AstTypeFunction}}, parser::{ast::{AstClass, AstUses, AstTypeBasic, AstTypeEnum, AstTypeReference, AstTypeDeclaration, AstConstantDeclaration, AstGlobalVariableDeclaration, AstProcedure, AstParameterDeclaration, IAstNode, AstFunction, AstBinaryOp, AstTypeSet, AstTypeRecord, AstTypePointer, AstTypeArray, AstTypeRange, AstTypeInstanceOf, AstMethodNameWithEvent, AstEnumVariant, AstModule, AstTypeSized, AstParameterDeclarationList, AstMethodModifiers}, IParserContext, parse_module, parse_gold}, utils::ast_to_string_brief_recursive};
    use crate::utils::{Position,Range, create_new_range_from_irange, test_utils::cast_and_unwrap};
-   use super::{parse_class, parse_type, ParserContext, ParserContext2};
+   use super::{parse_class, parse_type, ParserContext};
 
-   pub fn create_context<'a>()-> ParserContext2<'a>{
-      return ParserContext2::new();
+   pub fn create_context<'a>()-> ParserContext<'a>{
+      return ParserContext::new();
   }
 
    pub fn gen_list_of_tokens(list : &[(TokenType, Option<String>)]) -> Vec<Token> {

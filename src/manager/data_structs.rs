@@ -69,7 +69,8 @@ pub struct DocumentInfo{
     pub uri: String,
     pub file_path: String,
     saved: Option<Arc<Mutex<Document>>>,
-    opened: Option<Arc<Mutex<Document>>>
+    opened: Option<Arc<Mutex<Document>>>,
+    symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>
 }
 
 impl DocumentInfo{
@@ -78,7 +79,8 @@ impl DocumentInfo{
             uri, 
             file_path, 
             saved: None, 
-            opened: None
+            opened: None,
+            ..Default::default()
         }
     }
     pub fn get_saved_document(&self) -> Option<Arc<Mutex<Document>>> {
@@ -113,6 +115,14 @@ impl DocumentInfo{
         } else {
             return None
         }
+    }
+
+    pub fn get_symbol_table(&self)-> Option<Arc<Mutex<dyn ISymbolTable>>>{
+        return self.symbol_table.clone();
+    }
+
+    pub fn set_symbol_table(&mut self, symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>){
+        self.symbol_table = symbol_table;
     }
 }
 

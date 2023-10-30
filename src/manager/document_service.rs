@@ -234,21 +234,12 @@ impl DocumentService {
         
     }
 
-    pub fn notify_document_saved(&self, uri: &Url) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        let doc_info = self.get_document_info(uri)?;
-        let new_doc = self.parse_document(doc_info.write().unwrap().file_path.as_str())?;
-        let new_doc = Arc::new(Mutex::new(new_doc));
-        doc_info.write().unwrap().set_saved_document(Some(new_doc.clone()));
-        doc_info.write().unwrap().set_opened_document(None);
-        return Ok(new_doc);
-    }
-
-    pub fn notify_document_changed(&self, uri: &Url, full_file_content: &String) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        let doc_info = self.get_document_info(uri)?;
-        let new_doc = self.parse_content(full_file_content)?;
-        let new_doc = Arc::new(Mutex::new(new_doc));
-        doc_info.write().unwrap().set_opened_document(Some(new_doc.clone()));
-        return Ok(new_doc);
+    pub fn notify_document_closed(&self, uri: &Url){
+        // drop docs
+        if let Ok(doc_info) = self.get_document_info(uri){
+            doc_info.write().unwrap().set_saved_document(None);
+            doc_info.write().unwrap().set_opened_document(None);
+        }
     }
 
     fn parse_document(&self, file_path: &str) -> Result<Document, ProjectManagerError>{

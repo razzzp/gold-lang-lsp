@@ -7,7 +7,7 @@ use lsp_types::{LocationLink, Url};
 
 use crate::{parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstTypeBasic, AstClass, AstTypeReference, AstMethodCall, AstProcedure, AstFunction, AstGlobalVariableDeclaration}, utils::{Position, IRange, ILoggerV2}, lexer::tokens::TokenType};
 
-use super::{data_structs::ProjectManagerError, annotated_node::{AnnotatedNode, EvalType}, semantic_analysis_service::SemanticAnalysisService, type_resolver::TypeResolver, document_service::DocumentService, utils::search_encasing_node};
+use super::{data_structs::ProjectManagerError, annotated_node::{AnnotatedNode, EvalType}, semantic_analysis_service::{SemanticAnalysisService, AnalyzeRequestOptions}, type_resolver::TypeResolver, document_service::DocumentService, utils::search_encasing_node};
 use crate::manager::symbol_table::ISymbolTable;
 
 
@@ -28,7 +28,7 @@ impl DefinitionService{
         return DefinitionService { 
             doc_service,
             // type_resovler should have its own session
-            type_resolver: TypeResolver::new(semantic_analysis_service.clone_clear_session()),
+            type_resolver: TypeResolver::new(semantic_analysis_service.clone()),
             semantic_analysis_service: semantic_analysis_service,
             logger,
             source_uri: source_uri.clone(),
@@ -289,7 +289,7 @@ impl DefinitionService{
     pub fn get_definition(&self, pos : &Position)
     -> Result<Vec<lsp_types::LocationLink>, ProjectManagerError>
     {
-        let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri, false)?;
+        let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri, AnalyzeRequestOptions::default().set_cache(true))?;
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
 
         self.logger.log_info(format!("[Req Definition] Searching encasing node").as_str());

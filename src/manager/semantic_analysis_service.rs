@@ -3,17 +3,32 @@ use lsp_types::Url;
 
 use crate::{analyzers::AnalyzerDiagnostic, utils::{IDiagnosticCollector, ILoggerV2}};
 use core::fmt::Debug;
-use std::{collections::HashSet, sync::{Mutex, Arc}};
+use std::sync::{Mutex, Arc};
 
 use super::{data_structs::{Document, ProjectManagerError}, document_service::DocumentService, ast_annotator::AstAnnotator};
 use crate::manager::symbol_table::ISymbolTable;
+
+#[derive(Debug,Clone,Copy,Default)]
+pub struct AnalyzeRequestOptions{
+    pub only_definitions: bool,
+    pub cache_result: bool,
+}
+impl AnalyzeRequestOptions {
+    pub fn set_cache(mut self, cache_result: bool) -> AnalyzeRequestOptions{
+        self.cache_result = cache_result;
+        return self
+    }
+    pub fn set_only_def(mut self, only_def: bool) -> AnalyzeRequestOptions{
+        self.only_definitions = only_def;
+        return self
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct SemanticAnalysisService {
     pub doc_service : DocumentService,
     logger: Arc<dyn ILoggerV2>,
     diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
-    already_seen_uri: Arc<Mutex<HashSet<String>>>,
 }
 
 impl SemanticAnalysisService {
@@ -21,23 +36,12 @@ impl SemanticAnalysisService {
         doc_service: DocumentService, 
         logger: Arc<dyn ILoggerV2>, 
         diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
-        already_seen_uri : Option<Arc<Mutex<HashSet<String>>>>
 ) -> SemanticAnalysisService{
         return SemanticAnalysisService {  
             doc_service,
             logger: logger,
             diag_collector,
-            already_seen_uri: already_seen_uri.unwrap_or_default(),
         }
-    }
-
-
-    fn check_already_seen(&self, uri: &Url) -> Result<(),ProjectManagerError>{
-        if self.already_seen_uri.lock().unwrap().contains(&uri.to_string()){
-            return Err(ProjectManagerError::new(format!("{} already locked in request session",uri).as_str(), ErrorCode::RequestFailed));
-        }
-        self.already_seen_uri.lock().unwrap().insert(uri.to_string());
-        return Ok(())
     }
 
 
@@ -47,40 +51,52 @@ impl SemanticAnalysisService {
     }
 
     pub fn get_symbol_table_for_uri_def_only(&self, uri: &Url) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
-        let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri, true)?;
-        let st_option = doc.lock().unwrap().get_symbol_table().clone();
-        match st_option{
+        // check sym table on doc info first
+        let doc_info = self.doc_service.get_document_info(uri)?;
+        if let Some(sym_table) = doc_info.read().unwrap().get_symbol_table(){
+            return Ok(sym_table);
+        }
+        // else analyze
+        let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri, AnalyzeRequestOptions { only_definitions: true, cache_result: false })?;
+        let sym_table = doc.lock().unwrap().get_symbol_table().clone();
+        match sym_table{
             Some(st) => return Ok(st.clone()),
             _=> return Err(ProjectManagerError::new(format!("Unable to get Symbol table for {}",uri).as_str(), ErrorCode::InternalError))
         }
     }
 
     /// if no error occurs, annotated tree & symbol table is guranteed to be Some
-    pub fn analyze_uri(&self, uri : &Url, only_definitions: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        
-        // TODO !!! commenting this can cause stack overflow, but
-        //  using will cause certain dependency cases to fail
-        //  **should be solved by setting result to doc, before processing
-        // self.check_already_seen(uri)?;
+    pub fn analyze_uri(&self, uri : &Url, options: AnalyzeRequestOptions) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
 
         // self.logger.log_info(format!("[Req Analyze Uri:{}]{}", if !only_definitions {"Full"}else{"Light"},uri).as_str());
-
-        let doc: Arc<Mutex<Document>> = self.doc_service.get_parsed_document(uri, true)?;
+        
+        let doc: Arc<Mutex<Document>> = if options.cache_result{
+            self.doc_service.get_parsed_document(uri, true)?
+        } else {
+            self.doc_service.get_parsed_document_without_caching(uri, true)?
+        };
         // is exist and only defs needed return existing,
         //  otherwise regenerate
         if doc.lock().unwrap().annotated_ast.is_some(){
-            if only_definitions{
+            if options.only_definitions{
                 // some means at least definitions defined
                 return Ok(doc);
             } else {
                 // else have to check if full annotation
-                if doc.lock().unwrap().only_definitions == only_definitions{
+                if doc.lock().unwrap().only_definitions == options.only_definitions{
                     return Ok(doc);
                 }
             }
         }
         // self.logger.log_info(format!("[Analyzing Uri]{}", uri).as_str());
-        return self.analyze(doc, only_definitions);
+        let analyzed_doc = self.analyze(doc, options.only_definitions)?;
+        // save to symtable to doc_info
+        if let Some(sym_table) = analyzed_doc.lock().unwrap().get_symbol_table(){
+            if let Ok(doc_info) = self.doc_service.get_document_info(uri){
+                doc_info.write().unwrap().set_symbol_table(Some(sym_table))
+            }
+        }
+        return Ok(analyzed_doc);
     }
     
     pub fn analyze(&self, doc: Arc<Mutex<Document>>, only_definitions: bool) -> 
@@ -101,16 +117,6 @@ impl SemanticAnalysisService {
         let annotated_doc = annotator.annotate_doc(doc)?;
 
         return Ok(annotated_doc);
-    }
-
-    pub fn clear_session(&mut self){
-        self.already_seen_uri = Arc::new(Mutex::new(HashSet::new()));
-    }
-
-    pub fn clone_clear_session(&self) -> SemanticAnalysisService{
-        let mut result = self.clone();
-        result.clear_session();
-        return result;
     }
 }
 

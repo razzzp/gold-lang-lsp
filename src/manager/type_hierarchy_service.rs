@@ -5,7 +5,7 @@ use lsp_types::{Url, TypeHierarchyItem, SymbolKind};
 
 use crate::utils::{ILoggerV2, Position};
 
-use super::{semantic_analysis_service::SemanticAnalysisService, entity_tree_service::{EntityTreeService, EntityInfoNode}, data_structs::ProjectManagerError, utils::{search_encasing_node, search_sym_info_for_node}, symbol_table::SymbolType};
+use super::{semantic_analysis_service::{SemanticAnalysisService, AnalyzeRequestOptions}, entity_tree_service::{EntityTreeService, EntityInfoNode}, data_structs::ProjectManagerError, utils::{search_encasing_node, search_sym_info_for_node}, symbol_table::SymbolType};
 
 
 
@@ -30,7 +30,7 @@ impl TypeHierarchyService{
 
     pub fn prepare_type_hierarchy(&self, uri : &Url, pos: &Position)
     -> Result<Vec<TypeHierarchyItem>, ProjectManagerError>{
-        let doc = self.sem_service.analyze_uri(uri, false)?;
+        let doc = self.sem_service.analyze_uri(uri, AnalyzeRequestOptions::default().set_cache(true))?;
         let root_ast = &doc
             .lock().unwrap()
             .annotated_ast.as_ref()
