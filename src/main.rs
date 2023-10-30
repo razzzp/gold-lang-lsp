@@ -143,10 +143,15 @@ fn main_loop(
                 };
                 let req = match cast_req::<DocumentDiagnosticRequest>(req) {
                     Ok((id, params)) => {
-                        match handle_document_diagnostics_request(&mut proj_manager, id.clone(), params, &logger){
-                            Ok(resp) => connection.sender.send(resp)?,
-                            Err(e) => send_error(&connection.sender, id, e.0, e.1)?
-                        }
+                        let sender = connection.sender.clone();
+                        let mut proj_manager = proj_manager.clone();
+                        let logger = logger.clone();
+                        threadpool.execute(move ||{
+                            match handle_document_diagnostics_request(&mut proj_manager, id.clone(), params, &logger){
+                                Ok(resp) => {sender.send(resp).ok();},
+                                Err(e) => {send_error(&sender, id, e.0, e.1).ok();}
+                            };
+                        });
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
