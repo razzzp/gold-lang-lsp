@@ -110,6 +110,8 @@ impl ProjectManager{
         // discard old doc
         doc_info.write().unwrap().set_saved_document(Some(new_doc.clone()));
         doc_info.write().unwrap().set_opened_document(None);
+        // reset cached st
+        doc_info.write().unwrap().set_symbol_table(None);
 
         let sem_service = self.create_sem_service();
         let doc_for_thread= new_doc.clone();

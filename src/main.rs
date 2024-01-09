@@ -50,6 +50,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         definition_provider: Some(OneOf::Left(true)),
         completion_provider: Some(CompletionOptions{
+            trigger_characters: Some(vec!['.'.to_string()]),
             ..Default::default()
         }),
         ..Default::default()
