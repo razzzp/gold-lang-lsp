@@ -87,7 +87,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     io_threads.join()?;
 
     // Shut down gracefully.
-    eprintln!("shutting down server");
+    eprintln!("Shutting down server");
     Ok(())
 }
 
@@ -130,7 +130,7 @@ fn main_loop(
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
-                logger.log_info(format!("got request; #{}; method:{}", req.id, req.method).as_str());
+                logger.log_info(format!("Got request #{}; method:{}", req.id, req.method).as_str());
                 let req = match cast_req::<DocumentSymbolRequest>(req) {
                     Ok((id, params)) => {
                         match handle_document_symbol_request(&mut proj_manager, id.clone(), params, &logger){
@@ -147,12 +147,13 @@ fn main_loop(
                         let sender = connection.sender.clone();
                         let mut proj_manager = proj_manager.clone();
                         let logger = logger.clone();
-                        threadpool.execute(move ||{
+                        let id_clone = id.clone();
+                        threadpool.execute_req(move ||{
                             match handle_document_diagnostics_request(&mut proj_manager, id.clone(), params, &logger){
                                 Ok(resp) => {let _ = sender.send(resp);},
                                 Err(e) => {let _ = send_error(&sender, id, e.0, e.1).ok();}
                             };
-                        });
+                        }, id_clone);
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
@@ -165,12 +166,13 @@ fn main_loop(
                         let sender = connection.sender.clone();
                         let mut proj_manager = proj_manager.clone();
                         let logger = logger.clone();
-                        threadpool.execute(move ||{
+                        let id_clone = id.clone();
+                        threadpool.execute_req(move ||{
                             match handle_goto_definition_request(&mut proj_manager, id.clone(), params, &logger){
                                 Ok(resp) => {let _ = sender.send(resp);},
                                 Err(e) => {let _  = send_error(&sender, id, e.0, e.1);}
                             };
-                        });
+                        }, id_clone);
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
@@ -183,12 +185,13 @@ fn main_loop(
                         let sender = connection.sender.clone();
                         let mut proj_manager = proj_manager.clone();
                         let logger = logger.clone();
-                        threadpool.execute(move ||{
+                        let id_clone = id.clone();
+                        threadpool.execute_req(move ||{
                             match handle_completion_request(&mut proj_manager, id.clone(), params, &logger){
                                 Ok(resp) => {let _ = sender.send(resp);},
                                 Err(e) => {let _  = send_error(&sender, id, e.0, e.1);}
                             };
-                        });
+                        },id_clone);
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
@@ -200,12 +203,13 @@ fn main_loop(
                         let sender = connection.sender.clone();
                         let mut proj_manager = proj_manager.clone();
                         let logger = logger.clone();
-                        threadpool.execute(move ||{
+                        let id_clone = id.clone();
+                        threadpool.execute_req(move ||{
                             match handle_type_hierarchy_prepare_request(&mut proj_manager, id.clone(), params, &logger){
                                 Ok(resp) => {let _ = sender.send(resp);},
                                 Err(e) => {let _  = send_error(&sender, id, e.0, e.1);}
                             };
-                        });
+                        }, id_clone);
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
@@ -217,12 +221,13 @@ fn main_loop(
                         let sender = connection.sender.clone();
                         let mut proj_manager = proj_manager.clone();
                         let logger = logger.clone();
-                        threadpool.execute(move ||{
+                        let id_clone = id.clone();
+                        threadpool.execute_req(move ||{
                             let _ = handle_result(
                                 handle_type_hierarchy_subtypes_request(&mut proj_manager, id.clone(), params, &logger), 
                                 id, 
                                 &sender);
-                        });
+                        }, id_clone);
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
@@ -234,12 +239,13 @@ fn main_loop(
                         let sender = connection.sender.clone();
                         let mut proj_manager = proj_manager.clone();
                         let logger = logger.clone();
-                        threadpool.execute(move ||{
+                        let id_clone = id.clone();
+                        threadpool.execute_req(move ||{
                             let _ = handle_result(
                                 handle_type_hierarchy_supertypes_request(&mut proj_manager, id.clone(), params, &logger), 
                                 id, 
                                 &sender);
-                        });
+                        },id_clone);
                         continue;
                     }
                     Err(err @ ExtractError::JsonError { .. }) => panic!("{err:?}"),
@@ -249,10 +255,10 @@ fn main_loop(
                 // ...
             }
             Message::Response(resp) => {
-                eprintln!("got response: #{}",resp.id);
+                eprintln!("Got response: #{}",resp.id);
             }
             Message::Notification(not) => {
-                logger.log_info(format!("got notification; method:{}", not.method).as_str());
+                logger.log_info(format!("Got notification; method:{}", not.method).as_str());
                 let not = match cast_not::<DidChangeTextDocument>(not) {
                     Ok(params) => {
                         match handle_did_change_notification(&mut proj_manager, params, &logger, &threadpool){
@@ -327,7 +333,7 @@ fn handle_document_symbol_request(
 )
     -> Result<Message, (i32, String)>
 {
-    logger.log_info(format!("handling Document Symbol request #{id}").as_str());
+    logger.log_info(format!("Handling Document Symbol request #{id}").as_str());
     let symbols = match proj_manager.generate_document_symbols(&params.text_document.uri){
         Ok(syms) => syms,
         Err(e) => return Err((e.error_code as i32, e.msg))
@@ -346,7 +352,7 @@ fn handle_document_diagnostics_request(
 )
     -> Result<Message, (i32, String)>
 {
-    logger.log_info(format!("handling Document Diagnostics request #{id}").as_str());
+    logger.log_info(format!("Handling Document Diagnostics request #{id}").as_str());
     let diag_report = match proj_manager.generate_document_diagnostic_report(&params.text_document.uri){
         Ok(diag_report) => diag_report,
         Err(e) => return Err((e.error_code as i32, e.msg))
@@ -365,7 +371,7 @@ fn handle_goto_definition_request(
 )
     -> Result<Message, (i32, String)>
 {
-    logger.log_info(format!("handling Goto Definition request #{id}").as_str());
+    logger.log_info(format!("Handling Goto Definition request #{id}").as_str());
     let loc_links = match proj_manager.generate_goto_definitions(
         &params.text_document_position_params.text_document.uri, 
         &params.text_document_position_params.position.into()){
@@ -386,7 +392,7 @@ fn handle_did_change_notification(
 )
     -> Result<Vec<Message>, (i32, String)>
 {
-    logger.log_info(format!("handling Did Change notification").as_str());
+    logger.log_info(format!("Handling Did Change notification {}", params.text_document.uri.path()).as_str());
     // get full file content
     let full_file_content = match params.content_changes.last(){
         Some(text_doc_change_event) => {
@@ -410,7 +416,7 @@ fn handle_did_save_notification(
 )
     -> Result<Vec<Message>, (i32, String)>
 {
-    logger.log_info(format!("handling Did Save notification").as_str());
+    logger.log_info(format!("Handling Did Save notification {}", params.text_document.uri.path()).as_str());
     // get full file content
     let _=proj_manager.notify_document_saved(&params.text_document.uri, threadpool);
     let result = Vec::<Message>::new();
@@ -425,8 +431,7 @@ fn handle_did_open_notification(
 )
     -> Result<Vec<Message>, (i32, String)>
 {
-    logger.log_info(format!("handling Did Save notification").as_str());
-    // get full file content
+    logger.log_info(format!("Handling Did Save notification {}", params.text_document.uri.path()).as_str());
     let result= Vec::new();
     if params.text_document.language_id.as_str() != "gold"{
         return Ok(result)
@@ -443,7 +448,7 @@ fn handle_did_close_notification(
 )
     -> Result<Vec<Message>, (i32, String)>
 {
-    logger.log_info(format!("handling Did Close notification").as_str());
+    logger.log_info(format!("Handling Did Close notification {}", params.text_document.uri.path()).as_str());
     // get full file content
     let result= Vec::new();
     proj_manager.doc_service.notify_document_closed(&params.text_document.uri);
@@ -458,7 +463,7 @@ fn handle_completion_request(
 )
     -> Result<Message, (i32, String)>
 {
-    logger.log_info(format!("handling Completion request #{id}").as_str());
+    logger.log_info(format!("Handling Completion request #{id}").as_str());
     let completion_items = match proj_manager.generate_completion_proposals(
         &params.text_document_position.text_document.uri, 
         &params.text_document_position.position.into())

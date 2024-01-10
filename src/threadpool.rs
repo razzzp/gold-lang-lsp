@@ -1,10 +1,24 @@
 
 use std::{thread, sync::{mpsc, Arc, Mutex}};
 
+use lsp_server::RequestId;
+
 use crate::utils::ILoggerV2;
 
 
-type Job = Box<dyn FnOnce() + Send + 'static>;
+struct Job{
+    pub run: Box<dyn FnOnce() + Send + 'static>,
+    pub req_id: Option<RequestId>
+}
+impl Job {
+    pub fn new(func:Box<dyn FnOnce() + Send + 'static>, req_id: Option<RequestId>) -> Job{
+        Job{
+            run: func,
+            req_id
+        }
+    }
+}
+
 enum Message {
     NewJob(Job),
     Terminate,
@@ -37,7 +51,16 @@ impl ThreadPool {
     where
         F: FnOnce() + Send + 'static,
     {
-        let job = Box::new(f);
+        let job = Job::new(Box::new(f), None);
+
+        self.sender.send(Message::NewJob(job)).unwrap();
+    }
+
+    pub fn execute_req<F>(&self, f: F, req_id: RequestId)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let job = Job::new(Box::new(f), Some(req_id));
 
         self.sender.send(Message::NewJob(job)).unwrap();
     }
@@ -76,10 +99,14 @@ impl Worker {
 
             match msg{
                 Message::NewJob(job) => {
-                    logger.log_info(format!("Worker {id} got a job; executing.").as_str());
+                    let req_id = job.req_id.map(|id| format!(" Request Id #{id}"))
+                        .unwrap_or("".to_string());
 
-                    job();
-                    logger.log_info(format!("Worker {id} finished job.").as_str());
+                    logger.log_info(format!("Worker {id} got a job; executing{req_id}").as_str());
+
+                    (job.run)();
+
+                    logger.log_info(format!("Worker {id} finished job{req_id}").as_str());
                 },
                 Message::Terminate =>{
                     return;

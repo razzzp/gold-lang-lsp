@@ -6,7 +6,7 @@ use lsp_server::ErrorCode;
 
 use crate::parser::{ast::IAstNode, ParserDiagnostic};
 
-use super::{annotated_node::AnnotatedNode, document_service::EntityInfo};
+use super::{annotated_node::AnnotatedNode, document_service::EntityInfo, naming_convention_checker::NamingConventionChecker};
 use crate::manager::symbol_table::ISymbolTable;
 
 #[derive(Debug)]
@@ -123,6 +123,19 @@ impl DocumentInfo{
 
     pub fn set_symbol_table(&mut self, symbol_table: Option<Arc<Mutex<dyn ISymbolTable>>>){
         self.symbol_table = symbol_table;
+    }
+
+    /// resets all parsed data
+    pub fn reset_all_data(&mut self){
+        self.opened = None;
+        self.saved = None;
+        self.symbol_table = None;
+    }
+
+    /// resets all parsed data
+    pub fn reset_transient_data(&mut self){
+        self.opened = None;
+        self.symbol_table = None;
     }
 }
 

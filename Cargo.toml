@@ -1,6 +1,6 @@
 [package]
 name = "gold-lang-lsp"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -9,7 +9,7 @@ edition = "2021"
 lsp-server = "0.7.2"
 lsp-types = {version = "0.94.1", features = ["proposed"]}
 crossbeam-channel = "0.5.6"
-nom = "7"
+#nom = "7"
 regex = "1"
 serde = "1.0.174"
 serde_json = "1.0.103"

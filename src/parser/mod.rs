@@ -783,12 +783,26 @@ fn parse_global_variable_declaration<'a, C: IParserContext<'a> + 'a>(input : &'a
    let (next, member_modifiers) = parse_member_modifiers(next, context)?;
    let raw_pos = if memory_token.is_some() {memory_token.as_ref().unwrap().raw_pos.clone()} else {identifier_token.raw_pos.clone()};
    let start = if memory_token.is_some() {memory_token.as_ref().unwrap().get_range()} else {identifier_token.get_range()};
-   let end;
+   let mut end;
    if member_modifiers.is_some(){
       end = member_modifiers.as_ref().unwrap().get_range();
    } else {
       end = type_node.get_range()
    }
+
+   // absolute
+   let (mut next, abs_token) = opt_parse(exp_token(TokenType::Absolute))(next)?;
+   let mut absolute_node : Option<Arc<dyn IAstNode>>= None;
+   if abs_token.is_some() {
+       (next, absolute_node) = match parse_identifier(next, context) {
+           Ok((n, node)) => {
+               end = node.get_range();
+               (n, Some(node))
+           },
+           Err(e) => return Err(e)
+       };
+   }
+   
    return Ok((
       next,
       Arc::new(AstGlobalVariableDeclaration {
@@ -799,6 +813,7 @@ fn parse_global_variable_declaration<'a, C: IParserContext<'a> + 'a>(input : &'a
          identifier: identifier_token,
          type_node: type_node,
          modifiers: member_modifiers,
+         absolute_node,
       })
    ));
 }
@@ -1619,6 +1634,8 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
          (TokenType::Identifier, Some("aType".to_string())),
          (TokenType::Protected, Some("protected".to_string())),
          (TokenType::Override, Some("override".to_string())),
+         (TokenType::Absolute, Some("absolute".to_string())),
+         (TokenType::Identifier, Some("AnotherGlobalVar".to_string())),
       ]);
       let next : &[Token] = &input;
       let mut context = create_context();
@@ -1631,6 +1648,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       assert_eq!(downcasted.identifier.get_value().deref(), "aVariable");
       assert!(downcasted.modifiers.as_ref().unwrap().modifiers.is_override);
       assert!(downcasted.modifiers.as_ref().unwrap().modifiers.is_protected);
+      assert_eq!(downcasted.absolute_node.as_ref().unwrap().get_identifier(), "AnotherGlobalVar");
 
       // test refto type
       let downcasted = downcasted.type_node.as_any().downcast_ref::<AstTypeReference>().unwrap();
@@ -1640,6 +1658,7 @@ use crate::{lexer::{tokens::{Token, TokenType}, GoldLexer}, parser::{parse_uses,
       assert_eq!(downcasted.options[1].get_value().deref(), "P");
       assert_eq!(downcasted.options[2].get_value().deref(), "T");
    }
+   
 
    #[test]
    fn test_parse_procedure_declaration() {

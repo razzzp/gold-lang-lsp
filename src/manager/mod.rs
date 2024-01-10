@@ -1,5 +1,6 @@
 use std::{rc::Rc, sync::{Arc, Mutex}, cell::RefCell, str::FromStr};
 
+use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink, CompletionItem, TypeHierarchyItem};
 use regex::Regex;
 
@@ -76,49 +77,30 @@ impl ProjectManager{
             files_to_process.len()).as_str());
     }
 
-    pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String, threadpool: &ThreadPool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String, threadpool: &ThreadPool) -> Result<(), ProjectManagerError>{
         let doc_info = self.doc_service.get_document_info(uri)?;
-        // discard old doc, and analyze new content
-        doc_info.write().unwrap().set_opened_document(None);
+        // discard old opened doc
+        doc_info.write().unwrap().reset_transient_data();
+
         let new_doc = self.doc_service.parse_content(full_file_content)?;
         let new_doc = Arc::new(Mutex::new(new_doc));
         doc_info.write().unwrap().set_opened_document(Some(new_doc.clone()));
-        let sem_service = self.create_sem_service();
-        let new_doc_2 = new_doc.clone();
-        threadpool.execute(move ||{
-            let _ = sem_service.analyze(new_doc, doc_info, false);
-        });
-        return Ok(new_doc_2);
+
+        return Ok(());
     }
 
-    pub fn notify_document_opened(&mut self, uri: &Url, threadpool: &ThreadPool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn notify_document_opened(&mut self, uri: &Url, threadpool: &ThreadPool) -> Result<(), ProjectManagerError>{
         let doc_info = self.doc_service.get_document_info(uri)?;
-        let doc = self.doc_service.get_parsed_document(uri, true)?;
-        // discard old doc, and analyze new content
-        let doc_2 = doc.clone();
-        let sem_service = self.create_sem_service();
-        threadpool.execute(move ||{
-            let _ = sem_service.analyze(doc, doc_info, false);
-        });
-        return Ok(doc_2);
+        // do nothing? client should already call get diagnostics, etc.
+        // doc_info.write().unwrap().set_opened_document(None);
+        return Ok(());
     }
 
-    pub fn notify_document_saved(&mut self, uri: &Url, threadpool: &ThreadPool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn notify_document_saved(&mut self, uri: &Url, threadpool: &ThreadPool) -> Result<(), ProjectManagerError>{
         let doc_info = self.doc_service.get_document_info(uri)?;
-        // parse from file
-        let new_doc = Arc::new(Mutex::new(self.doc_service.parse_content(&doc_info.read().unwrap().file_path.clone())?));
-        // discard old doc
-        doc_info.write().unwrap().set_saved_document(Some(new_doc.clone()));
-        doc_info.write().unwrap().set_opened_document(None);
-        // reset cached st
-        doc_info.write().unwrap().set_symbol_table(None);
-
-        let sem_service = self.create_sem_service();
-        let doc_for_thread= new_doc.clone();
-        threadpool.execute(move ||{
-            let _analyzed_doc = sem_service.analyze(doc_for_thread, doc_info, false);
-        });
-        return Ok(new_doc);
+        // purge parsed data, so next req will reparse everything
+        doc_info.write().unwrap().reset_all_data();
+        return Ok(());
     }
 
     fn create_sem_service(&self) -> SemanticAnalysisService{
@@ -327,7 +309,7 @@ pub mod test{
 
     use lsp_types::Url;
 
-    use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, manager::semantic_analysis_service::AnalyzeRequestOptions};
+    use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger, StdErrLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, manager::semantic_analysis_service::AnalyzeRequestOptions};
 
     use super::{ProjectManager, document_service::DocumentService, type_resolver::TypeResolver, semantic_analysis_service::SemanticAnalysisService, definition_service::DefinitionService};
 

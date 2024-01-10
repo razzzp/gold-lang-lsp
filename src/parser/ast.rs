@@ -2,7 +2,7 @@ use std::any::Any;
 use std::sync::Arc;
 
 use crate::lexer::tokens::Token;
-use crate::utils::{Position, Range, IRange, DynamicChild};
+use crate::utils::{Position, Range, IRange, DynamicChild, OptionExt};
 
 #[macro_export]
 macro_rules! implem_irange {
@@ -516,7 +516,8 @@ pub struct AstGlobalVariableDeclaration {
     pub identifier: Token,
     pub type_node: Arc<dyn IAstNode>,
     pub modifiers: Option<Arc<AstMemberModifiers>>,
-    pub is_memory: bool
+    pub is_memory: bool,
+    pub absolute_node : Option<Arc<dyn IAstNode>>
 }
 implem_irange!(AstGlobalVariableDeclaration);
 impl IAstNode for AstGlobalVariableDeclaration {
@@ -540,11 +541,13 @@ impl IAstNode for AstGlobalVariableDeclaration {
     fn get_children_ref(&self) -> Option<Vec<&dyn IAstNode>> {
         let mut result = Vec::new();
         result.push(self.type_node.as_ref().as_ast_node());
+        self.absolute_node.as_ref().map(|n|{result.push(n.as_ref())});
         return Some(result);
     }
     fn get_children_arc(&self) -> Option<Vec<&Arc<dyn IAstNode>>> {
         let mut result = Vec::new();
         result.push(&self.type_node);
+        self.absolute_node.as_ref().map(|n|{result.push(n)});
         return Some(result);
     }
     fn get_identifier(&self) -> &str {

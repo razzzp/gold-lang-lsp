@@ -245,7 +245,7 @@ impl GoldLexer{
         int_char.push('#');
         loop {
             match buf.peek() {
-                Some((_ , '0'..='1')) => {
+                Some((_ , '0'..='9')) => {
                     int_char.push(buf.next().unwrap().1);
                 },
                 Some((_, ' '| '\n'| '\r'| '\t')) => {
