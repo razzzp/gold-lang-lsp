@@ -1,6 +1,7 @@
 use super::annotated_ast_walker::IAnnotatedNodeVisitor;
 
-use crate::analyzers_v2::annotated_ast_walker::{AnnotatedAstNodeArx, IAnnotatedAstWalkerContext};
+use crate::analyzers_v2::annotated_ast_walker::IAnnotatedAstWalkerContext;
+use super::AnnotatedAstNodeArx;
 
 /// Checks that inherited is called for certain functions
 #[derive(Debug)]

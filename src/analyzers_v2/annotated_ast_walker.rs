@@ -5,8 +5,7 @@ use std::sync::{
 };
 use crate::analyzers_v2::annotated_node::AnnotatedNode;
 use crate::parser::ast::{IAstNode, AstClass, AstModule, AstProcedure, AstFunction};
-
-pub type AnnotatedAstNodeArx =Arc<RwLock<AnnotatedNode<dyn IAstNode>>>;
+use super::AnnotatedAstNodeArx;
 
 pub trait IAnnotatedNodeVisitor: {
     fn visit(&mut self, node : &AnnotatedAstNodeArx);
