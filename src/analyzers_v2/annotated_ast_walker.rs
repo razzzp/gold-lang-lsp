@@ -3,7 +3,7 @@ use std::sync::{
     Arc,
     RwLock,
 };
-use crate::manager::annotated_node::AnnotatedNode;
+use crate::analyzers_v2::annotated_node::AnnotatedNode;
 use crate::parser::ast::IAstNode;
 
 pub trait IAnnotatedNodeVisitor: {

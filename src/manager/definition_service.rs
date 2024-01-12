@@ -7,9 +7,12 @@ use lsp_types::{LocationLink, Url};
 
 use crate::{parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstTypeBasic, AstClass, AstTypeReference, AstMethodCall, AstProcedure, AstFunction, AstGlobalVariableDeclaration}, utils::{Position, IRange, ILoggerV2}, lexer::tokens::TokenType};
 
-use super::{data_structs::ProjectManagerError, annotated_node::{AnnotatedNode, EvalType}, semantic_analysis_service::{SemanticAnalysisService, AnalyzeRequestOptions}, type_resolver::TypeResolver, document_service::DocumentService, utils::search_encasing_node};
-use crate::manager::symbol_table::ISymbolTable;
-
+use super::{data_structs::ProjectManagerError, semantic_analysis_service::{SemanticAnalysisService, AnalyzeRequestOptions}, document_service::DocumentService, utils::search_encasing_node};
+use crate::analyzers_v2::{
+    annotated_node::{AnnotatedNode, EvalType},
+    type_resolver::TypeResolver,
+    symbol_table::ISymbolTable
+};
 
 pub struct DefinitionService{
     doc_service : DocumentService,

@@ -2,7 +2,11 @@ use std::{sync::{RwLock, Arc, Mutex}, ops::Deref};
 
 use crate::{parser::ast::{IAstNode, AstBinaryOp}, utils::{Position, ILoggerV2}, lexer::tokens::TokenType};
 
-use super::{annotated_node::{AnnotatedNode, EvalType}, symbol_table::{SymbolInfo, ISymbolTable}, semantic_analysis_service::SemanticAnalysisService};
+use super::{semantic_analysis_service::SemanticAnalysisService};
+use crate::analyzers_v2::{
+    annotated_node::{AnnotatedNode, EvalType},
+    symbol_table::{SymbolInfo, ISymbolTable},
+};
 
 pub const DIAGNOSTIC_SOURCE_GOLD: &'static str = "gold";
 

@@ -5,8 +5,11 @@ use crate::{analyzers::AnalyzerDiagnostic, utils::{IDiagnosticCollector, ILogger
 use core::fmt::Debug;
 use std::sync::{Mutex, Arc, RwLock};
 
-use super::{data_structs::{Document, ProjectManagerError, DocumentInfo}, document_service::DocumentService, ast_annotator::AstAnnotator};
-use crate::manager::symbol_table::ISymbolTable;
+use super::{data_structs::{Document, ProjectManagerError, DocumentInfo}, document_service::DocumentService};
+use crate::analyzers_v2::{
+    ast_annotator::AstAnnotator,
+    symbol_table::ISymbolTable,
+};
 
 #[derive(Debug,Clone,Copy,Default)]
 pub struct AnalyzeRequestOptions{

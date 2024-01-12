@@ -2,8 +2,11 @@ use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 
 use crate::{parser::ast::{IAstNode, AstTypeBasic, AstBinaryOp, AstTerminal, AstTypeReference, AstMethodCall}, lexer::tokens::TokenType};
 
-use super::{annotated_node::{EvalType, NativeType, AnnotatedNode}, semantic_analysis_service::SemanticAnalysisService};
-use crate::manager::symbol_table::{ISymbolTable,SymbolInfo};
+use crate::manager::semantic_analysis_service::SemanticAnalysisService;
+use crate::analyzers_v2::{
+    annotated_node::{EvalType, NativeType, AnnotatedNode},
+    symbol_table::{ISymbolTable,SymbolInfo}
+};
 
 
 pub struct TypeResolver {
@@ -272,10 +275,8 @@ impl TypeResolver {
 mod test{
     
 
-    use crate::manager::{test::{create_test_project_manager, create_uri_from_path, create_test_type_resolver}, annotated_node::{EvalType, NativeType}, semantic_analysis_service::AnalyzeRequestOptions};
-
-    
-
+    use crate::manager::{test::{create_test_project_manager, create_uri_from_path, create_test_type_resolver}, semantic_analysis_service::AnalyzeRequestOptions};
+    use crate::analyzers_v2::annotated_node::{EvalType, NativeType};
 
     /// 
     #[ignore = "fragile; need to find better way to generate test cases"]

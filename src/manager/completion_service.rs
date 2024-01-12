@@ -9,8 +9,12 @@ use crate::{manager::{
 
 }, utils::{ILoggerV2, Position, IRange}, parser::ast::{IAstNode, AstBinaryOp}};
 
-use super::{data_structs::ProjectManagerError, utils::{search_encasing_node, check_parent_dot_ops, check_dot_ops}, type_resolver::TypeResolver, annotated_node::{AnnotatedNode, EvalType}, symbol_table::{ISymbolTable, SymbolType}, semantic_analysis_service::AnalyzeRequestOptions};
-
+use super::{data_structs::ProjectManagerError, utils::{search_encasing_node, check_parent_dot_ops, check_dot_ops}, semantic_analysis_service::AnalyzeRequestOptions};
+use crate::analyzers_v2::{
+    type_resolver::TypeResolver,
+    annotated_node::{AnnotatedNode, EvalType},
+    symbol_table::{ISymbolTable, SymbolType}
+};
 
 #[derive(Debug, Clone)]
 pub struct CompletionService{

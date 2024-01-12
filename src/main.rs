@@ -38,6 +38,7 @@ pub mod utils;
 pub mod manager;
 pub mod analyzers;
 pub mod threadpool;
+pub mod analyzers_v2;
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Note that  we must have our logging only write out to stderr.

@@ -5,8 +5,13 @@ use lsp_types::{Url, TypeHierarchyItem, SymbolKind};
 
 use crate::utils::{ILoggerV2, Position};
 
-use super::{semantic_analysis_service::{SemanticAnalysisService, AnalyzeRequestOptions}, entity_tree_service::{EntityTreeService, EntityInfoNode}, data_structs::ProjectManagerError, utils::{search_encasing_node, search_sym_info_for_node}, symbol_table::SymbolType};
-
+use super::{
+    semantic_analysis_service::{SemanticAnalysisService, AnalyzeRequestOptions}, 
+    entity_tree_service::{EntityTreeService, EntityInfoNode}, 
+    data_structs::ProjectManagerError, 
+    utils::{search_encasing_node, search_sym_info_for_node}
+};
+use crate::analyzers_v2::symbol_table::SymbolType;
 
 
 #[derive(Debug, Clone)]

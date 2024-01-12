@@ -12,7 +12,7 @@ use crate::utils::OptionExt;
 use crate::utils::OptionString;
 use crate::utils::Range;
 
-use crate::manager::annotated_node::EvalType;
+use crate::analyzers_v2::annotated_node::EvalType;
 
 #[derive(Debug, Default, Clone)]
 pub enum SymbolType {

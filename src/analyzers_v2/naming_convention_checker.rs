@@ -4,7 +4,8 @@ use lsp_types::DiagnosticSeverity;
 
 use crate::{utils::{IDiagnosticCollector, Range, IRange}, parser::ast::{IAstNode, AstProcedure, AstFunction, AstLocalVariableDeclaration, AstTypeDeclaration, AstGlobalVariableDeclaration, AstConstantDeclaration, AstParameterDeclaration}};
 
-use super::{annotated_ast_walker::IAnnotatedNodeVisitor, annotated_node::AnnotatedNode, utils::DIAGNOSTIC_SOURCE_GOLD};
+use super::{annotated_ast_walker::IAnnotatedNodeVisitor, annotated_node::AnnotatedNode};
+use crate::manager::utils::DIAGNOSTIC_SOURCE_GOLD;
 
 
 #[derive(Debug)]

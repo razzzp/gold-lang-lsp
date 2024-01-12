@@ -6,8 +6,11 @@ use lsp_server::ErrorCode;
 
 use crate::parser::{ast::IAstNode, ParserDiagnostic};
 
-use super::{annotated_node::AnnotatedNode, document_service::EntityInfo, naming_convention_checker::NamingConventionChecker};
-use crate::manager::symbol_table::ISymbolTable;
+use crate::analyzers_v2::{
+    annotated_node::AnnotatedNode, 
+    symbol_table::ISymbolTable
+};
+use crate::manager::document_service::EntityInfo;
 
 #[derive(Debug)]
 pub struct Document{

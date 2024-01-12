@@ -7,24 +7,28 @@ use regex::Regex;
 use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2, IDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
 use data_structs::*;
 
-use self::{semantic_analysis_service::{SemanticAnalysisService, AnalyzeRequestOptions}, document_service::DocumentService,  definition_service::DefinitionService, doc_symbol_generator::DocumentSymbolGeneratorFromAst, completion_service::CompletionService, entity_tree_service::EntityTreeService, type_hierarchy_service::TypeHierarchyService, unpurged_varbytearray_checker::UnpurgedVarByteArrayChecker, annotated_ast_walker::{AnnotatedAstWalkerPreOrder, IAnnotatedNodeVisitor}, naming_convention_checker::NamingConventionChecker};
+use self::{
+    semantic_analysis_service::{SemanticAnalysisService, AnalyzeRequestOptions}, 
+    document_service::DocumentService,  definition_service::DefinitionService, 
+    completion_service::CompletionService, 
+    entity_tree_service::EntityTreeService, 
+    type_hierarchy_service::TypeHierarchyService};
+
+use crate::analyzers_v2::{
+    annotated_ast_walker::{AnnotatedAstWalkerPreOrder, IAnnotatedNodeVisitor}, 
+    naming_convention_checker::NamingConventionChecker,
+    unpurged_varbytearray_checker::UnpurgedVarByteArrayChecker,
+    doc_symbol_generator::DocumentSymbolGeneratorFromAst,
+};
 
 pub mod data_structs;
 pub mod semantic_analysis_service;
-pub mod annotated_node;
 pub mod definition_service;
-pub mod type_resolver;
 pub mod document_service;
-pub mod symbol_table;
-pub mod ast_annotator;
-pub mod doc_symbol_generator;
 pub mod utils;
 pub mod completion_service;
 pub mod entity_tree_service;
 pub mod type_hierarchy_service;
-pub mod annotated_ast_walker;
-pub mod unpurged_varbytearray_checker;
-pub mod naming_convention_checker;
 
 #[derive(Debug, Clone)]
 pub struct ProjectManager{
@@ -311,7 +315,13 @@ pub mod test{
 
     use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger, StdErrLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, manager::semantic_analysis_service::AnalyzeRequestOptions};
 
-    use super::{ProjectManager, document_service::DocumentService, type_resolver::TypeResolver, semantic_analysis_service::SemanticAnalysisService, definition_service::DefinitionService};
+    use super::{
+        ProjectManager, 
+        document_service::DocumentService,
+        semantic_analysis_service::SemanticAnalysisService,
+        definition_service::DefinitionService
+    };
+    use crate::analyzers_v2::type_resolver::TypeResolver;
 
     fn parse_and_analyze(file_path: &str) -> (Arc<dyn IAstNode>, Vec<ParserDiagnostic>){
         let  mut f = File::open(file_path).expect("file not found");
