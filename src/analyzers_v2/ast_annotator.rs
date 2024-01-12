@@ -564,10 +564,8 @@ mod test{
     use std::sync::{Mutex, Arc, RwLock};
 
     use crate::{manager::{test::{create_test_project_manager, create_test_sem_service, create_test_logger}, utils::search_encasing_node, data_structs::DocumentInfo}, utils::Position};
-    use crate::analyzers_v2::{
-        annotated_node::{EvalType, NativeType}
-    };
-    
+    use crate::analyzers_v2::annotated_node::{EvalType, NativeType};
+
     #[test]
     fn test_bin_op(){
         let mut proj_manager = create_test_project_manager("./test/workspace");

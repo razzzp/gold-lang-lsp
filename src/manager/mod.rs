@@ -1,6 +1,5 @@
 use std::{rc::Rc, sync::{Arc, Mutex}, cell::RefCell, str::FromStr};
 
-use lsp_server::ErrorCode;
 use lsp_types::{DocumentSymbol, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink, CompletionItem, TypeHierarchyItem};
 use regex::Regex;
 
@@ -81,7 +80,7 @@ impl ProjectManager{
             files_to_process.len()).as_str());
     }
 
-    pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String, threadpool: &ThreadPool) -> Result<(), ProjectManagerError>{
+    pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String, _threadpool: &ThreadPool) -> Result<(), ProjectManagerError>{
         let doc_info = self.doc_service.get_document_info(uri)?;
         // discard old opened doc
         doc_info.write().unwrap().reset_transient_data();
@@ -93,14 +92,14 @@ impl ProjectManager{
         return Ok(());
     }
 
-    pub fn notify_document_opened(&mut self, uri: &Url, threadpool: &ThreadPool) -> Result<(), ProjectManagerError>{
-        let doc_info = self.doc_service.get_document_info(uri)?;
+    pub fn notify_document_opened(&mut self, uri: &Url, _threadpool: &ThreadPool) -> Result<(), ProjectManagerError>{
+        let _doc_info = self.doc_service.get_document_info(uri)?;
         // do nothing? client should already call get diagnostics, etc.
         // doc_info.write().unwrap().set_opened_document(None);
         return Ok(());
     }
 
-    pub fn notify_document_saved(&mut self, uri: &Url, threadpool: &ThreadPool) -> Result<(), ProjectManagerError>{
+    pub fn notify_document_saved(&mut self, uri: &Url, _threadpool: &ThreadPool) -> Result<(), ProjectManagerError>{
         let doc_info = self.doc_service.get_document_info(uri)?;
         // purge parsed data, so next req will reparse everything
         doc_info.write().unwrap().reset_all_data();
@@ -313,7 +312,7 @@ pub mod test{
 
     use lsp_types::Url;
 
-    use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger, StdErrLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, manager::semantic_analysis_service::AnalyzeRequestOptions};
+    use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, manager::semantic_analysis_service::AnalyzeRequestOptions};
 
     use super::{
         ProjectManager, 

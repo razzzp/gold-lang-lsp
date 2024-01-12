@@ -175,4 +175,8 @@ impl IAnnotatedNodeVisitor for NamingConventionChecker{
     fn notify_end(&mut self) {
         ()
     }
+
+    fn visit_w_context(&mut self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, context: &dyn super::annotated_ast_walker::IAnnotatedAstWalkerContext) {
+        self.visit(node)
+    }
 }

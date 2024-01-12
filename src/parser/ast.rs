@@ -2,7 +2,7 @@ use std::any::Any;
 use std::sync::Arc;
 
 use crate::lexer::tokens::Token;
-use crate::utils::{Position, Range, IRange, DynamicChild, OptionExt};
+use crate::utils::{Position, Range, IRange, DynamicChild};
 
 #[macro_export]
 macro_rules! implem_irange {

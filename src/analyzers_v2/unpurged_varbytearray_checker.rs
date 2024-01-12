@@ -112,4 +112,8 @@ impl IAnnotatedNodeVisitor for UnpurgedVarByteArrayChecker{
     fn notify_end(&mut self) {
         self.generate_diags_for_unpurged();
     }
+
+    fn visit_w_context(&mut self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, context: &dyn super::annotated_ast_walker::IAnnotatedAstWalkerContext) {
+        self.visit(node)
+    }
 }
