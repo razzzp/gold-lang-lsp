@@ -85,6 +85,10 @@ pub trait IAstNode: std::fmt::Debug + IRange + Send + Sync{
         todo!()
     }
     fn as_ast_node(&self) -> &dyn IAstNode;
+
+    fn get_member_modifiers(&self) -> Option<&MemberModifiers>{
+        None
+    } 
     // fn get_token(&self) -> Token;
     // fn eval() -> ();
 }
@@ -592,6 +596,9 @@ impl IAstNode for AstProcedure {
     fn get_identifier(&self) -> &str {
         self.identifier.get_identifier()
     }
+    fn get_member_modifiers(&self) -> Option<&MemberModifiers> {
+        self.modifiers.as_ref()?.get_member_modifiers()
+    }
 }
 
 
@@ -631,6 +638,9 @@ impl IAstNode for AstFunction {
     }
     fn get_identifier(&self) -> &str {
         self.identifier.get_identifier()
+    }
+    fn get_member_modifiers(&self) -> Option<&MemberModifiers> {
+        self.modifiers.as_ref()?.get_member_modifiers()
     }
 }
 
@@ -741,6 +751,9 @@ impl IAstNode for AstMemberModifiers {
     fn get_identifier(&self) -> &str {
         "member_modifiers"
     }
+    fn get_member_modifiers(&self) -> Option<&MemberModifiers> {
+        Some(&self.modifiers)
+    }
 }
 #[derive(Debug,Default)]
 pub struct AstMethodModifiers {
@@ -756,6 +769,9 @@ impl IAstNode for AstMethodModifiers {
     implem_iastnode_common!(AstMethodModifiers, "method_modifiers");
     fn get_identifier(&self) -> &str {
         "method_modifiers"
+    }
+    fn get_member_modifiers(&self) -> Option<&MemberModifiers> {
+        Some(&self.member_modifiers)
     }
 }
 
