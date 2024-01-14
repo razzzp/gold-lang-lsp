@@ -1,6 +1,6 @@
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Mutex};
 
-use crate::parser::ast::IAstNode;
+use crate::{parser::ast::IAstNode, utils::IDiagnosticCollector};
 
 use self::annotated_node::AnnotatedNode;
 
@@ -17,3 +17,4 @@ pub mod naming_convention_checker;
 pub mod inherited_checker;
 
 pub type AnnotatedAstNodeArx =Arc<RwLock<AnnotatedNode<dyn IAstNode>>>;
+pub type IDiagnosticCollectorArx  = Arc<Mutex<dyn IDiagnosticCollector<lsp_types::Diagnostic>>>;
