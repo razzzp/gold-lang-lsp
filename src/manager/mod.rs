@@ -3,7 +3,7 @@ use std::{rc::Rc, sync::{Arc, Mutex}, cell::RefCell, str::FromStr};
 use lsp_types::{DocumentSymbol, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink, CompletionItem, TypeHierarchyItem};
 use regex::Regex;
 
-use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2, IDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool};
+use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2, IDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool, analyzers_v2::inherited_checker::{self, InheritedChecker}};
 use data_structs::*;
 
 use self::{
@@ -220,11 +220,13 @@ impl ProjectManager{
             Box::new(UnpurgedVarByteArrayChecker::new(diag_collector.clone()));
         let name_checker: Box<dyn IAnnotatedNodeVisitor> = 
             Box::new(NamingConventionChecker::new(diag_collector.clone()));
-
+        let inherited_checker : Box<dyn IAnnotatedNodeVisitor> = 
+            Box::new(InheritedChecker::new(diag_collector.clone()));
         // analyze
         let mut walker = AnnotatedAstWalkerPreOrder::new();
         walker.register_visitor(unpurged_checker);
         walker.register_visitor(name_checker);
+        walker.register_visitor(inherited_checker);
         walker.walk(&annotated_ast);
 
         let diags = diag_collector.lock().unwrap().take_diagnostics();
@@ -244,8 +246,10 @@ impl ProjectManager{
                     None, 
                     None)
             }).collect();
+        // analyzers on IAstNode
         let analyzer_diags = self.get_analyzer_diagnostics(doc.clone())?;
         analyzer_diags.iter().for_each(|d|{result.push(d.clone())});
+        // analyzers on annotated node
         result.extend(self.generate_diags_on_annotated_ast(uri).unwrap_or_default());
 
         return Ok(result);
@@ -312,7 +316,7 @@ pub mod test{
 
     use lsp_types::Url;
 
-    use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, manager::semantic_analysis_service::AnalyzeRequestOptions};
+    use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger, test_utils::create_test_diag_collector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, manager::semantic_analysis_service::AnalyzeRequestOptions};
 
     use super::{
         ProjectManager, 
@@ -361,10 +365,6 @@ pub mod test{
     pub fn create_test_project_manager(root: &str) -> ProjectManager{
         let uri = create_uri_from_path(root);
         return ProjectManager::new(Some(uri), create_test_logger()).unwrap()
-    }
-
-    pub fn create_test_diag_collector()->Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>{
-        return Arc::new(Mutex::new(GenericDiagnosticCollector::new()))
     }
 
     pub fn create_test_sem_service(doc_service: DocumentService)-> SemanticAnalysisService{

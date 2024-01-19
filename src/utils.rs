@@ -370,14 +370,18 @@ pub fn bfs(ast_node: &dyn IAstNode) -> Vec<DynamicChild<dyn IAstNode>> {
 
 #[cfg(test)]
 pub mod test_utils{
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
 
     use crate::{parser::ast::{IAstNode, AstProcedure, AstTerminal, AstMethodBody, AstFunction, AstBinaryOp, AstUnaryOp}, lexer::tokens::{Token, TokenType}};
 
-    use super::{Range, Position};
+    use super::{Range, Position, GenericDiagnosticCollector, IDiagnosticCollector};
 
     pub fn cast_and_unwrap<'a, T: 'static>(node: &'a Arc<dyn IAstNode>) -> &'a T{
         return node.as_ref().as_any().downcast_ref::<T>().unwrap();
+    }
+
+    pub fn create_test_diag_collector<T : std::fmt::Debug + Send + 'static>()->Arc<Mutex<dyn IDiagnosticCollector<T>>>{
+        return Arc::new(Mutex::new(GenericDiagnosticCollector::<T>::new()))
     }
 
     pub fn create_test_token(token_type: TokenType, value: &str) -> Token {
