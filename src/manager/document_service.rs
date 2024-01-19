@@ -90,7 +90,7 @@ impl DocumentService {
                 let path = stack.pop().unwrap();
                 for entry in std::fs::read_dir(path).unwrap(){
                     // skip if err
-                    if let Err(e)= entry { eprint!("{}",e);continue;}
+                    if let Err(e)= entry { self.logger.log_error(format!("{}",e).as_str());continue;}
     
                     let entry = entry.unwrap();
                     if let Ok(file_type) = entry.file_type(){
@@ -100,24 +100,28 @@ impl DocumentService {
                         // if file and .god, add to hash
                         if file_type.is_file() && path.ends_with(".god") {
                             let uri = Url::from_file_path(&path).unwrap();
-                            let new_doc_info = DocumentInfo::new(
-                                uri.to_string(),
-                                path
-                            );
-                            let new_doc_info = Arc::new(RwLock::new(new_doc_info));
-                            uri_docinfo_map.insert(uri.to_string(), new_doc_info);
-                            // index class name to file uri
-                            match entry.path().as_path().file_stem(){
-                                Some(p) => {
-                                    match p.to_str(){
-                                        Some(s) => {
-                                            class_uri_map.write().unwrap().insert(s.to_string().to_uppercase(), uri.clone());
-                                            // eprint!("found file {}; uri:{}",s.to_string(), uri.to_string());
-                                        },
-                                        _=> ()
+                            // only add if it doesn't exist
+                            if !uri_docinfo_map.contains_key(uri.as_str()){
+                                
+                                let new_doc_info = DocumentInfo::new(
+                                    uri.to_string(),
+                                    path
+                                );
+                                let new_doc_info = Arc::new(RwLock::new(new_doc_info));
+                                uri_docinfo_map.insert(uri.to_string(), new_doc_info);
+                                // index class name to file uri
+                                match entry.path().as_path().file_stem(){
+                                    Some(p) => {
+                                        match p.to_str(){
+                                            Some(s) => {
+                                                class_uri_map.write().unwrap().insert(s.to_string().to_uppercase(), uri.clone());
+                                                // eprint!("found file {}; uri:{}",s.to_string(), uri.to_string());
+                                            },
+                                            _=> ()
+                                        }
                                     }
+                                    _=> ()
                                 }
-                                _=> ()
                             }
                         }
                     }

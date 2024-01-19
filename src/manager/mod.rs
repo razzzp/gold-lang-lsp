@@ -103,6 +103,8 @@ impl ProjectManager{
         let doc_info = self.doc_service.get_document_info(uri)?;
         // purge parsed data, so next req will reparse everything
         doc_info.write().unwrap().reset_all_data();
+        //re-index files
+        self.doc_service.index_files();
         return Ok(());
     }
 
