@@ -49,9 +49,7 @@ pub fn parse_literal_basic<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], _c
         exp_token(TokenType::BooleanFalse),
         exp_token(TokenType::Nil),
     ])(input)?;
-    return Ok((next, Arc::new(AstTerminal{
-        token: ident_token
-    })))
+    return Ok((next, Arc::new(AstTerminal::new(ident_token))));
 }
 
 pub fn parse_ident_token<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], _context : &mut C) -> Result<(&'a [Token], Token), ParseError<'a>> {
@@ -79,9 +77,7 @@ pub fn parse_ident_token<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], _con
 pub fn parse_identifier<'a, C: IParserContext<'a> + 'a>(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
     // reserved keywords can also be used a class members
     let (next, ident_token) = parse_ident_token(input, context)?;
-    return Ok((next, Arc::new(AstTerminal{
-        token: ident_token
-    })))
+    return Ok((next, Arc::new(AstTerminal::new(ident_token))));
 }
 
 fn parse_literals<'a, C: IParserContext<'a> + 'a >(input: &'a[Token], context : &mut C) -> Result<(&'a [Token], Arc<dyn IAstNode>), ParseError<'a>> {
@@ -780,9 +776,7 @@ fn _parse_control_statements<'a, C: IParserContext<'a> + 'a>(input : &'a [Token]
         exp_token(TokenType::Break),
         exp_token(TokenType::Continue),
     ].as_ref())(input)?;
-    return Ok((next, Arc::new(AstTerminal{
-        token: control_token,
-    })));
+    return Ok((next, Arc::new(AstTerminal::new(control_token,))));
 }
 
 fn parse_control_statements<'a, C: IParserContext<'a> + 'a>(input : &'a [Token], context : &mut C) -> Result<(&'a [Token],  Arc<dyn IAstNode>), ParseError<'a>>{

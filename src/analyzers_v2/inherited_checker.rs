@@ -47,7 +47,7 @@ impl InheritedChecker{
         }
     }
 
-    fn handle_method_node(&mut self, node: &AnnotatedAstNodeArx, context: &dyn IAnnotatedAstWalkerContext){
+    fn handle_method_node(&mut self, node: &AnnotatedAstNodeArx, _context: &dyn IAnnotatedAstWalkerContext){
         // check inherited called for previous method
         self.check_inherited_called();
         // reset vars
@@ -67,7 +67,7 @@ impl InheritedChecker{
     }
 }
 impl IAnnotatedNodeVisitor for InheritedChecker{
-    fn visit(&mut self, node : &AnnotatedAstNodeArx) {
+    fn visit(&mut self, _node : &AnnotatedAstNodeArx) {
         todo!()
     }
 
@@ -96,3 +96,25 @@ impl IAnnotatedNodeVisitor for InheritedChecker{
     }
 }
 
+#[cfg(test)]
+mod test{
+    
+
+    use crate::{utils::test_utils::*, lexer::tokens::{TokenType}};
+
+    #[test]
+    fn test_inherited_not_called(){
+        let _proc = create_test_proc_node(
+            "Test",
+            Some(vec![
+                create_test_unary_op_node(
+                    create_test_bin_op_ndoe(
+                        create_test_id_node("self"), 
+                        create_test_id_node("Test"),
+                        create_test_token(TokenType::Dot, ".")
+                    ), 
+                    create_test_token(TokenType::Inherited, "inherited"))
+            ])
+        );
+    }
+}

@@ -368,7 +368,6 @@ pub fn bfs(ast_node: &dyn IAstNode) -> Vec<DynamicChild<dyn IAstNode>> {
     return result;
 }
 
-
 #[cfg(test)]
 pub mod test_utils{
     use std::sync::Arc;
@@ -385,36 +384,39 @@ pub mod test_utils{
         Token { raw_pos: 0, range: Range::default(), token_type: token_type, value:  Arc::from(value)}
     }
 
-    pub fn create_test_id_node(id: &'static str) -> AstTerminal{
-        AstTerminal { token: Token { raw_pos: 0, range: Range::default(), token_type: TokenType::Identifier, value: Arc::from(id) } }
+    pub fn create_test_id_node(id: &str) -> Arc<AstTerminal>{
+        Arc::new(AstTerminal::new(Token { raw_pos: 0, range: Range::default(), token_type: TokenType::Identifier, value: Arc::from(id) }))
     }
 
-    pub fn create_test_proc_node() -> AstProcedure{
-        AstProcedure { 
+    pub fn create_test_proc_node(id: &str, statements: Option<Vec<Arc<dyn IAstNode>>>) -> Arc<AstProcedure>{
+        Arc::new(AstProcedure { 
             raw_pos: 0, 
             range: Range::default(), 
-            identifier: Arc::new(create_test_id_node("TestProc")),
+            identifier: create_test_id_node(id),
             parameter_list: None, 
             modifiers: None, 
-            body: Some(Arc::new(AstMethodBody{
-                range: Range::default(),
-                raw_pos:0,
-                statements: Vec::new(),
-            })), 
+            body: statements.map(|vec| {
+                let res : Arc<dyn IAstNode> = Arc::new(AstMethodBody{
+                    range: Range::default(),
+                    raw_pos:0,
+                    statements: vec,
+                });
+                res         
+            }),
             end_token: Some(Token{
                 range:Range::default(),
                 raw_pos:0,
                 token_type: TokenType::EndProc,
                 value: Arc::from("endproc")
             })
-        }
+        })
     }
 
-    pub fn create_test_func_node() -> AstFunction{
-        AstFunction { 
+    pub fn create_test_func_node() -> Arc<AstFunction>{
+        Arc::new(AstFunction { 
             raw_pos: 0, 
             range: Range::default(), 
-            identifier: Arc::new(create_test_id_node("TestProc")),
+            identifier: create_test_id_node("TestProc"),
             parameter_list: None, 
             modifiers: None, 
             body: Some(Arc::new(AstMethodBody{
@@ -428,15 +430,15 @@ pub mod test_utils{
                 token_type: TokenType::EndProc,
                 value: Arc::from("endproc")
             }),
-            return_type: Arc::new(create_test_id_node("Boolean"))
-        }
+            return_type: create_test_id_node("Boolean")
+        })
     }
 
-    pub fn create_test_bin_op_ndoe(left: Arc<dyn IAstNode>, right: Arc<dyn IAstNode>, op: Token) -> AstBinaryOp{
-        AstBinaryOp { raw_pos: 0, range: Range::default(), op_token: op, left_node: left, right_node: right }
+    pub fn create_test_bin_op_ndoe(left: Arc<dyn IAstNode>, right: Arc<dyn IAstNode>, op: Token) -> Arc<AstBinaryOp>{
+        Arc::new(AstBinaryOp { raw_pos: 0, range: Range::default(), op_token: op, left_node: left, right_node: right })
     }
 
-    pub fn create_test_unary_op_node(node: Arc<dyn IAstNode>, op: Token) -> AstUnaryOp{
-        AstUnaryOp {raw_pos:0,range:Range::default(),expr_node:node,op_token:op,pos:Position::default()}
+    pub fn create_test_unary_op_node(node: Arc<dyn IAstNode>, op: Token) -> Arc<AstUnaryOp>{
+        Arc::new(AstUnaryOp {raw_pos:0,range:Range::default(),expr_node:node,op_token:op,pos:Position::default()})
     }
 }

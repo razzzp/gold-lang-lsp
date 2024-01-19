@@ -633,7 +633,7 @@ fn parse_type_record<'a, C: IParserContext<'a> + 'a>(input : &'a [Token], contex
    ].as_ref()))(next)?;
    let parent_node = match &mut parent_tokens {
       Some(tokens)=> {
-         let boxed_node : Arc<dyn IAstNode> = Arc::new(AstTerminal{token: tokens.remove(1)});
+         let boxed_node : Arc<dyn IAstNode> = Arc::new(AstTerminal::new(tokens.remove(1)));
          Some(boxed_node)
       },
       _=> None
