@@ -1,4 +1,4 @@
-use crate::{parser::ast::IAstNode, lexer::tokens::Token};
+use crate::{analyzers_v2::AnnotatedAstNodeArx, lexer::tokens::Token, parser::ast::IAstNode};
 use std::{collections::LinkedList, ops::Deref, sync::Arc, fmt::Write};
 
 #[macro_export]
@@ -366,6 +366,13 @@ pub fn bfs(ast_node: &dyn IAstNode) -> Vec<DynamicChild<dyn IAstNode>> {
         result.push(cur);
     }
     return result;
+}
+
+pub fn is_overriding_member(node : &AnnotatedAstNodeArx) -> bool{
+    if let Some(modifiers) = node.read().unwrap().data.get_member_modifiers(){
+        return modifiers.is_override;
+    }
+    return false;
 }
 
 #[cfg(test)]

@@ -2,9 +2,9 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use lsp_types::DiagnosticSeverity;
 
-use crate::{utils::{IDiagnosticCollector, Range, IRange}, parser::ast::{IAstNode, AstProcedure, AstFunction, AstLocalVariableDeclaration, AstTypeDeclaration, AstGlobalVariableDeclaration, AstConstantDeclaration, AstParameterDeclaration}};
+use crate::{utils::{is_overriding_member, IDiagnosticCollector, IRange, Range}, parser::ast::{IAstNode, AstProcedure, AstFunction, AstLocalVariableDeclaration, AstTypeDeclaration, AstGlobalVariableDeclaration, AstConstantDeclaration, AstParameterDeclaration}};
 
-use super::{annotated_ast_walker::IAnnotatedNodeVisitor, annotated_node::AnnotatedNode};
+use super::{annotated_ast_walker::IAnnotatedNodeVisitor, annotated_node::AnnotatedNode, AnnotatedAstNodeArx};
 use crate::manager::utils::DIAGNOSTIC_SOURCE_GOLD;
 
 
@@ -59,43 +59,58 @@ impl NamingConventionChecker{
         // methods and fields should have Capital First Letter
         match node.read().unwrap().data.as_any().downcast_ref::<AstProcedure>(){
             Some(proc_decl) => {
-                self.handle_check_uppercase_first_char(
-                    proc_decl.get_identifier(), 
-                    &proc_decl.identifier.get_range(),
-                    "Procedure names should have capital first letter".to_string()
-                )
+                // only check non-overriding members to prevent pollution
+                if !is_overriding_member(node){
+                    self.handle_check_uppercase_first_char(
+                        proc_decl.get_identifier(), 
+                        &proc_decl.identifier.get_range(),
+                        "Procedure names should have capital first letter".to_string()
+                    )
+                }
             }
             _=>()
         }
         match node.read().unwrap().data.as_any().downcast_ref::<AstFunction>(){
             Some(func_decl) => {
-                self.handle_check_uppercase_first_char(
-                    func_decl.get_identifier(), 
-                    &func_decl.identifier.get_range(),
-                    "Function names should have capital first letter".to_string()
-                )
+                if !is_overriding_member(node){
+                    self.handle_check_uppercase_first_char(
+                        func_decl.get_identifier(), 
+                        &func_decl.identifier.get_range(),
+                        "Function names should have capital first letter".to_string()
+                    )
+                }
             }
             _=>()
         }
 
         match node.read().unwrap().data.as_any().downcast_ref::<AstGlobalVariableDeclaration>(){
             Some(field_decl) => {
-                self.handle_check_uppercase_first_char(
-                    field_decl.get_identifier(), 
-                    &field_decl.identifier.get_range(),
-                    "Field names should have capital first letter".to_string()
-                )
+                if !is_overriding_member(node){
+                    self.handle_check_uppercase_first_char(
+                        field_decl.get_identifier(), 
+                        &field_decl.identifier.get_range(),
+                        "Field names should have capital first letter".to_string()
+                    )
+                }
             }
             _=>()
         }
 
         match node.read().unwrap().data.as_any().downcast_ref::<AstParameterDeclaration>(){
             Some(field_decl) => {
-                self.handle_check_uppercase_first_char(
-                    field_decl.get_identifier(), 
-                    &field_decl.identifier.get_range(),
-                    "Parameter names should have capital first letter".to_string()
-                )
+                // don't need to check if parent is overriding method to prevent pollution
+                // method node is the grandparent
+                if let Some(parent_node) = node.read().unwrap().get_parent(){
+                    if let Some(gparent_node) = parent_node.read().unwrap().get_parent(){
+                        if !is_overriding_member(&gparent_node){
+                            self.handle_check_uppercase_first_char(
+                                field_decl.get_identifier(), 
+                                &field_decl.identifier.get_range(),
+                                "Parameter names should have capital first letter".to_string()
+                            )
+                        }
+                    }
+                }
             }
             _=>()
         }
@@ -178,5 +193,52 @@ impl IAnnotatedNodeVisitor for NamingConventionChecker{
 
     fn visit_w_context(&mut self, node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, _context: &dyn super::annotated_ast_walker::IAnnotatedAstWalkerContext) {
         self.visit(node)
+    }
+}
+
+#[cfg(test)]
+mod test{
+    use std::sync::Arc;
+
+    use lsp_types::Diagnostic;
+
+    use crate::{analyzers_v2::{annotated_ast_walker::AnnotatedAstWalkerPreOrder, AnnotatedAstNodeArx}, manager::{semantic_analysis_service::AnalyzeRequestOptions, test::{create_test_project_manager, create_uri_from_path}}, utils::test_utils::create_test_diag_collector};
+
+    use super::NamingConventionChecker;
+
+    fn check_ast(node:  &AnnotatedAstNodeArx)-> Vec<Diagnostic>{
+        let diag_collector = create_test_diag_collector();
+        let checker = NamingConventionChecker::new(diag_collector.clone());
+        let mut ast_walker = AnnotatedAstWalkerPreOrder::new();
+        ast_walker.register_visitor(Box::new(checker));
+
+        ast_walker.walk(&node);
+
+        return diag_collector.lock().unwrap().take_diagnostics();
+    }
+
+
+    #[test]
+    fn test_name_checker(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = create_uri_from_path("./test/workspace/aNameCheckerTest.god");
+        let doc = proj_manager.analyze_doc(&test_input, AnalyzeRequestOptions::default().set_cache(true)).unwrap();
+        let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
+
+        let diags = check_ast(&ast);
+        assert_eq!(diags.len(), 6);
+    }
+
+    #[test]
+    fn test_name_checker_override(){
+        let mut proj_manager = create_test_project_manager("./test/workspace");
+        proj_manager.index_files();
+        let test_input = create_uri_from_path("./test/workspace/aNameCheckerTestOverride.god");
+        let doc = proj_manager.analyze_doc(&test_input, AnalyzeRequestOptions::default().set_cache(true)).unwrap();
+        let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
+
+        let diags = check_ast(&ast);
+        assert_eq!(diags.len(), 0);
     }
 }

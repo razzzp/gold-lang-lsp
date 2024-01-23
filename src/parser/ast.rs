@@ -462,6 +462,10 @@ impl IAstNode for AstGlobalVariableDeclaration {
     fn get_identifier(&self) -> &str {
         self.identifier.get_value_as_str()
     }
+
+    fn get_member_modifiers(&self) -> Option<&MemberModifiers> {
+        self.modifiers.as_ref()?.get_member_modifiers()
+    }
 }
 
 #[derive(Debug)]

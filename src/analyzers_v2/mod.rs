@@ -25,7 +25,7 @@ pub mod test_utils{
 
    use lsp_types::Diagnostic;
 
-use crate::{utils::{IDiagnosticCollector, GenericDiagnosticCollector, test_utils::create_test_diag_collector}, parser::ast::IAstNode, manager::test::{create_test_sem_service, create_test_doc_service, create_test_logger}};
+   use crate::{utils::{IDiagnosticCollector, GenericDiagnosticCollector, test_utils::create_test_diag_collector}, parser::ast::IAstNode, manager::test::{create_test_sem_service, create_test_doc_service, create_test_logger}};
 
    use super::{AnnotatedAstNodeArx, ast_annotator::AstAnnotator, annotated_ast_walker::IAnnotatedNodeVisitor};
 
