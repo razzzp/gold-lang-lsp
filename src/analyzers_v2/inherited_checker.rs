@@ -4,7 +4,7 @@ use lsp_types::DiagnosticSeverity;
 
 use super::{annotated_ast_walker::IAnnotatedNodeVisitor, IDiagnosticCollectorArx};
 
-use crate::{analyzers_v2::annotated_ast_walker::IAnnotatedAstWalkerContext, parser::ast::{AstProcedure, AstFunction, AstUnaryOp, AstBinaryOp, AstTerminal}, lexer::tokens::TokenType, manager::utils::DIAGNOSTIC_SOURCE_GOLD, utils::Range};
+use crate::{analyzers_v2::annotated_ast_walker::IAnnotatedAstWalkerContext, parser::ast::{AstProcedure, AstFunction, AstUnaryOp, AstBinaryOp, AstTerminal}, lexer::tokens::TokenType, manager::utils::DIAGNOSTIC_SOURCE_GOLD};
 use super::AnnotatedAstNodeArx;
 
 /// Checks that inherited is called for certain functions
@@ -122,7 +122,7 @@ mod test{
 
     use lsp_types::{DiagnosticSeverity, Diagnostic};
 
-    use crate::{utils::test_utils::*, lexer::tokens::{TokenType}, analyzers_v2::{test_utils::{annotate_ast}, annotated_ast_walker::{IAnnotatedNodeVisitor, AnnotatedAstWalkerPreOrder}, ast_annotator}, parser::ast::IAstNode, analyzers::ast_walker};
+    use crate::{utils::test_utils::*, lexer::tokens::TokenType, analyzers_v2::{test_utils::annotate_ast, annotated_ast_walker::AnnotatedAstWalkerPreOrder}, parser::ast::IAstNode};
 
     use super::InheritedChecker;
 

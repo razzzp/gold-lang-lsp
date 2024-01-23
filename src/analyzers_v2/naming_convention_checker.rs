@@ -4,7 +4,7 @@ use lsp_types::DiagnosticSeverity;
 
 use crate::{utils::{is_overriding_member, IDiagnosticCollector, IRange, Range}, parser::ast::{IAstNode, AstProcedure, AstFunction, AstLocalVariableDeclaration, AstTypeDeclaration, AstGlobalVariableDeclaration, AstConstantDeclaration, AstParameterDeclaration}};
 
-use super::{annotated_ast_walker::IAnnotatedNodeVisitor, annotated_node::AnnotatedNode, AnnotatedAstNodeArx};
+use super::{annotated_ast_walker::IAnnotatedNodeVisitor, annotated_node::AnnotatedNode};
 use crate::manager::utils::DIAGNOSTIC_SOURCE_GOLD;
 
 
@@ -198,7 +198,7 @@ impl IAnnotatedNodeVisitor for NamingConventionChecker{
 
 #[cfg(test)]
 mod test{
-    use std::sync::Arc;
+    
 
     use lsp_types::Diagnostic;
 

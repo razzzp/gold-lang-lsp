@@ -21,13 +21,13 @@ pub type IDiagnosticCollectorArx  = Arc<Mutex<dyn IDiagnosticCollector<lsp_types
 
 #[cfg(test)]
 pub mod test_utils{
-   use std::sync::{Arc, Mutex};
+   use std::sync::Arc;
 
-   use lsp_types::Diagnostic;
+   
 
-   use crate::{utils::{IDiagnosticCollector, GenericDiagnosticCollector, test_utils::create_test_diag_collector}, parser::ast::IAstNode, manager::test::{create_test_sem_service, create_test_doc_service, create_test_logger}};
+   use crate::{utils::test_utils::create_test_diag_collector, parser::ast::IAstNode, manager::test::{create_test_sem_service, create_test_doc_service, create_test_logger}};
 
-   use super::{AnnotatedAstNodeArx, ast_annotator::AstAnnotator, annotated_ast_walker::IAnnotatedNodeVisitor};
+   use super::{AnnotatedAstNodeArx, ast_annotator::AstAnnotator};
 
    pub fn annotate_ast(node: &Arc<dyn IAstNode>) -> AnnotatedAstNodeArx{
       let test_logger = create_test_logger();

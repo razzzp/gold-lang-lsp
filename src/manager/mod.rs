@@ -3,7 +3,7 @@ use std::{rc::Rc, sync::{Arc, Mutex}, cell::RefCell, str::FromStr};
 use lsp_types::{DocumentSymbol, Diagnostic, RelatedFullDocumentDiagnosticReport, DiagnosticSeverity, FullDocumentDiagnosticReport, Url, LocationLink, CompletionItem, TypeHierarchyItem};
 use regex::Regex;
 
-use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2, IDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool, analyzers_v2::inherited_checker::{self, InheritedChecker}};
+use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, Position, ILoggerV2, IDiagnosticCollector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, function_return_type_checker::FunctionReturnTypeChecker, IAnalyzer}, threadpool::ThreadPool, analyzers_v2::inherited_checker::{InheritedChecker}};
 use data_structs::*;
 
 use self::{
@@ -314,11 +314,11 @@ impl ProjectManager{
 #[cfg(test)]
 /// tests at this module level are more towards integration testing
 pub mod test{
-    use std::{fs::{File, self}, io::Read, path::PathBuf, rc::Rc, cell::RefCell, sync::{Mutex, Arc}, str::FromStr};
+    use std::{fs::{File, self}, io::Read, path::PathBuf, rc::Rc, cell::RefCell, sync::{Arc}, str::FromStr};
 
     use lsp_types::Url;
 
-    use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, IDiagnosticCollector, GenericDiagnosticCollector, ILoggerV2, StdOutLogger, test_utils::create_test_diag_collector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer, AnalyzerDiagnostic}, manager::semantic_analysis_service::AnalyzeRequestOptions};
+    use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILoggerV2, StdOutLogger, test_utils::create_test_diag_collector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer}, manager::semantic_analysis_service::AnalyzeRequestOptions};
 
     use super::{
         ProjectManager, 
