@@ -21,7 +21,7 @@ pub struct AstAnnotator{
     // need to wrap in arc, to provide consistent api with root sym table
     symbol_table_stack: Vec<Arc<Mutex<SymbolTable>>>,
 
-    logger: Arc<dyn ILoggerV2>,
+    logger: Box<dyn ILoggerV2>,
     diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
     semantic_analysis_service: SemanticAnalysisService,
     cur_method_node : Option<Arc<RwLock<AnnotatedNode<dyn IAstNode>>>>,
@@ -32,7 +32,7 @@ impl AstAnnotator{
     pub fn new (
         semantic_analysis_service: SemanticAnalysisService,
         diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
-        logger: Arc<dyn ILoggerV2>,
+        logger: Box<dyn ILoggerV2>,
         // to prevent large branching when only definition is needed
         only_definitions: bool,
     )->AstAnnotator{

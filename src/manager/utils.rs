@@ -11,7 +11,7 @@ use crate::analyzers_v2::{
 pub const DIAGNOSTIC_SOURCE_GOLD: &'static str = "gold";
 
 /// searches for the smallest annotated node encasing the given position
-pub fn search_encasing_node(node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, pos : &Position, logger: &Arc<dyn ILoggerV2>)
+pub fn search_encasing_node(node : &Arc<RwLock<AnnotatedNode<dyn IAstNode>>>, pos : &Position, logger: &Box<dyn ILoggerV2>)
     -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>
 {
     let r_node = node.read().unwrap();

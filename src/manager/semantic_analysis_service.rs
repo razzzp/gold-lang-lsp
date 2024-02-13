@@ -1,7 +1,7 @@
 use lsp_server::ErrorCode;
 use lsp_types::Url;
 
-use crate::{analyzers::AnalyzerDiagnostic, utils::{IDiagnosticCollector, ILoggerV2}};
+use crate::{analyzers::AnalyzerDiagnostic, utils::{IDiagnosticCollector, ILoggerV2, LogLevel, LogType}};
 use core::fmt::Debug;
 use std::sync::{Mutex, Arc, RwLock};
 
@@ -27,17 +27,21 @@ impl AnalyzeRequestOptions {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SemanticAnalysisService {
     pub doc_service : DocumentService,
-    logger: Arc<dyn ILoggerV2>,
+    logger: Box<dyn ILoggerV2>,
     diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
 }
-
+impl Clone for SemanticAnalysisService{
+    fn clone(&self) -> Self {
+        Self { doc_service: self.doc_service.clone(), logger: self.logger.clone_box(), diag_collector: self.diag_collector.clone() }
+    }
+}
 impl SemanticAnalysisService {
     pub fn new(
         doc_service: DocumentService, 
-        logger: Arc<dyn ILoggerV2>, 
+        logger: Box<dyn ILoggerV2>, 
         diag_collector: Arc<Mutex<dyn IDiagnosticCollector<AnalyzerDiagnostic>>>,
 ) -> SemanticAnalysisService{
         return SemanticAnalysisService {  
@@ -57,13 +61,18 @@ impl SemanticAnalysisService {
         // check sym table on doc info first
         let doc_info = self.doc_service.get_document_info(uri)?;
         if let Some(sym_table) = doc_info.read().unwrap().get_symbol_table(){
+            self.logger.log(LogType::Info, LogLevel::Verbose, "[GET Symbol Table] Cached symbol table found");
             return Ok(sym_table);
         }
         // else analyze
-        let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri, AnalyzeRequestOptions { only_definitions: true, cache_result: false })?;
+        let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri, 
+            AnalyzeRequestOptions::default().set_only_def(true))?;
         let sym_table = doc.lock().unwrap().get_symbol_table().clone();
         match sym_table{
-            Some(st) => return Ok(st.clone()),
+            Some(st) => {
+                self.logger.log(LogType::Info, LogLevel::Verbose, "[GET Symbol Table] Returning analyzed symbol table");
+                return Ok(st.clone())
+            },
             _=> return Err(ProjectManagerError::new(format!("Unable to get Symbol table for {}",uri).as_str(), ErrorCode::InternalError))
         }
     }
@@ -83,10 +92,12 @@ impl SemanticAnalysisService {
         if doc.lock().unwrap().annotated_ast.is_some(){
             if options.only_definitions{
                 // some means at least definitions defined
+                self.logger.log(LogType::Info, LogLevel::Verbose, "[Analyze URI] Cached annotated symbol found");
                 return Ok(doc);
             } else {
                 // else have to check if full annotation
                 if doc.lock().unwrap().only_definitions == options.only_definitions{
+                    self.logger.log(LogType::Info, LogLevel::Verbose, "[Analyze URI] Cached annotated symbol found");
                     return Ok(doc);
                 }
             }
@@ -95,6 +106,7 @@ impl SemanticAnalysisService {
         // self.logger.log_info(format!("[Analyzing Uri]{}", uri).as_str());
         let analyzed_doc = self.analyze(doc, doc_info, options.only_definitions)?;
         // save to symtable to doc_info
+        self.logger.log(LogType::Info, LogLevel::Verbose, "[Analyze URI] Analyzed doc");
         return Ok(analyzed_doc);
     }
     
@@ -110,7 +122,7 @@ impl SemanticAnalysisService {
         let mut annotator = AstAnnotator::new(
             self.clone(), 
             self.diag_collector.clone(), 
-            self.logger.clone(),
+            self.logger.clone_box_with_appended_prefix("Analysis Service"),
             only_definitions
         );
         let annotated_doc = annotator.annotate_doc(doc, doc_info)?;

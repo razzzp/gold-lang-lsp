@@ -24,19 +24,24 @@ impl EntityInfo{
     }
 }
 
-#[derive(Debug,Clone)]
+#[derive(Debug)]
 /// provides caching and parsing of documents in
 /// workspace
 pub struct DocumentService {
     uri_docinfo_map: Arc<RwLock<HashMap<String, Arc<RwLock<DocumentInfo>>>>>,
     class_uri_map: Arc<RwLock<HashMap<String, Url>>>,
     root_path: Option<String>,
-    logger: Arc<dyn ILoggerV2>,
+    logger: Box<dyn ILoggerV2>,
+}
+impl Clone for DocumentService{
+    fn clone(&self) -> Self {
+        Self { uri_docinfo_map: self.uri_docinfo_map.clone(), class_uri_map: self.class_uri_map.clone(), root_path: self.root_path.clone(), logger: self.logger.clone_box() }
+    }
 }
 impl DocumentService {
     pub fn new(
         root_uri : Option<Url>, 
-        logger: Arc<dyn ILoggerV2>
+        logger: Box<dyn ILoggerV2>
     ) -> Result<DocumentService, ProjectManagerError>{
         let mut root_path : Option<String> = None;
 

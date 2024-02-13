@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use crate::manager::ProjectManager;
 use crate::threadpool::ThreadPool;
+use crate::utils::LogLevel;
 
 
 use std::error::Error;
@@ -42,7 +43,7 @@ pub mod analyzers_v2;
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Note that  we must have our logging only write out to stderr.
-    let logger : Arc<dyn ILoggerV2>= Arc::new(StdErrLogger::new("[Gold Lang LSP]"));
+    let logger : Arc<dyn ILoggerV2>= Arc::new(StdErrLogger::new("[Gold Lang LSP]", LogLevel::General));
     logger.log_info("Starting Gold Lang LSP server");
     // server capabilities
     let mut server_capabilities = serde_json::to_value(&ServerCapabilities {
@@ -99,10 +100,10 @@ fn main_loop(
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let params: InitializeParams = serde_json::from_value(params).unwrap();
     
-    let threadpool = ThreadPool::new(7, logger.clone());
+    let threadpool = ThreadPool::new(7, logger.clone_box());
     let mut proj_manager = match ProjectManager::new(
         params.root_uri,
-        logger.clone()
+        logger.clone_box()
     ){
         Ok(r) => r,
         Err(e) => {

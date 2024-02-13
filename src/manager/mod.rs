@@ -29,16 +29,26 @@ pub mod completion_service;
 pub mod entity_tree_service;
 pub mod type_hierarchy_service;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ProjectManager{
     pub doc_service: DocumentService,
     pub entity_tree_service: EntityTreeService,
-    logger: Arc<dyn ILoggerV2>,
+    logger: Box<dyn ILoggerV2>,
+}
+impl Clone for ProjectManager{
+    fn clone(&self) -> Self {
+        Self { doc_service: self.doc_service.clone(), entity_tree_service: self.entity_tree_service.clone(), logger: self.logger.clone_box() }
+    }
 }
 impl ProjectManager{
-    pub fn new(root_uri : Option<Url>, logger: Arc<dyn ILoggerV2>) -> Result<ProjectManager, ProjectManagerError>{
-        let doc_service = DocumentService::new(root_uri.clone(), logger.clone())?;
-        let class_module_tree_service = EntityTreeService::new(15_000, logger.clone());
+    pub fn new(root_uri : Option<Url>, logger: Box<dyn ILoggerV2>) -> Result<ProjectManager, ProjectManagerError>{
+        let mut doc_service_logger = logger.clone_box();
+        doc_service_logger.append_prefix("Project Manager");
+        let doc_service = DocumentService::new(root_uri.clone(), doc_service_logger)?;
+
+        let mut tree_service_logger = logger.clone_box();
+        tree_service_logger.append_prefix("Entity Tree Service");
+        let class_module_tree_service = EntityTreeService::new(15_000, tree_service_logger);
         Ok(ProjectManager{
             doc_service,
             logger,
@@ -111,7 +121,7 @@ impl ProjectManager{
     fn create_sem_service(&self) -> SemanticAnalysisService{
         return SemanticAnalysisService::new(
             self.doc_service.clone(),
-            self.logger.clone(),
+            self.logger.clone_box(),
             Arc::new(Mutex::new(GenericDiagnosticCollector::new()))
         );
     }
@@ -154,7 +164,7 @@ impl ProjectManager{
         let def_service = DefinitionService::new(
             self.doc_service.clone(), 
             sem_service, 
-            self.logger.clone(),
+            self.logger.clone_box(),
             uri,
         );
         return def_service.get_definition(&pos)
@@ -267,7 +277,7 @@ impl ProjectManager{
             self.doc_service.clone(), 
             self.create_sem_service(), 
             uri.clone(),
-            self.logger.clone());
+            self.logger.clone_box());
         return completion_service.generate_completion_proposals(pos);
     }
 
@@ -280,7 +290,7 @@ impl ProjectManager{
         let type_hierarchy_service = TypeHierarchyService::new(
             self.create_sem_service(),
             self.entity_tree_service.clone(),
-            self.logger.clone());
+            self.logger.clone_box());
         return type_hierarchy_service.prepare_type_hierarchy(uri, pos);
     }
 
@@ -292,7 +302,7 @@ impl ProjectManager{
         let type_hierarchy_service = TypeHierarchyService::new(
             self.create_sem_service(),
             self.entity_tree_service.clone(),
-            self.logger.clone());
+            self.logger.clone_box());
         return type_hierarchy_service.type_hierarchy_subtypes(item);
     }
 
@@ -304,7 +314,7 @@ impl ProjectManager{
         let type_hierarchy_service = TypeHierarchyService::new(
             self.create_sem_service(),
             self.entity_tree_service.clone(),
-            self.logger.clone());
+            self.logger.clone_box());
         return type_hierarchy_service.type_hierarchy_supertypes(item);
     }
 }
@@ -318,7 +328,7 @@ pub mod test{
 
     use lsp_types::Url;
 
-    use crate::{lexer::GoldLexer, parser::{parse_gold, ast::IAstNode, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, ILoggerV2, StdOutLogger, test_utils::create_test_diag_collector}, analyzers::{ast_walker::AstWalker, unused_var_analyzer::UnusedVarAnalyzer, inout_param_checker::InoutParamChecker, function_return_type_checker::FunctionReturnTypeChecker, IVisitor, IAnalyzer}, manager::semantic_analysis_service::AnalyzeRequestOptions};
+    use crate::{analyzers::{ast_walker::AstWalker, function_return_type_checker::FunctionReturnTypeChecker, inout_param_checker::InoutParamChecker, unused_var_analyzer::UnusedVarAnalyzer, IAnalyzer, IVisitor}, lexer::GoldLexer, manager::semantic_analysis_service::AnalyzeRequestOptions, parser::{ast::IAstNode, parse_gold, ParserDiagnostic}, utils::{ast_to_string_brief_recursive, test_utils::create_test_diag_collector, ILoggerV2, LogLevel, StdOutLogger}};
 
     use super::{
         ProjectManager, 
@@ -354,8 +364,8 @@ pub mod test{
         return result;
     }
 
-    pub fn create_test_logger()-> Arc<dyn ILoggerV2>{
-        Arc::new(StdOutLogger::new("[LSP Server]"))
+    pub fn create_test_logger()-> Box<dyn ILoggerV2>{
+        Box::new(StdOutLogger::new("[LSP Server]", LogLevel::Verbose))
     }
 
     pub fn create_uri_from_path(path:&str)-> Url{

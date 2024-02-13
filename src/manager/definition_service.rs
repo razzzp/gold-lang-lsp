@@ -5,7 +5,7 @@ use std::sync::{Arc, RwLock, Mutex, RwLockReadGuard};
 use lsp_server::ErrorCode;
 use lsp_types::{LocationLink, Url};
 
-use crate::{parser::ast::{IAstNode, AstTerminal, AstBinaryOp, AstTypeBasic, AstClass, AstTypeReference, AstMethodCall, AstProcedure, AstFunction, AstGlobalVariableDeclaration}, utils::{Position, IRange, ILoggerV2}, lexer::tokens::TokenType};
+use crate::{lexer::tokens::TokenType, parser::ast::{AstBinaryOp, AstClass, AstFunction, AstGlobalVariableDeclaration, AstMethodCall, AstProcedure, AstTerminal, AstTypeBasic, AstTypeReference, IAstNode}, utils::{ILoggerV2, IRange, LogLevel, LogType, Position}};
 
 use super::{data_structs::ProjectManagerError, semantic_analysis_service::{SemanticAnalysisService, AnalyzeRequestOptions}, document_service::DocumentService, utils::search_encasing_node};
 use crate::analyzers_v2::{
@@ -19,13 +19,13 @@ pub struct DefinitionService{
     semantic_analysis_service: SemanticAnalysisService,
     type_resolver: TypeResolver,
     source_uri: Url,
-    logger: Arc<dyn ILoggerV2>,
+    logger: Box<dyn ILoggerV2>,
 }
 impl DefinitionService{
     pub fn new(
         doc_service : DocumentService,
         semantic_analysis_service: SemanticAnalysisService, 
-        logger: Arc<dyn ILoggerV2>,
+        logger: Box<dyn ILoggerV2>,
         source_uri: &Url
     )->DefinitionService{
         return DefinitionService { 
@@ -239,10 +239,12 @@ impl DefinitionService{
             let bin_op_node = parent_lock.data.as_any().downcast_ref::<AstBinaryOp>().unwrap(); 
             let left_node = &bin_op_node.left_node;
             if Arc::ptr_eq(left_node, &node.data){
+                self.logger.log(LogType::Info, LogLevel::Verbose, "Handling lhs of binop");
                 // if left node, just search sym table
                 return Some(self.generate_loc_link_single(node, st, pos, true))
             } 
             else {
+                self.logger.log(LogType::Info, LogLevel::Verbose, "Handling rhs of binop");
                 // if right node, check left node type first
                 let left_node_type = parent_lock.children[0].read().unwrap().eval_type.clone().unwrap_or_default();
                 match left_node_type{

@@ -14,17 +14,22 @@ use super::{
 use crate::analyzers_v2::symbol_table::SymbolType;
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TypeHierarchyService{
     sem_service: SemanticAnalysisService,
     entity_tree_service: EntityTreeService,
-    logger : Arc<dyn ILoggerV2>,
+    logger : Box<dyn ILoggerV2>,
+}
+impl Clone for TypeHierarchyService{
+    fn clone(&self) -> Self {
+        Self { sem_service: self.sem_service.clone(), entity_tree_service: self.entity_tree_service.clone(), logger: self.logger.clone_box() }
+    }
 }
 impl TypeHierarchyService{
     pub fn new(
         sem_service: SemanticAnalysisService,
         entity_tree_service : EntityTreeService,
-        logger: Arc<dyn ILoggerV2>
+        logger: Box<dyn ILoggerV2>
     )-> TypeHierarchyService{
         return TypeHierarchyService { 
             sem_service, 

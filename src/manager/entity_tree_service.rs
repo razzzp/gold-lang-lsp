@@ -25,14 +25,19 @@ impl EntityInfoNode{
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct EntityTreeService{
     class_module_map : Arc<RwLock<HashMap<String, Arc<Mutex<EntityInfoNode>>>>>,
-    logger : Arc<dyn ILoggerV2>,
+    logger : Box<dyn ILoggerV2>,
     chunk_size: usize
 }
+impl Clone for EntityTreeService{
+    fn clone(&self) -> Self {
+        Self { class_module_map: self.class_module_map.clone(), logger: self.logger.clone_box(), chunk_size: self.chunk_size.clone() }
+    }
+}
 impl EntityTreeService{
-    pub fn new(chunk_size: usize, logger: Arc<dyn ILoggerV2>) -> EntityTreeService{
+    pub fn new(chunk_size: usize, logger: Box<dyn ILoggerV2>) -> EntityTreeService{
         return EntityTreeService { 
             class_module_map: Arc::new(RwLock::new(HashMap::new())),
             logger,
@@ -84,7 +89,7 @@ impl EntityTreeService{
 
         for chunk in chunks {
             let map= self.class_module_map.clone();
-            let logger = self.logger.clone();
+            let logger = self.logger.clone_box();
             let doc_service = doc_service.clone();
             threadpool.execute(move ||{
                 chunk.iter().for_each( |pair: &(String, Arc<RwLock<DocumentInfo>>)| {

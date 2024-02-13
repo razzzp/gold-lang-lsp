@@ -16,20 +16,24 @@ use crate::analyzers_v2::{
     symbol_table::{ISymbolTable, SymbolType}
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CompletionService{
     doc_service : DocumentService,
     semantic_analysis_service: SemanticAnalysisService,
     source_uri: Url,
-    logger: Arc<dyn ILoggerV2>,
+    logger: Box<dyn ILoggerV2>,
 }
-
+impl Clone for CompletionService{
+    fn clone(&self) -> Self {
+        Self { doc_service: self.doc_service.clone(), semantic_analysis_service: self.semantic_analysis_service.clone(), source_uri: self.source_uri.clone(), logger: self.logger.clone_box() }
+    }
+}
 impl CompletionService{
     pub fn new(
         doc_service: DocumentService,
         semantic_analysis_service: SemanticAnalysisService,
         source_uri: Url,
-        logger : Arc<dyn ILoggerV2>
+        logger : Box<dyn ILoggerV2>
     ) -> CompletionService{
         return CompletionService { 
             doc_service, 

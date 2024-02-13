@@ -1,5 +1,5 @@
 use crate::{analyzers_v2::AnnotatedAstNodeArx, lexer::tokens::Token, parser::ast::IAstNode};
-use std::{collections::LinkedList, ops::Deref, sync::Arc, fmt::Write};
+use std::{collections::LinkedList, fmt::Write, ops::Deref, path::Display, sync::Arc};
 
 #[macro_export]
 macro_rules! unwrap_or_return {
@@ -11,68 +11,150 @@ macro_rules! unwrap_or_return {
     }
 }
 
+#[derive(Debug, PartialEq, PartialOrd, Clone, Copy)]
+pub enum LogLevel{
+    General = 0,
+    Verbose = 1,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum LogType{
+    Error,
+    Warning,
+    Info,
+}
+impl core::fmt::Display for LogType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self{
+            LogType::Error => f.write_str("Error"),
+            LogType::Warning => f.write_str("Warning"),
+            LogType::Info => f.write_str("Info")
+        }
+    }
+}
+
 pub trait ILogger :std::fmt::Debug{
     fn log(&mut self, msg: &str);
     fn as_logger_mut(&mut self)->&mut dyn ILogger;
 }
 
-pub trait ILoggerV2 : std::fmt::Debug + Send + Sync{
+pub trait ILoggerV2 : std::fmt::Debug + Send + Sync {
     fn log_error(&self, msg: &str);
     fn log_warning(&self, msg: &str);
     fn log_info(&self, msg: &str);
+    fn log(&self, log_type: LogType, level: LogLevel,  msg: &str);
+    fn clone_box(&self) -> Box<dyn ILoggerV2>;
+    fn clone_box_with_appended_prefix(&self, prefix: &str) -> Box<dyn ILoggerV2>;
+    fn append_prefix(&mut self, prefix: &str);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StdErrLogger{
     prefix: String,
-    stream: Arc<std::io::Stderr>
+    stream: Arc<std::io::Stderr>,
+    level: LogLevel,
 }
 impl StdErrLogger{
-    pub fn new(prefix: &str)-> StdErrLogger{
+    pub fn new(prefix: &str,level: LogLevel)-> StdErrLogger{
         return StdErrLogger{
             prefix :prefix.to_string(),
-            stream: Arc::new(std::io::stderr())
+            stream: Arc::new(std::io::stderr()),
+            level,
         }
     }
 }
 impl ILoggerV2 for StdErrLogger{
     fn log_error(&self, msg: &str) {
-        let _ =std::io::Write::write_fmt(&mut self.stream.lock(), format_args!("{}[Error]{}\n",self.prefix,msg));
+        self.log(LogType::Error, LogLevel::General, msg)
     }
 
     fn log_warning(&self, msg: &str) {
-        let _ =std::io::Write::write_fmt(&mut self.stream.lock(), format_args!("{}[Warning]{}\n",self.prefix,msg));
+        self.log(LogType::Warning, LogLevel::General, msg)
     }
 
     fn log_info(&self, msg: &str) {
-        let _ =std::io::Write::write_fmt(&mut self.stream.lock(), format_args!("{}[Info]{}\n",self.prefix,msg));
+        self.log(LogType::Info, LogLevel::General, msg)
     }
+
+    fn log(&self, log_type: LogType, level: LogLevel,  msg: &str) {
+        if self.level >= level {
+            let _ =std::io::Write::write_fmt(
+                &mut self.stream.lock(), 
+                format_args!("{}[{}]{}\n",self.prefix, log_type, msg));
+        }
+    }
+    fn clone_box(&self) -> Box<dyn ILoggerV2> {
+        Box::new(
+            StdErrLogger::new(&self.prefix, self.level)
+        )
+    }
+
+    fn append_prefix(&mut self, prefix: &str) {
+        self.prefix.push_str(prefix)
+    }
+
+    fn clone_box_with_appended_prefix(&self, prefix: &str) -> Box<dyn ILoggerV2> {
+        let mut new_logger = self.clone();
+        new_logger.append_prefix(prefix);
+        Box::new(
+            new_logger
+        )
+    }
+
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct StdOutLogger{
     prefix: String,
-    stream: Arc<std::io::Stdout>
+    stream: Arc<std::io::Stdout>,
+    level: LogLevel,
 }
 impl StdOutLogger{
-    pub fn new(prefix: &str)-> StdOutLogger{
+    pub fn new(prefix: &str, level: LogLevel)-> StdOutLogger{
         return StdOutLogger{
             prefix :prefix.to_string(),
-            stream: Arc::new(std::io::stdout())
+            stream: Arc::new(std::io::stdout()),
+            level,
         }
     }
 }
 impl ILoggerV2 for StdOutLogger{
     fn log_error(&self, msg: &str) {
-        let _ =std::io::Write::write_fmt(&mut self.stream.lock(), format_args!("{}[Error]{}\n",self.prefix,msg));
+        self.log(LogType::Error, LogLevel::General, msg)
     }
 
     fn log_warning(&self, msg: &str) {
-        let _ =std::io::Write::write_fmt(&mut self.stream.lock(), format_args!("{}[Warning]{}\n",self.prefix,msg));
+        self.log(LogType::Warning, LogLevel::General, msg)
     }
 
     fn log_info(&self, msg: &str) {
-        let _ =std::io::Write::write_fmt(&mut self.stream.lock(), format_args!("{}[Info]{}\n",self.prefix,msg));
+        self.log(LogType::Info, LogLevel::General, msg)
+    }
+
+    fn log(&self, log_type: LogType, level: LogLevel,  msg: &str) {
+        if self.level >= level {
+            let _ =std::io::Write::write_fmt(
+                &mut self.stream.lock(), 
+                format_args!("{}[{}]{}\n",self.prefix, log_type, msg));
+        }
+    }
+
+    fn clone_box(&self) -> Box<dyn ILoggerV2> {
+        Box::new(
+            StdOutLogger::new(&self.prefix, self.level)
+        )
+    }
+
+    fn append_prefix(&mut self, prefix: &str) {
+        self.prefix.push_str(prefix)
+    }
+
+    fn clone_box_with_appended_prefix(&self, prefix: &str) -> Box<dyn ILoggerV2> {
+        let mut new_logger = self.clone();
+        new_logger.append_prefix(prefix);
+        Box::new(
+            new_logger
+        )
     }
 }
 
@@ -95,9 +177,15 @@ impl ILogger for ConsoleLogger{
     }
 }
 
+
 pub trait IDiagnosticCollector<T : std::fmt::Debug+ Send> : std::fmt::Debug + Send{
     fn add_diagnostic(&mut self, diagnostic: T);
     fn take_diagnostics(&mut self) -> Vec<T>;  
+}
+
+#[derive(Debug, Clone)]
+pub struct Logger{
+
 }
 
 #[derive(Debug)]
