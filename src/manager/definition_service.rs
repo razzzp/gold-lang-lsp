@@ -297,9 +297,9 @@ impl DefinitionService{
         let doc = self.semantic_analysis_service.analyze_uri(&self.source_uri, AnalyzeRequestOptions::default().set_cache(true))?;
         let ast = doc.lock().unwrap().annotated_ast.as_ref().unwrap().clone();
 
-        self.logger.log_info(format!("[Req Definition] Searching encasing node").as_str());
+        self.logger.log_info(format!("Searching encasing node").as_str());
         let enc_node = search_encasing_node(&ast, &pos, &self.logger);
-        self.logger.log_info(format!("[Req Definition] Node: {}", enc_node.read().unwrap().data.get_identifier()).as_str());
+        self.logger.log_info(format!("Node: {}", enc_node.read().unwrap().data.get_identifier()).as_str());
         let st = match TypeResolver::get_nearest_symbol_table(&enc_node.read().unwrap()){
             Some(st) => st,
             _=> return Err(ProjectManagerError::new("Cannot find symbol table", ErrorCode::InternalError))

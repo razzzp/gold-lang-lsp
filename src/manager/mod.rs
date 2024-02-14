@@ -43,11 +43,11 @@ impl Clone for ProjectManager{
 impl ProjectManager{
     pub fn new(root_uri : Option<Url>, logger: Box<dyn ILoggerV2>) -> Result<ProjectManager, ProjectManagerError>{
         let mut doc_service_logger = logger.clone_box();
-        doc_service_logger.append_prefix("Project Manager");
+        doc_service_logger.append_prefix("[Doc Service]");
         let doc_service = DocumentService::new(root_uri.clone(), doc_service_logger)?;
 
         let mut tree_service_logger = logger.clone_box();
-        tree_service_logger.append_prefix("Entity Tree Service");
+        tree_service_logger.append_prefix("[Entity Tree Service]");
         let class_module_tree_service = EntityTreeService::new(15_000, tree_service_logger);
         Ok(ProjectManager{
             doc_service,
@@ -121,7 +121,7 @@ impl ProjectManager{
     fn create_sem_service(&self) -> SemanticAnalysisService{
         return SemanticAnalysisService::new(
             self.doc_service.clone(),
-            self.logger.clone_box(),
+            self.logger.clone_box_with_appended_prefix("[Sem Service]"),
             Arc::new(Mutex::new(GenericDiagnosticCollector::new()))
         );
     }
@@ -164,7 +164,7 @@ impl ProjectManager{
         let def_service = DefinitionService::new(
             self.doc_service.clone(), 
             sem_service, 
-            self.logger.clone_box(),
+            self.logger.clone_box_with_appended_prefix("Definition Service"),
             uri,
         );
         return def_service.get_definition(&pos)
@@ -277,7 +277,7 @@ impl ProjectManager{
             self.doc_service.clone(), 
             self.create_sem_service(), 
             uri.clone(),
-            self.logger.clone_box());
+            self.logger.clone_box_with_appended_prefix("Completion Service"));
         return completion_service.generate_completion_proposals(pos);
     }
 
@@ -290,7 +290,7 @@ impl ProjectManager{
         let type_hierarchy_service = TypeHierarchyService::new(
             self.create_sem_service(),
             self.entity_tree_service.clone(),
-            self.logger.clone_box());
+            self.logger.clone_box_with_appended_prefix("Type Hierarchy Service"));
         return type_hierarchy_service.prepare_type_hierarchy(uri, pos);
     }
 
@@ -302,7 +302,8 @@ impl ProjectManager{
         let type_hierarchy_service = TypeHierarchyService::new(
             self.create_sem_service(),
             self.entity_tree_service.clone(),
-            self.logger.clone_box());
+            self.logger.clone_box_with_appended_prefix("Type Hierarchy Service")
+        );
         return type_hierarchy_service.type_hierarchy_subtypes(item);
     }
 
@@ -314,7 +315,8 @@ impl ProjectManager{
         let type_hierarchy_service = TypeHierarchyService::new(
             self.create_sem_service(),
             self.entity_tree_service.clone(),
-            self.logger.clone_box());
+            self.logger.clone_box_with_appended_prefix("Type Hierarchy Service")
+        );
         return type_hierarchy_service.type_hierarchy_supertypes(item);
     }
 }

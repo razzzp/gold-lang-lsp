@@ -61,16 +61,16 @@ impl SemanticAnalysisService {
         // check sym table on doc info first
         let doc_info = self.doc_service.get_document_info(uri)?;
         if let Some(sym_table) = doc_info.read().unwrap().get_symbol_table(){
-            self.logger.log(LogType::Info, LogLevel::Verbose, "[GET Symbol Table] Cached symbol table found");
+            self.logger.log(LogType::Info, LogLevel::Verbose, "Cached symbol table found");
             return Ok(sym_table);
         }
         // else analyze
+        self.logger.log(LogType::Info, LogLevel::Verbose, "Generating symbol table");
         let doc: Arc<Mutex<Document>> = self.analyze_uri(&uri, 
             AnalyzeRequestOptions::default().set_only_def(true))?;
         let sym_table = doc.lock().unwrap().get_symbol_table().clone();
         match sym_table{
             Some(st) => {
-                self.logger.log(LogType::Info, LogLevel::Verbose, "[GET Symbol Table] Returning analyzed symbol table");
                 return Ok(st.clone())
             },
             _=> return Err(ProjectManagerError::new(format!("Unable to get Symbol table for {}",uri).as_str(), ErrorCode::InternalError))
@@ -81,7 +81,7 @@ impl SemanticAnalysisService {
     pub fn analyze_uri(&self, uri : &Url, options: AnalyzeRequestOptions) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
 
         // self.logger.log_info(format!("[Req Analyze Uri:{}]{}", if !only_definitions {"Full"}else{"Light"},uri).as_str());
-        
+        self.logger.log(LogType::Info, LogLevel::Verbose, format!("Req analyzer uri with options {:#?}", options).as_str());
         let doc: Arc<Mutex<Document>> = if options.cache_result{
             self.doc_service.get_parsed_document(uri, true)?
         } else {
@@ -92,21 +92,21 @@ impl SemanticAnalysisService {
         if doc.lock().unwrap().annotated_ast.is_some(){
             if options.only_definitions{
                 // some means at least definitions defined
-                self.logger.log(LogType::Info, LogLevel::Verbose, "[Analyze URI] Cached annotated symbol found");
+                self.logger.log(LogType::Info, LogLevel::Verbose, "Cached annotated symbol found");
                 return Ok(doc);
             } else {
                 // else have to check if full annotation
                 if doc.lock().unwrap().only_definitions == options.only_definitions{
-                    self.logger.log(LogType::Info, LogLevel::Verbose, "[Analyze URI] Cached annotated symbol found");
+                    self.logger.log(LogType::Info, LogLevel::Verbose, "Cached annotated symbol found");
                     return Ok(doc);
                 }
             }
         }
         let doc_info = self.doc_service.get_document_info(uri)?;
         // self.logger.log_info(format!("[Analyzing Uri]{}", uri).as_str());
+        self.logger.log(LogType::Info, LogLevel::Verbose, "Analyzing doc");
         let analyzed_doc = self.analyze(doc, doc_info, options.only_definitions)?;
         // save to symtable to doc_info
-        self.logger.log(LogType::Info, LogLevel::Verbose, "[Analyze URI] Analyzed doc");
         return Ok(analyzed_doc);
     }
     
@@ -122,7 +122,7 @@ impl SemanticAnalysisService {
         let mut annotator = AstAnnotator::new(
             self.clone(), 
             self.diag_collector.clone(), 
-            self.logger.clone_box_with_appended_prefix("Analysis Service"),
+            self.logger.clone_box_with_appended_prefix("Ast Annotator"),
             only_definitions
         );
         let annotated_doc = annotator.annotate_doc(doc, doc_info)?;

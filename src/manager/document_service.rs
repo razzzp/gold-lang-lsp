@@ -4,7 +4,7 @@ use lsp_server::ErrorCode;
 use lsp_types::Url;
 
 
-use crate::{utils::ILoggerV2, lexer::GoldLexer, parser::{ParserDiagnostic, parse_gold, ast::{AstClass, AstModule}}};
+use crate::{lexer::GoldLexer, parser::{ast::{AstClass, AstModule}, parse_gold, ParserDiagnostic}, utils::{ILoggerV2, LogLevel, LogType}};
 
 use super::{data_structs::{DocumentInfo, ProjectManagerError, Document}, entity_tree_service::EntityType};
 
@@ -197,10 +197,12 @@ impl DocumentService {
         };
         // check opened document
         if read_doc_info.get_opened_document().is_some() {
+            self.logger.log(LogType::Info, LogLevel::Verbose, "Found opened doc");
             return Ok(read_doc_info.get_opened_document().unwrap());
         }
         // check last saved doc
         if read_doc_info.get_saved_document().is_some() {
+            self.logger.log(LogType::Info, LogLevel::Verbose, "Found saved doc");
             return Ok(read_doc_info.get_saved_document().unwrap());
         } 
         // drop read lock
@@ -214,6 +216,7 @@ impl DocumentService {
         };
         
         // if none, read from file
+        self.logger.log(LogType::Info, LogLevel::Verbose, "Parsing doc");
         let new_doc = self.parse_document(write_doc_info.file_path.as_str())?;
         write_doc_info.set_saved_document(Some(Arc::new(Mutex::new(new_doc))));
         return Ok(write_doc_info.get_saved_document().unwrap());
@@ -231,13 +234,16 @@ impl DocumentService {
         };
         // check opened document
         if read_doc_info.get_opened_document().is_some() {
+            self.logger.log(LogType::Info, LogLevel::Verbose, "Found opened doc");
             return Ok(read_doc_info.get_opened_document().unwrap());
         }
         // check last saved doc
         if read_doc_info.get_saved_document().is_some() {
+            self.logger.log(LogType::Info, LogLevel::Verbose, "Found saved doc");
             return Ok(read_doc_info.get_saved_document().unwrap());
         } 
         // if none, read from file
+        self.logger.log(LogType::Info, LogLevel::Verbose, "Parsing doc");
         let new_doc = self.parse_document(read_doc_info.file_path.as_str())?;
         return Ok(Arc::new(Mutex::new(new_doc)));
         

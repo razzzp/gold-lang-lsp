@@ -42,8 +42,19 @@ pub mod threadpool;
 pub mod analyzers_v2;
 
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
+    // parse args
+    let args: Vec<String>= std::env::args().collect();
+    let mut is_log_debug = false;
+    let transport_arg = args.iter().fold(String::new(),
+        |mut acc, cur| match cur.as_str() {
+            "--socket" | "--stdio" | "--pipe" => if acc.is_empty() {acc.push_str(cur.as_str()); acc} else {acc},
+            "--log-debug" => {is_log_debug = true; acc}
+            _ => acc
+        }
+    );
+
     // Note that  we must have our logging only write out to stderr.
-    let logger : Arc<dyn ILoggerV2>= Arc::new(StdErrLogger::new("[Gold Lang LSP]", LogLevel::General));
+    let logger : Arc<dyn ILoggerV2>= Arc::new(StdErrLogger::new("[Gold Lang LSP]", if is_log_debug {LogLevel::Verbose} else {LogLevel::General}));
     logger.log_info("Starting Gold Lang LSP server");
     // server capabilities
     let mut server_capabilities = serde_json::to_value(&ServerCapabilities {
@@ -65,14 +76,8 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
         // println!("{:#?}", map);
     }
     logger.log_info(format!("Server Capabilities {:#?}", server_capabilities).as_str());
-    // determine which transport to use
-    let args: Vec<String>= std::env::args().collect();
-    let transport_arg = args.iter().fold(String::new(),
-        |mut acc, cur| match cur.as_str() {
-            "--socket" | "--stdio" | "--pipe" => if acc.is_empty() {acc.push_str(cur.as_str()); acc} else {acc},
-            _ => acc
-        }
-    );
+    
+
     // Create the transport. Includes the stdio (stdin and stdout) versions but this could
     // also be implemented to use sockets or HTTP.
     // TODO don't hardcode port
