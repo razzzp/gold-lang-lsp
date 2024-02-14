@@ -164,7 +164,7 @@ impl ProjectManager{
         let def_service = DefinitionService::new(
             self.doc_service.clone(), 
             sem_service, 
-            self.logger.clone_box_with_appended_prefix("Definition Service"),
+            self.logger.clone_box_with_appended_prefix("[Definition Service]"),
             uri,
         );
         return def_service.get_definition(&pos)
