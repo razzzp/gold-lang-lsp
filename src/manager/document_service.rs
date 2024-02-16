@@ -1,4 +1,4 @@
-use std::{sync::{Arc, RwLock, Mutex}, collections::HashMap, io::Read, fs::File};
+use std::{collections::HashMap, fs::File, io::Read, path::PathBuf, str::FromStr, sync::{Arc, Mutex, RwLock}};
 
 use lsp_server::ErrorCode;
 use lsp_types::Url;
@@ -28,14 +28,14 @@ impl EntityInfo{
 /// provides caching and parsing of documents in
 /// workspace
 pub struct DocumentService {
-    uri_docinfo_map: Arc<RwLock<HashMap<String, Arc<RwLock<DocumentInfo>>>>>,
+    path_docinfo_map: Arc<RwLock<HashMap<String, Arc<RwLock<DocumentInfo>>>>>,
     class_uri_map: Arc<RwLock<HashMap<String, Url>>>,
     root_path: Option<String>,
     logger: Box<dyn ILoggerV2>,
 }
 impl Clone for DocumentService{
     fn clone(&self) -> Self {
-        Self { uri_docinfo_map: self.uri_docinfo_map.clone(), class_uri_map: self.class_uri_map.clone(), root_path: self.root_path.clone(), logger: self.logger.clone_box() }
+        Self { path_docinfo_map: self.path_docinfo_map.clone(), class_uri_map: self.class_uri_map.clone(), root_path: self.root_path.clone(), logger: self.logger.clone_box() }
     }
 }
 impl DocumentService {
@@ -68,11 +68,24 @@ impl DocumentService {
         }
 
         Ok(DocumentService{
-            uri_docinfo_map: Arc::new(RwLock::new(HashMap::new())),
+            path_docinfo_map: Arc::new(RwLock::new(HashMap::new())),
             root_path,
             class_uri_map: Arc::new(RwLock::new(HashMap::new())),
             logger
         })
+    }
+
+    fn get_key_for_path(&self, path: &PathBuf) -> String {
+        std::fs::canonicalize(path).unwrap().to_string_lossy().to_string()
+    }
+
+    fn get_key_for_uri(&self, url: &Url) -> Result<String, ProjectManagerError>{
+        let path = url
+            .to_file_path()
+            .map_err(|_| ProjectManagerError::new(
+                format!("Failed to conver url to path: {}",url).as_str(),
+                ErrorCode::InvalidParams))?;
+        return Ok(self.get_key_for_path(&path));
     }
 
     pub fn index_files(&self){
@@ -80,8 +93,16 @@ impl DocumentService {
 
         self.logger.log_info("Indexing files");
         let timer = std::time::Instant::now();
-        let root_path = self.root_path.as_ref().unwrap().clone();
-        let uri_docinfo_map = self.uri_docinfo_map.clone();
+        let root_path = PathBuf::from_str(self.root_path.as_ref().unwrap()).unwrap();
+        let root_path = match std::fs::canonicalize(&root_path){
+            Ok(p) => p,
+            Err(_) => {
+                self.logger.log_error("Failed to canonicalize root path:");
+                return;
+            }
+        };
+
+        let path_docinfo_map = self.path_docinfo_map.clone();
         let class_uri_map = self.class_uri_map.clone();
         // self.threadpool.execute(move ||{
             let mut stack = Vec::new();
@@ -89,38 +110,46 @@ impl DocumentService {
             
             stack.push(root_path);
             // lock here and keep locked until all files indexed
-            let mut uri_docinfo_map = uri_docinfo_map.write().unwrap();
+            let mut path_docinfo_map = path_docinfo_map.write().unwrap();
             // let mut class_uri_map = class_uri_map.write().unwrap();
             while !stack.is_empty(){
                 let path = stack.pop().unwrap();
-                for entry in std::fs::read_dir(path).unwrap(){
+                for entry in std::fs::read_dir(&path).unwrap(){
                     // skip if err
                     if let Err(e)= entry { self.logger.log_error(format!("{}",e).as_str());continue;}
     
                     let entry = entry.unwrap();
+                    
                     if let Ok(file_type) = entry.file_type(){
-                        let path = entry.path().clone().to_str().unwrap().to_string();
-                        // if dir push to stack
-                        if file_type.is_dir() {stack.push(path.clone())}
+                        let entry_path = entry.path();
+                        // if dir push to stack, and continue
+                        if file_type.is_dir() {stack.push(entry_path.clone()); continue;}
+                        
+                        let is_god_ext = entry_path.extension().map_or(false, |ext| ext == "god");
                         // if file and .god, add to hash
-                        if file_type.is_file() && path.ends_with(".god") {
-                            let uri = Url::from_file_path(&path).unwrap();
+                        if file_type.is_file() && is_god_ext {
+                            let uri = Url::from_file_path(entry_path.as_path()).unwrap();
+                            // don't need to canonicalize since root is already
+                            //  in that form
+                            let key = entry_path.to_string_lossy().to_string();
                             // only add if it doesn't exist
-                            if !uri_docinfo_map.contains_key(uri.as_str()){
+                            //  Use path() to ensure it is normalized to percent encoded  ASCII
+                            if !path_docinfo_map.contains_key(&key){
                                 
                                 let new_doc_info = DocumentInfo::new(
                                     uri.to_string(),
-                                    path
+                                    key.clone()
                                 );
                                 let new_doc_info = Arc::new(RwLock::new(new_doc_info));
-                                uri_docinfo_map.insert(uri.to_string(), new_doc_info);
+                                path_docinfo_map.insert(key.clone(), new_doc_info);
                                 // index class name to file uri
-                                match entry.path().as_path().file_stem(){
+                                match entry_path.as_path().file_stem(){
                                     Some(p) => {
                                         match p.to_str(){
                                             Some(s) => {
                                                 class_uri_map.write().unwrap().insert(s.to_string().to_uppercase(), uri.clone());
-                                                // eprint!("found file {}; uri:{}",s.to_string(), uri.to_string());
+                                                self.logger.log(LogType::Info, LogLevel::Verbose, format!(
+                                                    "found file {}; uri:{}", key, uri.to_string()).as_str());
                                             },
                                             _=> ()
                                         }
@@ -145,14 +174,18 @@ impl DocumentService {
     pub fn get_uri_for_class(&self, class_name: &str)-> Result<Url, ProjectManagerError>{
         match self.class_uri_map.read().unwrap().get(&class_name.to_uppercase()){
             Some(uri) => Ok(uri.clone()),
-            _=> Err(ProjectManagerError::new("no uri found for class", ErrorCode::InternalError))
+            _=> Err(ProjectManagerError::new(format!("Cannot get uri for class {}", class_name).as_str(), ErrorCode::InternalError))
         }
     }
 
     pub fn get_document_info(&self, uri: &Url) -> Result<Arc<RwLock<DocumentInfo>>, ProjectManagerError>{
-        let uri_string = uri.to_string();
-        let doc_info =  self.uri_docinfo_map.read().unwrap().get(&uri_string).cloned();
+        self.logger.log(LogType::Info, LogLevel::Verbose, format!("Get doc info {}", uri).as_str());
+        let key = self.get_key_for_uri(uri)?;
+        self.logger.log(LogType::Info, LogLevel::Verbose, format!("Key: {}", key).as_str());
+        let doc_info =  self.path_docinfo_map.read().unwrap().get(&key).cloned();
+
         if doc_info.is_some() {
+            self.logger.log(LogType::Info, LogLevel::Verbose, "Found doc info");
             return Ok(doc_info.unwrap().clone());
         }
 
@@ -177,16 +210,17 @@ impl DocumentService {
             file_path,
         );
         let new_doc_info = Arc::new(RwLock::new(new_doc_info));
-        self.uri_docinfo_map.write().unwrap().insert(uri_string.clone(), new_doc_info.clone());
+        self.path_docinfo_map.write().unwrap().insert(key.clone(), new_doc_info.clone());
         Ok(new_doc_info)
     }
 
     pub fn get_parsed_document_for_class(&self, class: &str, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        let uri = self.get_uri_for_class(class)?;
-        return self.get_parsed_document(&uri, wait_on_lock);
+        let path = self.get_uri_for_class(class)?;
+        return self.get_parsed_document(&path, wait_on_lock);
     }
 
     pub fn get_parsed_document(&self, uri: &Url, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+        self.logger.log(LogType::Info, LogLevel::Verbose, format!("Get parsed doc for {}", uri).as_str());
         let doc_info = self.get_document_info(uri)?;
         let read_doc_info = match doc_info.try_read(){
             Ok(rw_lock) => rw_lock,
@@ -224,6 +258,7 @@ impl DocumentService {
     }
 
     pub fn get_parsed_document_without_caching(&self, uri: &Url, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+        self.logger.log(LogType::Info, LogLevel::Verbose, format!("Get parsed doc for {}", uri).as_str());
         let doc_info = self.get_document_info(uri)?;
         let read_doc_info = match doc_info.try_read(){
             Ok(rw_lock) => rw_lock,
@@ -322,7 +357,7 @@ impl DocumentService {
     }
 
     pub fn count_files(&self) -> usize{
-        return self.uri_docinfo_map.read().unwrap().len();
+        return self.path_docinfo_map.read().unwrap().len();
     }
 
     pub fn partition_files(&self, partition_size: usize)->Vec<Vec<String>> {
@@ -330,7 +365,7 @@ impl DocumentService {
 
         let mut result = Vec::new();
         let mut cur_partition =  Vec::new();
-        for uri in self.uri_docinfo_map.read().unwrap().keys(){
+        for uri in self.path_docinfo_map.read().unwrap().keys(){
             if cur_partition.len() >= partition_size{
                 result.push(cur_partition);
                 cur_partition = Vec::new();
@@ -341,11 +376,11 @@ impl DocumentService {
     }
 
     pub fn for_each_uri_docinfo(&self, process_func : impl FnMut((&String, &Arc<RwLock<DocumentInfo>>))){
-        self.uri_docinfo_map.read().unwrap().iter().for_each(process_func);
+        self.path_docinfo_map.read().unwrap().iter().for_each(process_func);
     }
 
     pub fn get_doc_info_mapping(&self) -> Arc<RwLock<HashMap<String, Arc<RwLock<DocumentInfo>>>>>{
-        return self.uri_docinfo_map.clone();
+        return self.path_docinfo_map.clone();
     }
 }
 
@@ -376,9 +411,9 @@ mod test{
         let doc_manager = DocumentService::new(Some(uri), create_test_logger()).unwrap();
         doc_manager.index_files();
         
-        assert_eq!(doc_manager.uri_docinfo_map.read().unwrap().len(), 2);
+        assert_eq!(doc_manager.path_docinfo_map.read().unwrap().len(), 2);
         // ensure not locked
-        drop(doc_manager.uri_docinfo_map.try_write().unwrap());
+        drop(doc_manager.path_docinfo_map.try_write().unwrap());
         drop(doc_manager.class_uri_map.try_write().unwrap());
     }
 
@@ -395,9 +430,9 @@ mod test{
         let doc_manager = DocumentService::new(Some(uri), create_test_logger()).unwrap();
         doc_manager.index_files();
         
-        println!("num of files: {}",doc_manager.uri_docinfo_map.read().unwrap().len());
+        println!("num of files: {}",doc_manager.path_docinfo_map.read().unwrap().len());
         // ensure not locked
-        drop(doc_manager.uri_docinfo_map.try_write().unwrap());
+        drop(doc_manager.path_docinfo_map.try_write().unwrap());
         drop(doc_manager.class_uri_map.try_write().unwrap());
     }
 }

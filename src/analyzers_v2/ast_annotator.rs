@@ -1,9 +1,7 @@
 use std::sync::{Arc, Mutex, RwLock};
 
 use crate::{
-    utils::{IDiagnosticCollector, ILoggerV2, Range, OptionString, OptionExt, IRange}, 
-    analyzers::AnalyzerDiagnostic, 
-    parser::ast::*, unwrap_or_return, lexer::tokens::TokenType};
+    analyzers::AnalyzerDiagnostic, lexer::tokens::TokenType, parser::ast::*, unwrap_or_return, utils::{IDiagnosticCollector, ILoggerV2, IRange, LogLevel, LogType, OptionExt, OptionString, Range}};
 
 use crate::manager::{
     semantic_analysis_service::SemanticAnalysisService,
@@ -72,6 +70,8 @@ impl AstAnnotator{
         doc.lock().unwrap().only_definitions = self.only_definitions;
         // also assign root sym_table to doc_info to prevent, stack overflow
         doc_info.write().unwrap().set_symbol_table(Some(st));
+
+        self.logger.log(LogType::Info, LogLevel::Verbose, "Annotating nodes");
         // walk tree and analyze
         self.walk_tree(&annotated_tree);
         self.notify_end_method();
@@ -85,6 +85,7 @@ impl AstAnnotator{
     }
     
     pub fn generate_annotated_tree<'b>(&self, root_node: &Arc<dyn IAstNode>) -> Arc<RwLock<AnnotatedNode<dyn IAstNode>>>{
+        self.logger.log(LogType::Info, LogLevel::Verbose, "Generating annotated nodes");
         let new_annotated_node = Arc::new(RwLock::new(AnnotatedNode::new(root_node, None)));
         let children = match root_node.get_children_arc(){
             Some(c) => c,
@@ -217,20 +218,21 @@ impl AstAnnotator{
                 self.diag_collector.lock().unwrap().add_diagnostic(
                     AnalyzerDiagnostic::new("Parent class cannot be itself", parent_class.get_range())
                 );
-            }
-            sym_info.parent = Some(parent_class_name.to_string());
-            let parent_symbol_table = self.semantic_analysis_service.get_symbol_table_for_class_def_only(&parent_class_name.to_string());
-            match parent_symbol_table{
-                Ok(st) => {
-                    // set parent symbol table
-                    self.root_symbol_table.unwrap_ref().lock().unwrap().set_parent_symbol_table(st);
-                },
-                Err(e)=> {
-                    // parent class not found/cannot be parsed
-                    // or class already visited in current session
-                    self.diag_collector.lock().unwrap().add_diagnostic(
-                        AnalyzerDiagnostic::new(format!("Parent class not defined; {}", e).as_str(), parent_class.get_range())
-                    );
+            } else {
+                sym_info.parent = Some(parent_class_name.to_string());
+                let parent_symbol_table = self.semantic_analysis_service.get_symbol_table_for_class_def_only(&parent_class_name.to_string());
+                match parent_symbol_table{
+                    Ok(st) => {
+                        // set parent symbol table
+                        self.root_symbol_table.unwrap_ref().lock().unwrap().set_parent_symbol_table(st);
+                    },
+                    Err(e)=> {
+                        // parent class not found/cannot be parsed
+                        // or class already visited in current session
+                        self.diag_collector.lock().unwrap().add_diagnostic(
+                            AnalyzerDiagnostic::new(format!("Parent class not defined; {}", e).as_str(), parent_class.get_range())
+                        );
+                    }
                 }
             }
         }

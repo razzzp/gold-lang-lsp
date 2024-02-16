@@ -1,5 +1,5 @@
 
-class aInheritedChecker(aRootClass)
+class aInheritedCheckerTest(aRootClass)
 
 procedure Init override
    ; case called

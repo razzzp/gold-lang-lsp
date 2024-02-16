@@ -150,11 +150,7 @@ impl DefinitionService{
             _=> return Err(ProjectManagerError::new("Cannot find symbol definition", lsp_server::ErrorCode::RequestFailed))
         };
 
-        let uri = match self.doc_service.get_uri_for_class(&in_class){
-            Ok(u) => u,
-            _=> return Err(ProjectManagerError::new("Cannot get uri for class", lsp_server::ErrorCode::RequestFailed)),
-        };
-
+        let uri = self.doc_service.get_uri_for_class(&in_class)?;
         let mut result = Vec::new();
         result.push(LocationLink{
             origin_selection_range,
@@ -183,11 +179,9 @@ impl DefinitionService{
         let sym_infos= self.type_resolver.search_sym_info_through_parent(&id, st);
 
         let mut result = Vec::new();
-        for (class, sym) in sym_infos{
-            let uri = match self.doc_service.get_uri_for_class(&class){
-                Ok(u) => u,
-                _=> return Err(ProjectManagerError::new("Cannot get uri for class", lsp_server::ErrorCode::RequestFailed)),
-            };
+        for (class, sym) in sym_infos {
+
+            let uri = self.doc_service.get_uri_for_class(&class)?;
             result.push(LocationLink{
                 origin_selection_range,
                 target_range: sym.range.as_lsp_type_range(),

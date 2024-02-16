@@ -93,6 +93,7 @@ impl ProjectManager{
     pub fn notify_document_changed(&mut self, uri: &Url, full_file_content: &String, _threadpool: &ThreadPool) -> Result<(), ProjectManagerError>{
         let doc_info = self.doc_service.get_document_info(uri)?;
         // discard old opened doc
+        
         doc_info.write().unwrap().reset_transient_data();
 
         let new_doc = self.doc_service.parse_content(full_file_content)?;
@@ -367,7 +368,7 @@ pub mod test{
     }
 
     pub fn create_test_logger()-> Box<dyn ILoggerV2>{
-        Box::new(StdOutLogger::new("[LSP Server]", LogLevel::Verbose))
+        Box::new(StdOutLogger::new("[Gold LSP Server]", LogLevel::Verbose))
     }
 
     pub fn create_uri_from_path(path:&str)-> Url{

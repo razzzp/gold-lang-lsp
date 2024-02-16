@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::{Mutex, Weak, Arc, RwLock, RwLockWriteGuar
 
 use lsp_types::Url;
 
-use crate::{utils::ILoggerV2, threadpool::ThreadPool};
+use crate::{threadpool::ThreadPool, utils::{ILoggerV2, LogLevel, LogType}};
 
 use super::{document_service::DocumentService, data_structs::DocumentInfo};
 
@@ -93,11 +93,15 @@ impl EntityTreeService{
             let doc_service = doc_service.clone();
             threadpool.execute(move ||{
                 chunk.iter().for_each( |pair: &(String, Arc<RwLock<DocumentInfo>>)| {
-                    let (uri, _doc_info) = pair;
+                    let (path, _doc_info) = pair;
     
-                    let uri = match Url::from_str(uri.as_str()){
+                    let uri = match Url::from_file_path(path.as_str()){
                         Ok(uri) => uri,
-                        _=> return
+                        _=> {
+                            logger.log(LogType::Warning, LogLevel::Verbose, 
+                                format!("Failed to create uri from path {}", path).as_str());
+                            return;
+                        }
                     };
                     // self.logger.log_info(format!("Processing no.{} {}", count, uri).as_str());
                     if let Ok(doc) = doc_service.get_parsed_document_without_caching(&uri, true){

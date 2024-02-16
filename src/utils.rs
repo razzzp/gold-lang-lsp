@@ -1,5 +1,5 @@
 use crate::{analyzers_v2::AnnotatedAstNodeArx, lexer::tokens::Token, parser::ast::IAstNode};
-use std::{collections::LinkedList, fmt::Write, ops::Deref, path::Display, sync::Arc};
+use std::{collections::LinkedList, fmt::Write, ops::Deref, sync::Arc};
 
 #[macro_export]
 macro_rules! unwrap_or_return {

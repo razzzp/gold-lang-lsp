@@ -58,6 +58,7 @@ impl SemanticAnalysisService {
     }
 
     pub fn get_symbol_table_for_uri_def_only(&self, uri: &Url) -> Result<Arc<Mutex<dyn ISymbolTable>>, ProjectManagerError>{
+        self.logger.log(LogType::Info, LogLevel::Verbose, format!("Get symbol table for {}", uri).as_str());
         // check sym table on doc info first
         let doc_info = self.doc_service.get_document_info(uri)?;
         if let Some(sym_table) = doc_info.read().unwrap().get_symbol_table(){
@@ -81,7 +82,7 @@ impl SemanticAnalysisService {
     pub fn analyze_uri(&self, uri : &Url, options: AnalyzeRequestOptions) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
 
         // self.logger.log_info(format!("[Req Analyze Uri:{}]{}", if !only_definitions {"Full"}else{"Light"},uri).as_str());
-        self.logger.log(LogType::Info, LogLevel::Verbose, format!("Req analyzer uri with options {:#?}", options).as_str());
+        self.logger.log(LogType::Info, LogLevel::Verbose, format!("Analyze {} with options {:#?}", uri,options).as_str());
         let doc: Arc<Mutex<Document>> = if options.cache_result{
             self.doc_service.get_parsed_document(uri, true)?
         } else {
@@ -122,7 +123,7 @@ impl SemanticAnalysisService {
         let mut annotator = AstAnnotator::new(
             self.clone(), 
             self.diag_collector.clone(), 
-            self.logger.clone_box_with_appended_prefix("Ast Annotator"),
+            self.logger.clone_box_with_appended_prefix("[Ast Annotator]"),
             only_definitions
         );
         let annotated_doc = annotator.annotate_doc(doc, doc_info)?;
