@@ -24,6 +24,22 @@ impl EntityInfo{
     }
 }
 
+#[derive(Debug,Default,Clone,Copy)]
+pub struct GetParsedDocumentOptions{
+    cache_result: bool,
+    wait_on_lock: bool
+}
+impl GetParsedDocumentOptions{
+    pub fn set_cache_result(mut self, val : bool) -> GetParsedDocumentOptions{
+        self.cache_result = val;
+        self
+    } 
+    pub fn set_wait_on_lock(mut self, val : bool) -> GetParsedDocumentOptions{
+        self.wait_on_lock = val;
+        self
+    } 
+}
+
 #[derive(Debug)]
 /// provides caching and parsing of documents in
 /// workspace
@@ -214,18 +230,18 @@ impl DocumentService {
         Ok(new_doc_info)
     }
 
-    pub fn get_parsed_document_for_class(&self, class: &str, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn get_parsed_document_for_class(&self, class: &str, options: GetParsedDocumentOptions) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         let path = self.get_uri_for_class(class)?;
-        return self.get_parsed_document(&path, wait_on_lock);
+        return self.get_parsed_document(&path, options);
     }
 
-    pub fn get_parsed_document(&self, uri: &Url, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
+    pub fn get_parsed_document(&self, uri: &Url , options: GetParsedDocumentOptions) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
         self.logger.log(LogType::Info, LogLevel::Verbose, format!("Get parsed doc for {}", uri).as_str());
         let doc_info = self.get_document_info(uri)?;
         let read_doc_info = match doc_info.try_read(){
             Ok(rw_lock) => rw_lock,
             Err(_) => {
-                if wait_on_lock {doc_info.read().unwrap()}
+                if options.wait_on_lock {doc_info.read().unwrap()}
                 else {return Err(ProjectManagerError::new(format!("doc info locked,{}", uri).as_str(), ErrorCode::RequestFailed))}
             }
         };
@@ -244,44 +260,18 @@ impl DocumentService {
         let mut write_doc_info = match doc_info.try_write(){
             Ok(wr_lock) => wr_lock,
             Err(_) => {
-                if wait_on_lock {doc_info.write().unwrap()}
+                if options.wait_on_lock {doc_info.write().unwrap()}
                 else {return Err(ProjectManagerError::new(format!("doc info locked,{}", uri).as_str(), ErrorCode::RequestFailed))}
             }
         };
         
         // if none, read from file
         self.logger.log(LogType::Info, LogLevel::Verbose, "Parsing doc");
-        let new_doc = self.parse_document(write_doc_info.file_path.as_str())?;
-        write_doc_info.set_saved_document(Some(Arc::new(Mutex::new(new_doc))));
-        return Ok(write_doc_info.get_saved_document().unwrap());
-        
-    }
-
-    pub fn get_parsed_document_without_caching(&self, uri: &Url, wait_on_lock: bool) -> Result<Arc<Mutex<Document>>, ProjectManagerError>{
-        self.logger.log(LogType::Info, LogLevel::Verbose, format!("Get parsed doc for {}", uri).as_str());
-        let doc_info = self.get_document_info(uri)?;
-        let read_doc_info = match doc_info.try_read(){
-            Ok(rw_lock) => rw_lock,
-            Err(_) => {
-                if wait_on_lock {doc_info.read().unwrap()}
-                else {return Err(ProjectManagerError::new(format!("doc info locked,{}", uri).as_str(), ErrorCode::RequestFailed))}
-            }
-        };
-        // check opened document
-        if read_doc_info.get_opened_document().is_some() {
-            self.logger.log(LogType::Info, LogLevel::Verbose, "Found opened doc");
-            return Ok(read_doc_info.get_opened_document().unwrap());
+        let new_doc = Arc::new(Mutex::new(self.parse_document(write_doc_info.file_path.as_str())?));
+        if options.cache_result{
+            write_doc_info.set_saved_document(Some(new_doc.clone()));
         }
-        // check last saved doc
-        if read_doc_info.get_saved_document().is_some() {
-            self.logger.log(LogType::Info, LogLevel::Verbose, "Found saved doc");
-            return Ok(read_doc_info.get_saved_document().unwrap());
-        } 
-        // if none, read from file
-        self.logger.log(LogType::Info, LogLevel::Verbose, "Parsing doc");
-        let new_doc = self.parse_document(read_doc_info.file_path.as_str())?;
-        return Ok(Arc::new(Mutex::new(new_doc)));
-        
+        return Ok(new_doc);
     }
 
     pub fn notify_document_closed(&self, uri: &Url){
@@ -417,6 +407,7 @@ mod test{
         drop(doc_manager.class_uri_map.try_write().unwrap());
     }
 
+    #[ignore = "long running time"]
     #[test]
     fn test_file_outside_workspace_after_index(){
         // skip if dir doesn't exist

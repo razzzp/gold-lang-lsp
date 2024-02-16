@@ -4,7 +4,7 @@ use lsp_types::Url;
 
 use crate::{threadpool::ThreadPool, utils::{ILoggerV2, LogLevel, LogType}};
 
-use super::{document_service::DocumentService, data_structs::DocumentInfo};
+use super::{data_structs::DocumentInfo, document_service::{DocumentService, GetParsedDocumentOptions}};
 
 #[derive(Debug, Clone, PartialEq, Copy)]
 pub enum EntityType {
@@ -29,20 +29,24 @@ impl EntityInfoNode{
 pub struct EntityTreeService{
     class_module_map : Arc<RwLock<HashMap<String, Arc<Mutex<EntityInfoNode>>>>>,
     logger : Box<dyn ILoggerV2>,
-    chunk_size: usize
+    num_of_chunks: usize
 }
 impl Clone for EntityTreeService{
     fn clone(&self) -> Self {
-        Self { class_module_map: self.class_module_map.clone(), logger: self.logger.clone_box(), chunk_size: self.chunk_size.clone() }
+        Self { class_module_map: self.class_module_map.clone(), logger: self.logger.clone_box(), num_of_chunks: self.num_of_chunks }
     }
 }
 impl EntityTreeService{
-    pub fn new(chunk_size: usize, logger: Box<dyn ILoggerV2>) -> EntityTreeService{
+    pub fn new(num_of_chunks: usize, logger: Box<dyn ILoggerV2>) -> EntityTreeService{
         return EntityTreeService { 
             class_module_map: Arc::new(RwLock::new(HashMap::new())),
             logger,
-            chunk_size
+            num_of_chunks
         }
+    }
+
+    pub fn get_class_module_map(&self) -> &Arc<RwLock<HashMap<String, Arc<Mutex<EntityInfoNode>>>>>{
+        &self.class_module_map
     }
 
     fn get_or_create_entity(
@@ -80,86 +84,53 @@ impl EntityTreeService{
 
         self.class_module_map.write().unwrap().clear();
 
-        let files_to_process : Vec<(String, Arc<RwLock<DocumentInfo>>)> = doc_service
+        let files_to_process : Vec<String> = doc_service
             .get_doc_info_mapping()
             .read().unwrap()
-            .iter().map(|r| (r.0.clone(),r.1.clone())).collect();
+            .keys().cloned().collect();
 
-        let chunks: Vec<Vec<_>> = files_to_process.chunks(self.chunk_size).map(|s| s.into()).collect();
+        // calculate chunk size 
+        let chunk_size = files_to_process.len() / self.num_of_chunks;
+        let chunks: Vec<Vec<_>> = files_to_process.chunks(chunk_size).map(|s| s.into()).collect();
 
         for chunk in chunks {
             let map= self.class_module_map.clone();
             let logger = self.logger.clone_box();
             let doc_service = doc_service.clone();
             threadpool.execute(move ||{
-                chunk.iter().for_each( |pair: &(String, Arc<RwLock<DocumentInfo>>)| {
-                    let (path, _doc_info) = pair;
-    
-                    let uri = match Url::from_file_path(path.as_str()){
-                        Ok(uri) => uri,
-                        _=> {
-                            logger.log(LogType::Warning, LogLevel::Verbose, 
-                                format!("Failed to create uri from path {}", path).as_str());
-                            return;
-                        }
-                    };
-                    // self.logger.log_info(format!("Processing no.{} {}", count, uri).as_str());
-                    if let Ok(doc) = doc_service.get_parsed_document_without_caching(&uri, true){
-                        // generate from entity info
-                        if let Some(e_info) = &doc.lock().unwrap().entity_info {
-                            let entity = EntityTreeService::get_or_create_entity_2(&e_info.id, &map);      
-                            if let Some(parent_class) = &e_info.parent{
-                                // if parent doesn't exist
-                                let parent_entity  = EntityTreeService::get_or_create_entity_2(parent_class, &map);
-                                // set parent
-                                entity.lock().unwrap().parent = Some(Arc::downgrade(&parent_entity));
-                                // add as child
-                                parent_entity.lock().unwrap().children.push(entity.clone());
-                            }
-                        } else {
-                            // self.logger.log_warning(format!("Can't find entity info for {}", doc_info.read().unwrap().uri).as_str())
-                        }
-                        // free memory
-                        drop(doc);
-                        return;
-                    } 
-                });
+                EntityTreeService::build_tree(&doc_service, &chunk, &map, &logger);
                 logger.log_info(format!("Building class tree {:#?}; Processed {} entities", timer.elapsed(), map.read().unwrap().len()).as_str());
             });
         }
     }
 
-    pub fn build_tree(&self, doc_service: &DocumentService){
-        
-        let timer = std::time::Instant::now();
-        self.logger.log_info("Building Class tree");
-
-        // precompile regex
-        // let class_regx= Regex::new(r"(?i)^\s*\bclass\s*\b(\w+)\s*(?:\(\s*(\w+)\s*\))?").unwrap();
-        // let module_regx = Regex::new(r"(?i)^\s*\bmodule\s*\b(\w+)").unwrap();
-        let mut map_lock = self.class_module_map.write().unwrap();
-        map_lock.clear();
-        let mut count : usize = 0;
-        let files_to_process : Vec<(String, Arc<RwLock<DocumentInfo>>)> = doc_service
-            .get_doc_info_mapping()
-            .read().unwrap()
-            .iter().map(|r| (r.0.clone(),r.1.clone())).collect();
-        files_to_process.iter().for_each( |pair: &(String, Arc<RwLock<DocumentInfo>>)| {
-            
-            let (uri, _doc_info) = pair;
-            count += 1;
-            let uri = match Url::from_str(uri.as_str()){
+    pub fn build_tree(
+        doc_service: &DocumentService, 
+        file_uris: &Vec<String>,
+        map : &Arc<RwLock<HashMap<String, Arc<Mutex<EntityInfoNode>>>>>,
+        logger: &Box<dyn ILoggerV2>
+    ){
+        file_uris.iter().for_each( |path: &String| {
+            let uri = match Url::from_file_path(path){
                 Ok(uri) => uri,
-                _=> return
+                _=> {
+                    logger.log(LogType::Warning, LogLevel::Verbose, 
+                        format!("Failed to create uri from path {}", path).as_str());
+                    return;
+                }
             };
-            // self.logger.log_info(format!("Processing no.{} {}", count, uri).as_str());
-            if let Ok(doc) = doc_service.get_parsed_document(&uri, true){
+            
+            // don't cache result
+            if let Ok(doc) = doc_service.get_parsed_document(
+                &uri, 
+                GetParsedDocumentOptions::default().set_wait_on_lock(true)
+            ){
                 // generate from entity info
                 if let Some(e_info) = &doc.lock().unwrap().entity_info {
-                    let entity = EntityTreeService::get_or_create_entity(&e_info.id, &mut map_lock);      
+                    let entity = EntityTreeService::get_or_create_entity_2(&e_info.id, &map);      
                     if let Some(parent_class) = &e_info.parent{
                         // if parent doesn't exist
-                        let parent_entity  = EntityTreeService::get_or_create_entity(parent_class, &mut map_lock);
+                        let parent_entity  = EntityTreeService::get_or_create_entity_2(parent_class, &map);
                         // set parent
                         entity.lock().unwrap().parent = Some(Arc::downgrade(&parent_entity));
                         // add as child
@@ -168,10 +139,11 @@ impl EntityTreeService{
                 } else {
                     // self.logger.log_warning(format!("Can't find entity info for {}", doc_info.read().unwrap().uri).as_str())
                 }
+                // free memory
+                drop(doc);
                 return;
             } 
         });
-        self.logger.log_info(format!("Class tree built in {:#?}; Found {} entities", timer.elapsed(), map_lock.len()).as_str());
     }
 
     pub fn get_root_class(&self) -> Option<Arc<Mutex<EntityInfoNode>>>{
@@ -191,13 +163,13 @@ impl EntityTreeService{
 
 #[cfg(test)]
 pub mod test{
-    use crate::{manager::test::{create_test_doc_service, create_test_logger, create_uri_from_path}, threadpool::ThreadPool};
+    use crate::{manager::{document_service::GetParsedDocumentOptions, test::{create_test_doc_service, create_test_logger, create_uri_from_path}}, threadpool::ThreadPool, utils::Logger};
 
     use super::EntityTreeService;
 
 
     pub fn create_test_entity_tree_service() -> EntityTreeService{
-        return EntityTreeService::new(15_000, create_test_logger())
+        return EntityTreeService::new(4, create_test_logger())
     }
 
     #[test]
@@ -206,11 +178,12 @@ pub mod test{
         let doc_service = create_test_doc_service(Some(root_uri));
         doc_service.index_files();
         
-        let class_service = create_test_entity_tree_service();
+        let entity_tree_service = create_test_entity_tree_service();
+        let logger = create_test_logger();
+        let file_uris = doc_service.get_doc_info_mapping().read().unwrap().keys().cloned().collect();
+        EntityTreeService::build_tree(&doc_service, &file_uris, &entity_tree_service.class_module_map, &logger);
 
-        class_service.build_tree(&doc_service);
-
-        let root_class = class_service.get_root_class().unwrap();
+        let root_class = entity_tree_service.get_root_class().unwrap();
         assert_eq!(root_class.lock().unwrap().id.as_str(), "aRootClass");
         // println!("{:#?}", root_class)
     }
@@ -220,13 +193,15 @@ pub mod test{
         let root_uri = create_uri_from_path("./test/workspace");
         let doc_service = create_test_doc_service(Some(root_uri));
         doc_service.index_files();
-        let _ = doc_service.get_parsed_document_for_class("aRootClass", true);
+        let _ = doc_service.get_parsed_document_for_class("aRootClass", 
+        GetParsedDocumentOptions::default().set_cache_result(true).set_wait_on_lock(true));
         
-        let class_service = create_test_entity_tree_service();
+        let entity_tree_service = create_test_entity_tree_service();
+        let logger = create_test_logger();
+        let file_uris = doc_service.get_doc_info_mapping().read().unwrap().keys().cloned().collect();
+        EntityTreeService::build_tree(&doc_service, &file_uris, &entity_tree_service.class_module_map, &logger);
 
-        class_service.build_tree(&doc_service);
-
-        let root_class = class_service.get_root_class().unwrap();
+        let root_class = entity_tree_service.get_root_class().unwrap();
         assert_eq!(root_class.lock().unwrap().id.as_str(), "aRootClass");
         // println!("{:#?}", root_class)
     }
@@ -238,11 +213,12 @@ pub mod test{
         let doc_service = create_test_doc_service(Some(root_uri));
         doc_service.index_files();
         
-        let class_service = create_test_entity_tree_service();
+        let entity_tree_service = create_test_entity_tree_service();
+        let logger = create_test_logger();
+        let file_uris = doc_service.get_doc_info_mapping().read().unwrap().keys().cloned().collect();
+        EntityTreeService::build_tree(&doc_service, &file_uris, &entity_tree_service.class_module_map, &logger);
 
-        class_service.build_tree(&doc_service);
-
-        let _root_class = class_service.get_root_class().unwrap();
+        let _root_class = entity_tree_service.get_root_class().unwrap();
         // assert_eq!(root_class.lock().unwrap().id.as_str(), "aRootClass");
         // println!("{:#?}", root_class)
     }

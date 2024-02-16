@@ -326,7 +326,11 @@ mod test{
         let doc_service = create_test_doc_service(Some(uri));
         let tree_service = create_test_entity_tree_service();
         doc_service.index_files();
-        tree_service.build_tree(&doc_service);
+
+        let logger = create_test_logger();
+        let file_uris = doc_service.get_doc_info_mapping().read().unwrap().keys().cloned().collect();
+        EntityTreeService::build_tree(&doc_service, &file_uris, tree_service.get_class_module_map(), &logger);
+
         let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
 
         let test_uri = create_uri_from_path("./test/workspace/aFifthClass.god");
@@ -342,7 +346,11 @@ mod test{
         let doc_service = create_test_doc_service(Some(uri));
         doc_service.index_files();
         let entity_tree_service = create_test_entity_tree_service();
-        entity_tree_service.build_tree(&doc_service);
+        
+        let logger = create_test_logger();
+        let file_uris = doc_service.get_doc_info_mapping().read().unwrap().keys().cloned().collect();
+        EntityTreeService::build_tree(&doc_service, &file_uris, entity_tree_service.get_class_module_map(), &logger);
+
         let th_service = create_test_type_hierarchy_service(doc_service.clone(), entity_tree_service);
 
         let test_uri = create_uri_from_path("./test/workspace/aFifthClass.god");
@@ -369,7 +377,11 @@ mod test{
         let doc_service = create_test_doc_service(Some(uri));
         doc_service.index_files();
         let entity_tree_service = create_test_entity_tree_service();
-        entity_tree_service.build_tree(&doc_service);
+        
+        let logger = create_test_logger();
+        let file_uris = doc_service.get_doc_info_mapping().read().unwrap().keys().cloned().collect();
+        EntityTreeService::build_tree(&doc_service, &file_uris, entity_tree_service.get_class_module_map(), &logger);
+
         let th_service = create_test_type_hierarchy_service(doc_service.clone(), entity_tree_service);
 
         let test_uri = create_uri_from_path("./test/workspace/aFifthClass.god");
@@ -395,7 +407,11 @@ mod test{
         let doc_service = create_test_doc_service(Some(uri));
         let tree_service = create_test_entity_tree_service();
         doc_service.index_files();
-        tree_service.build_tree(&doc_service);
+        
+        let logger = create_test_logger();
+        let file_uris = doc_service.get_doc_info_mapping().read().unwrap().keys().cloned().collect();
+        EntityTreeService::build_tree(&doc_service, &file_uris, tree_service.get_class_module_map(), &logger);
+
         let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
 
         let test_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aFirstLevelClass1.god");
@@ -411,7 +427,11 @@ mod test{
         let doc_service = create_test_doc_service(Some(uri));
         let tree_service = create_test_entity_tree_service();
         doc_service.index_files();
-        tree_service.build_tree(&doc_service);
+        
+        let logger = create_test_logger();
+        let file_uris = doc_service.get_doc_info_mapping().read().unwrap().keys().cloned().collect();
+        EntityTreeService::build_tree(&doc_service, &file_uris, tree_service.get_class_module_map(), &logger);
+
         let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
 
         let test_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aFirstLevelClass1.god");
@@ -437,7 +457,11 @@ mod test{
         let doc_service = create_test_doc_service(Some(uri));
         let tree_service = create_test_entity_tree_service();
         doc_service.index_files();
-        tree_service.build_tree(&doc_service);
+        
+        let logger = create_test_logger();
+        let file_uris = doc_service.get_doc_info_mapping().read().unwrap().keys().cloned().collect();
+        EntityTreeService::build_tree(&doc_service, &file_uris, tree_service.get_class_module_map(), &logger);
+
         let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
 
         let test_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aSecondLevelClass1.god");
@@ -463,7 +487,11 @@ mod test{
         let doc_service = create_test_doc_service(Some(uri));
         let tree_service = create_test_entity_tree_service();
         doc_service.index_files();
-        tree_service.build_tree(&doc_service);
+        
+        let logger = create_test_logger();
+        let file_uris = doc_service.get_doc_info_mapping().read().unwrap().keys().cloned().collect();
+        EntityTreeService::build_tree(&doc_service, &file_uris, tree_service.get_class_module_map(), &logger);
+
         let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
 
         let test_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aFieldTestSecondLevel.god");
@@ -480,7 +508,11 @@ mod test{
         let doc_service = create_test_doc_service(Some(uri));
         let tree_service = create_test_entity_tree_service();
         doc_service.index_files();
-        tree_service.build_tree(&doc_service);
+        
+        let logger = create_test_logger();
+        let file_uris = doc_service.get_doc_info_mapping().read().unwrap().keys().cloned().collect();
+        EntityTreeService::build_tree(&doc_service, &file_uris, tree_service.get_class_module_map(), &logger);
+
         let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
 
         let test_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aFieldTestSecondLevel.god");
@@ -508,7 +540,11 @@ mod test{
         let doc_service = create_test_doc_service(Some(uri));
         let tree_service = create_test_entity_tree_service();
         doc_service.index_files();
-        tree_service.build_tree(&doc_service);
+        
+        let logger = create_test_logger();
+        let file_uris = doc_service.get_doc_info_mapping().read().unwrap().keys().cloned().collect();
+        EntityTreeService::build_tree(&doc_service, &file_uris, tree_service.get_class_module_map(), &logger);
+
         let th_service = create_test_type_hierarchy_service(doc_service.clone(), tree_service);
 
         let test_uri = create_uri_from_path("./test/workspace/TypeHierarchyTest/aFieldTestSecondLevel.god");

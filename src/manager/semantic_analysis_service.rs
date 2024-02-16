@@ -5,7 +5,7 @@ use crate::{analyzers::AnalyzerDiagnostic, utils::{IDiagnosticCollector, ILogger
 use core::fmt::Debug;
 use std::sync::{Mutex, Arc, RwLock};
 
-use super::{data_structs::{Document, ProjectManagerError, DocumentInfo}, document_service::DocumentService};
+use super::{data_structs::{Document, DocumentInfo, ProjectManagerError}, document_service::{DocumentService, GetParsedDocumentOptions}};
 use crate::analyzers_v2::{
     ast_annotator::AstAnnotator,
     symbol_table::ISymbolTable,
@@ -83,11 +83,8 @@ impl SemanticAnalysisService {
 
         // self.logger.log_info(format!("[Req Analyze Uri:{}]{}", if !only_definitions {"Full"}else{"Light"},uri).as_str());
         self.logger.log(LogType::Info, LogLevel::Verbose, format!("Analyze {} with options {:#?}", uri,options).as_str());
-        let doc: Arc<Mutex<Document>> = if options.cache_result{
-            self.doc_service.get_parsed_document(uri, true)?
-        } else {
-            self.doc_service.get_parsed_document_without_caching(uri, true)?
-        };
+        let doc = self.doc_service.get_parsed_document(uri, 
+            GetParsedDocumentOptions::default().set_cache_result(options.cache_result).set_wait_on_lock(true))?;
         // is exist and only defs needed return existing,
         //  otherwise regenerate
         if doc.lock().unwrap().annotated_ast.is_some(){

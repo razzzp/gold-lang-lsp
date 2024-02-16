@@ -7,11 +7,7 @@ use crate::{parser::ast::IAstNode, utils::{IRange, GenericDiagnosticCollector, P
 use data_structs::*;
 
 use self::{
-    semantic_analysis_service::{SemanticAnalysisService, AnalyzeRequestOptions}, 
-    document_service::DocumentService,  definition_service::DefinitionService, 
-    completion_service::CompletionService, 
-    entity_tree_service::EntityTreeService, 
-    type_hierarchy_service::TypeHierarchyService};
+    completion_service::CompletionService, definition_service::DefinitionService, document_service::{DocumentService, GetParsedDocumentOptions}, entity_tree_service::EntityTreeService, semantic_analysis_service::{AnalyzeRequestOptions, SemanticAnalysisService}, type_hierarchy_service::TypeHierarchyService};
 
 use crate::analyzers_v2::{
     annotated_ast_walker::{AnnotatedAstWalkerPreOrder, IAnnotatedNodeVisitor}, 
@@ -48,7 +44,7 @@ impl ProjectManager{
 
         let mut tree_service_logger = logger.clone_box();
         tree_service_logger.append_prefix("[Entity Tree Service]");
-        let class_module_tree_service = EntityTreeService::new(15_000, tree_service_logger);
+        let class_module_tree_service = EntityTreeService::new(4, tree_service_logger);
         Ok(ProjectManager{
             doc_service,
             logger,
@@ -135,7 +131,8 @@ impl ProjectManager{
 
     pub fn generate_document_symbols(&mut self, uri : &Url) -> Result<Vec<DocumentSymbol>, ProjectManagerError>{
         // use lighter sym generator if doc not analyzed yet
-        let doc = self.doc_service.get_parsed_document(uri, true)?;
+        let doc = self.doc_service.get_parsed_document(uri, 
+            GetParsedDocumentOptions::default().set_cache_result(true).set_wait_on_lock(true))?;
         
         let sym_gen = DocumentSymbolGeneratorFromAst::new();
         let ast = doc.lock().unwrap().ast.clone();
@@ -218,7 +215,7 @@ impl ProjectManager{
     }
 
     /// analyzes doc and generates diags
-    fn generate_diags_on_annotated_ast(&self, uri : &Url) -> Option<Vec<Diagnostic>>{
+    fn generate_annotated_ast_analyzer_diags(&self, uri : &Url) -> Option<Vec<Diagnostic>>{
 
         let sem_service  = self.create_sem_service();
         let doc = sem_service.analyze_uri(uri, AnalyzeRequestOptions::default().set_cache(true)).ok()?;
@@ -246,9 +243,8 @@ impl ProjectManager{
         return Some(diags)
     }
 
-    fn generate_diagnostics(&self, uri : &Url) -> Result<Vec<Diagnostic>, ProjectManagerError>{
-        let doc = self.doc_service.get_parsed_document(uri, true)?;
-        let mut result: Vec<Diagnostic> = doc.lock().unwrap().get_parser_diagnostics().iter()
+    fn get_parser_diagnostics(&self, doc : Arc<Mutex<Document>>) -> Vec<Diagnostic>{
+        return doc.lock().unwrap().get_parser_diagnostics().iter()
             .map(|gold_error| {
                 Diagnostic::new(
                     gold_error.get_range().as_lsp_type_range(),
@@ -259,11 +255,17 @@ impl ProjectManager{
                     None, 
                     None)
             }).collect();
+    }
+
+    fn generate_diagnostics(&self, uri : &Url) -> Result<Vec<Diagnostic>, ProjectManagerError>{
+        let doc = self.doc_service.get_parsed_document(uri, 
+            GetParsedDocumentOptions::default().set_cache_result(true).set_wait_on_lock(true))?;
+        // get diags from parser
+        let mut result: Vec<Diagnostic> = self.get_parser_diagnostics(doc.clone());
         // analyzers on IAstNode
-        let analyzer_diags = self.get_analyzer_diagnostics(doc.clone())?;
-        analyzer_diags.iter().for_each(|d|{result.push(d.clone())});
+        result.extend(self.get_analyzer_diagnostics(doc.clone())?.iter().map(|d| d.clone()));
         // analyzers on annotated node
-        result.extend(self.generate_diags_on_annotated_ast(uri).unwrap_or_default());
+        result.extend(self.generate_annotated_ast_analyzer_diags(uri).unwrap_or_default());
 
         return Ok(result);
     }
@@ -371,6 +373,10 @@ pub mod test{
         Box::new(StdOutLogger::new("[Gold LSP Server]", LogLevel::Verbose))
     }
 
+    pub fn create_silent_test_logger()-> Box<dyn ILoggerV2>{
+        Box::new(StdOutLogger::new("[Gold LSP Server]", LogLevel::General))
+    }
+
     pub fn create_uri_from_path(path:&str)-> Url{
         let path = PathBuf::from_str(path).unwrap();
         let path = std::fs::canonicalize(path).unwrap();
@@ -380,6 +386,11 @@ pub mod test{
     pub fn create_test_project_manager(root: &str) -> ProjectManager{
         let uri = create_uri_from_path(root);
         return ProjectManager::new(Some(uri), create_test_logger()).unwrap()
+    }
+
+    pub fn create_test_project_manager_wlogger(root: &str, logger: Box<dyn ILoggerV2>) -> ProjectManager{
+        let uri = create_uri_from_path(root);
+        return ProjectManager::new(Some(uri), logger).unwrap()
     }
 
     pub fn create_test_sem_service(doc_service: DocumentService)-> SemanticAnalysisService{
@@ -545,7 +556,9 @@ pub mod test{
             Ok(_) => (),
             _=> return
         };
-        let mut proj_manager= create_test_project_manager("C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev");
+        let mut proj_manager= create_test_project_manager_wlogger(
+            "C:\\Users\\muhampra\\dev\\projects\\razifp\\cps-dev", 
+            create_silent_test_logger());
         proj_manager.index_files();
         assert!(proj_manager.doc_service.count_files() > 54000);
     }
